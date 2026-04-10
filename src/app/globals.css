@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #080808;
+  --bg-2: #0f0f0f;
+  --bg-3: #161616;
+  --bg-4: #1e1e1e;
+  --border: #262626;
+  --border-2: #333333;
+  --text: #edede9;
+  --text-2: #a0a09a;
+  --text-3: #606060;
+  --green: #b9ff4b;
+  --green-dim: #0d1f00;
+  --green-border: rgba(185, 255, 75, 0.2);
+  --amber: #f5a623;
+  --amber-dim: #1f1400;
+  --blue: #4da6ff;
+  --blue-dim: #001833;
+  --red: #ff4b4b;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "DM Sans", var(--font-dm-sans), sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-syne {
+  font-family: "Syne", var(--font-syne), sans-serif;
+}
