@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdminClient } from "@/lib/supabase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET() {
-  const supabaseAdmin = getSupabaseAdminClient();
   const { count, error } = await supabaseAdmin
     .from("startup_submissions")
     .select("*", { count: "exact", head: true });

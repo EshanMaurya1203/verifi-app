@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { DM_Sans, Syne } from "next/font/google";
+import { DM_Sans, Syne, Geist } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -20,6 +23,7 @@ export const metadata: Metadata = {
     "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
 };
 
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,7 +32,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${syne.variable} h-full bg-[#080808] antialiased`}
+      className={cn("dark", "h-full", "bg-background", "antialiased", dmSans.variable, syne.variable, "font-sans", geist.variable)}
     >
       <body className="min-h-full">{children}</body>
     </html>

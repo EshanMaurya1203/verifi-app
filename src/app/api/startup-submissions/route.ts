@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { calculateVerificationScore } from "@/lib/verification";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { getSupabaseAdminClient } from "@/lib/supabase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 type StartupSubmissionPayload = {
   name: string;
@@ -8,14 +9,21 @@ type StartupSubmissionPayload = {
   startup_name: string;
   website?: string;
   biz_type: string;
-  mrr: string;
-  arr: string;
+  mrr: string | number;
+  arr: string | number;
   payment_methods: string[];
   twitter?: string;
   linkedin?: string;
   city: string;
   notes?: string;
+  user_id: string;
+  verification_type?: string;
+  proof_url?: string | null;
+  source?: string | null;
+  confidence_score?: number;
 };
+
+const allowedVerificationTypes = new Set(["manual", "social", "proof", "api"]);
 
 const allowedPaymentMethods = new Set([
   "razorpay",
@@ -56,11 +64,10 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
   if (!isValidEmail(payload.email.trim())) return "email is invalid";
   if (!isNonEmptyString(payload.startup_name)) return "startup_name is required";
   if (!isNonEmptyString(payload.biz_type)) return "biz_type is required";
-  if (!isNonEmptyString(payload.mrr)) return "mrr is required";
-  if (!isNonEmptyString(payload.arr)) return "arr is required";
-  if (!isNumericValue(payload.mrr)) return "mrr must be numeric";
-  if (!isNumericValue(payload.arr)) return "arr must be numeric";
+  if (payload.mrr == null || payload.mrr === "") return "mrr is required";
+  if (payload.arr == null || payload.arr === "") return "arr is required";
   if (!isNonEmptyString(payload.city)) return "city is required";
+  if (!isNonEmptyString(payload.user_id)) return "user_id is required";
   if (!isWithinMaxLength(payload.name, 120)) return "name is too long";
   if (!isWithinMaxLength(payload.startup_name, 120))
     return "startup_name is too long";
@@ -87,7 +94,6 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
 
 export async function POST(req: Request) {
   try {
-    const supabaseAdmin = getSupabaseAdminClient();
     const clientIp = getClientIp(req);
     const rate = enforceRateLimit(`startup-submissions:${clientIp}`, 5, 60_000);
     if (!rate.allowed) {
@@ -101,6 +107,7 @@ export async function POST(req: Request) {
     }
 
     const data = (await req.json()) as StartupSubmissionPayload;
+    console.log("Incoming body:", data);
     const validationError = validatePayload(data);
     if (validationError) {
       return NextResponse.json(
@@ -115,31 +122,54 @@ export async function POST(req: Request) {
       payment_methods_count: data.payment_methods.length,
     });
 
-    const mrrValue = Number(data.mrr.trim());
-    const arrValue = Number(data.arr.trim());
+    const mrrValue = typeof data.mrr === "number" ? data.mrr : Number(data.mrr.trim());
+    const arrValue = typeof data.arr === "number" ? data.arr : Number(data.arr.trim());
 
-    const { error: insertError } = await supabaseAdmin
+    if (isNaN(mrrValue)) return NextResponse.json({ success: false, error: "mrr must be numeric" }, { status: 400 });
+    if (isNaN(arrValue)) return NextResponse.json({ success: false, error: "arr must be numeric" }, { status: 400 });
+
+    const verificationType = data.verification_type?.trim() || "manual";
+    const validVerificationType = allowedVerificationTypes.has(verificationType)
+      ? verificationType
+      : "manual";
+
+    const confidenceScore = calculateVerificationScore(data);
+
+    const { data: insertedData, error: insertError } = await supabaseAdmin
       .from("startup_submissions")
-      .insert({
-        name: data.name.trim(),
-        email: data.email.trim().toLowerCase(),
-        startup_name: data.startup_name.trim(),
-        website: data.website?.trim() || null,
-        biz_type: data.biz_type.trim(),
-        mrr: mrrValue,
-        arr: arrValue,
-        payment_methods: data.payment_methods,
-        twitter: data.twitter?.trim() || null,
-        linkedin: data.linkedin?.trim() || null,
-        city: data.city.trim(),
-        notes: data.notes?.trim() || null,
-      });
+      .insert([
+        {
+          name: data.name.trim(),
+          email: data.email.trim().toLowerCase(),
+          startup_name: data.startup_name.trim(),
+          website: data.website?.trim() || null,
+          biz_type: data.biz_type.trim(),
+          mrr: mrrValue,
+          arr: arrValue,
+          payment_methods: data.payment_methods,
+          twitter: data.twitter?.trim() || null,
+          linkedin: data.linkedin?.trim() || null,
+          city: data.city.trim(),
+          notes: data.notes?.trim() || null,
+          user_id: data.user_id,
+          verification_type: validVerificationType,
+          proof_url: data.proof_url || null,
+          source: data.source || null,
+          confidence_score: confidenceScore,
+          verification_status: confidenceScore > 60 ? "auto_verified" : "pending",
+        },
+      ])
+      .select();
 
     if (insertError) {
-      console.error("startup submission insert error", insertError.message);
+      console.error("SUPABASE ERROR:", insertError);
       return NextResponse.json(
-        { success: false, error: "Unable to save submission" },
-        { status: 500 }
+        {
+          success: false,
+          error: insertError.message,
+          details: insertError,
+        },
+        { status: 400 }
       );
     }
 
@@ -152,12 +182,38 @@ export async function POST(req: Request) {
     }
 
     const slotNumber = typeof count === "number" ? count : null;
-    return NextResponse.json({ success: true, slot_number: slotNumber });
+    return NextResponse.json({ success: true, slot_number: slotNumber, data: insertedData });
   } catch (error) {
-    console.error("startup submission error", error);
+    console.error("API ERROR:", error);
     return NextResponse.json(
       { success: false, error: "Invalid request body" },
       { status: 400 }
+    );
+  }
+}
+
+export async function GET() {
+  try {
+
+    const { data, error } = await supabaseAdmin
+      .from("startup_submissions")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("startup submissions fetch error", error.message);
+      return NextResponse.json(
+        { success: false, error: "Unable to fetch submissions" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    console.error("startup submissions GET error", error);
+    return NextResponse.json(
+      { success: false, error: "Server error" },
+      { status: 500 }
     );
   }
 }
