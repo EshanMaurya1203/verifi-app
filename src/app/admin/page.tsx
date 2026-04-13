@@ -14,7 +14,7 @@ export default function AdminPage() {
     const { data } = await supabase
       .from("startup_submissions")
       .select("*")
-      .eq("verification_status", "pending");
+      .in("verification_status", ["pending", "unverified", "proof_submitted", "api_verified"]);
 
     setData(data || []);
   };
@@ -36,6 +36,24 @@ export default function AdminPage() {
         <div key={item.id} className="mb-4 border p-4 rounded">
           <p>{item.startup_name}</p>
           <p>MRR: ₹{item.mrr}</p>
+
+          <div className="mt-2 mb-2 text-sm border-t border-border/50 pt-2">
+            <p>Fraud Score: <span className="font-bold">{item.fraud_score ?? 0}</span></p>
+            <p>
+              Risk:{" "}
+              <span
+                className={`font-bold uppercase ${
+                  item.risk_level === "high"
+                    ? "text-red-500"
+                    : item.risk_level === "medium"
+                    ? "text-yellow-500"
+                    : "text-green-500"
+                }`}
+              >
+                {item.risk_level || "low"}
+              </span>
+            </p>
+          </div>
 
           <div className="flex gap-2 mt-2">
             <button onClick={() => updateStatus(item.id, "verified")}>

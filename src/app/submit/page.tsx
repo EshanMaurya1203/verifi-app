@@ -90,6 +90,42 @@ export default function SubmitPage() {
   const [user, setUser] = useState<any>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState<{ mrr: number; currency: string } | null>(null);
+  const [verifiedRevenue, setVerifiedRevenue] = useState<number | null>(null);
+
+  const handleVerifyRevenue = async () => {
+    if (!form.apiKey) {
+      alert("Please enter your API key first");
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const res = await fetch("/api/verify/revenue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: form.apiProvider,
+          apiKey: form.apiKey,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
+
+      setVerifyStatus({ mrr: data.revenue, currency: data.currency });
+      setVerifiedRevenue(data.revenue);
+      // Automatically update the MRR field with the verified value
+      onInputChange("mrr", Math.round(data.revenue).toString());
+      alert(`Verified MRR: ${data.currency} ${Math.round(data.revenue)}`);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
 
   useEffect(() => {
     if (successMessage) {
@@ -307,8 +343,9 @@ export default function SubmitPage() {
         notes: form.notes,
         user_id: authData.user.id,
         proof_url: proof_url,
-        source: form.apiProvider || null,
         confidence_score: confidenceMap[form.verificationType] ?? 0,
+        verified_revenue: verifiedRevenue || null,
+        verification_source: verifiedRevenue ? "razorpay" : null,
       };
 
       console.log("FINAL PAYLOAD:", payload);
@@ -682,13 +719,28 @@ export default function SubmitPage() {
                               </div>
                               <div>
                                 <label className={labelClass}>API Key</label>
-                                <input
-                                  type="text"
-                                  className={inputClass}
-                                  value={form.apiKey}
-                                  onChange={(e) => onInputChange("apiKey", e.target.value)}
-                                  placeholder="sk_test_..."
-                                />
+                                <div className="flex gap-2">
+                                  <input
+                                    type="password"
+                                    className={inputClass}
+                                    value={form.apiKey}
+                                    onChange={(e) => onInputChange("apiKey", e.target.value)}
+                                    placeholder={form.apiProvider === "stripe" ? "sk_live_..." : "ID:SECRET"}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleVerifyRevenue}
+                                    disabled={isVerifying}
+                                    className="h-11 rounded-lg bg-white/10 px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
+                                  >
+                                    {isVerifying ? "Verifying..." : "Verify"}
+                                  </button>
+                                </div>
+                                {verifyStatus && (
+                                  <p className="mt-2 text-xs text-primary">
+                                    ✓ Verified {verifyStatus.currency} {Math.round(verifyStatus.mrr)} MRR
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </div>

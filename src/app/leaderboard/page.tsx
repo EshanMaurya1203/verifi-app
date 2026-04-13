@@ -14,6 +14,19 @@ type LeaderboardRow = {
   city: string;
   verification_status: string;
   confidence_score: number;
+  final_score: number | null;
+  verification_label: string | null;
+  risk_level: string | null;
+  trust_breakdown?: {
+    api_verified: boolean;
+    proof_uploaded: boolean;
+    has_website: boolean;
+    has_socials: boolean;
+    complete_profile: boolean;
+  };
+  trust_summary?: string[];
+  verified_revenue: number | null;
+  proof_url: string | null;
 };
 
 function formatInr(value: number): string {
@@ -36,8 +49,10 @@ export default function LeaderboardPage() {
 
       const { data, error } = await supabase
         .from("startup_submissions")
-        .select("id, startup_name, name, mrr, city, verification_status, confidence_score")
-        .order("mrr", { ascending: false });
+        .select("id, startup_name, name, mrr, city, verification_status, confidence_score, verified_revenue, proof_url, final_score, trust_breakdown, verification_label, risk_level, trust_summary")
+        .neq("verification_status", "rejected")
+        .or("risk_level.is.null,risk_level.neq.high")
+        .order("final_score", { ascending: false });
 
       if (error) {
         setLoadError("Unable to load leaderboard right now.");
@@ -54,8 +69,15 @@ export default function LeaderboardPage() {
         mrr: Number(item.mrr ?? 0),
         growth_pct: null,
         city: item.city ?? "Unknown",
-        verification_status: item.verification_status ?? "pending",
+        verification_status: item.verification_status ?? "unverified",
         confidence_score: item.confidence_score ?? 0,
+        final_score: item.final_score ?? null,
+        verification_label: item.verification_label ?? null,
+        risk_level: item.risk_level ?? null,
+        trust_breakdown: item.trust_breakdown,
+        trust_summary: item.trust_summary || [],
+        verified_revenue: item.verified_revenue,
+        proof_url: item.proof_url,
       }));
 
       setRows(mappedRows);
@@ -73,6 +95,12 @@ export default function LeaderboardPage() {
     () => new Set(rows.map((row) => row.city.trim()).filter(Boolean)).size,
     [rows]
   );
+  
+  const getScoreColor = (score: number) => {
+    if (score > 70) return "bg-green-500";
+    if (score > 40) return "bg-yellow-500";
+    return "bg-red-500";
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -217,8 +245,38 @@ export default function LeaderboardPage() {
                       </span>
                     </div>
 
-                    <div className="text-right font-syne text-[16px] font-bold text-foreground">
-                      {formatInr(row.mrr)}
+                    <div className="flex flex-col items-end justify-center">
+                      <div className="text-right font-syne text-[16px] font-bold text-foreground">
+                        {formatInr(row.mrr)}
+                      </div>
+                      {row.final_score !== null && (
+                        <>
+                          <span className="text-xs text-gray-400 font-medium whitespace-nowrap">
+                            Trust Score: {Math.round(row.final_score)}
+                          </span>
+                          <div className="mt-1 w-full max-w-[100px] bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full ${getScoreColor(Math.round(row.final_score))}`}
+                              style={{ width: `${Math.round(row.final_score)}%` }}
+                            />
+                          </div>
+                          {row.trust_summary && row.trust_summary.length > 0 ? (
+                            <div className="mt-2 text-[10px] text-gray-500 space-y-0.5 text-right">
+                              {row.trust_summary.slice(0, 3).map((point, index) => (
+                                <p key={index}>• {point}</p>
+                              ))}
+                            </div>
+                          ) : row.trust_breakdown ? (
+                            <div className="text-[10px] text-gray-500 mt-1 space-y-0.5 text-right">
+                              {row.trust_breakdown.api_verified && <p>✔ API Verified</p>}
+                              {row.trust_breakdown.proof_uploaded && <p>✔ Proof Uploaded</p>}
+                              {row.trust_breakdown.has_website && <p>✔ Website</p>}
+                              {row.trust_breakdown.has_socials && <p>✔ Social Presence</p>}
+                              {row.trust_breakdown.complete_profile && <p>✔ Complete Profile</p>}
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </div>
 
                     <div
@@ -238,15 +296,36 @@ export default function LeaderboardPage() {
                     </div>
 
                     <div className="flex flex-col items-end gap-1 justify-center">
-                      <div className="flex justify-end">
-                        {row.verification_status === "verified" ? (
-                          <span className="text-green-400 text-[12px] uppercase font-bold tracking-wider">Verified</span>
-                        ) : row.verification_status === "auto_verified" ? (
-                          <span className="text-yellow-400 text-[12px] uppercase font-bold tracking-wider">Auto Verified</span>
-                        ) : (
-                          <span className="text-gray-400 text-[12px] uppercase font-bold tracking-wider">Pending</span>
+                      <div className="flex flex-col items-start gap-1">
+                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">
+                          Verified by
+                        </p>
+                        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+                        {row.verification_label === "API Verified" && (
+                          <span className="rounded bg-green-500/20 px-3 py-1 text-green-400">
+                            ✔ API Verified
+                          </span>
+                        )}
+
+                        {row.verification_label === "Proof Verified" && (
+                          <span className="rounded bg-yellow-500/20 px-3 py-1 text-yellow-400">
+                            ✔ Proof Verified
+                          </span>
+                        )}
+
+                        {row.verification_label === "Unverified" && (
+                          <span className="rounded bg-gray-500/20 px-3 py-1 text-gray-400">
+                            Unverified
+                          </span>
+                        )}
+
+                        {row.risk_level === "low" && (
+                          <span className="rounded bg-blue-500/20 px-3 py-1 text-blue-400">
+                            Low Risk
+                          </span>
                         )}
                       </div>
+                    </div>
                       <span className="text-[11px] text-muted-foreground">{row.confidence_score}%</span>
                     </div>
                   </div>

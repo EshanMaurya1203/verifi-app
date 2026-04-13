@@ -1,6 +1,11 @@
 export function calculateVerificationScore(submission: any) {
   let score = 0;
 
+  // API Verified (Highest Trust)
+  if (submission.verification_type === "api") {
+    return 100;
+  }
+
   // Proof uploaded
   if (submission.proof_url) score += 30;
 
