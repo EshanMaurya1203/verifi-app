@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
+import { ShieldCheck, TrendingUp, AlertTriangle, Info, Search } from "lucide-react";
+import Link from "next/link";
 
 type LeaderboardRow = {
   id: number;
@@ -17,13 +19,7 @@ type LeaderboardRow = {
   final_score: number | null;
   verification_label: string | null;
   risk_level: string | null;
-  trust_breakdown?: {
-    api_verified: boolean;
-    proof_uploaded: boolean;
-    has_website: boolean;
-    has_socials: boolean;
-    complete_profile: boolean;
-  };
+  trust_breakdown?: any;
   trust_summary?: string[];
   verified_revenue: number | null;
   proof_url: string | null;
@@ -31,9 +27,7 @@ type LeaderboardRow = {
 
 function formatInr(value: number): string {
   return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
+    style: "currency", currency: "INR", maximumFractionDigits: 0,
   }).format(value);
 }
 
@@ -45,297 +39,192 @@ export default function LeaderboardPage() {
   useEffect(() => {
     const fetchRows = async () => {
       setLoading(true);
-      setLoadError("");
-
       const { data, error } = await supabase
         .from("startup_submissions")
-        .select("id, startup_name, name, mrr, city, verification_status, confidence_score, verified_revenue, proof_url, final_score, trust_breakdown, verification_label, risk_level, trust_summary")
-        .neq("verification_status", "rejected")
-        .or("risk_level.is.null,risk_level.neq.high")
+        .select("*")
         .order("final_score", { ascending: false });
 
       if (error) {
-        setLoadError("Unable to load leaderboard right now.");
+        setLoadError("Unable to load leaderboard.");
         setRows([]);
         setLoading(false);
         return;
       }
 
-      const mappedRows: LeaderboardRow[] = (data ?? []).map((item, index) => ({
-        id: item.id,
+      setRows((data ?? []).map((item, index) => ({
+        ...item,
         rank: index + 1,
-        startup_name: item.startup_name ?? "Unknown Startup",
-        founder: item.name ?? "Unknown Founder",
-        mrr: Number(item.mrr ?? 0),
-        growth_pct: null,
-        city: item.city ?? "Unknown",
-        verification_status: item.verification_status ?? "unverified",
-        confidence_score: item.confidence_score ?? 0,
-        final_score: item.final_score ?? null,
-        verification_label: item.verification_label ?? null,
-        risk_level: item.risk_level ?? null,
-        trust_breakdown: item.trust_breakdown,
-        trust_summary: item.trust_summary || [],
-        verified_revenue: item.verified_revenue,
-        proof_url: item.proof_url,
-      }));
-
-      setRows(mappedRows);
+        founder: item.founder_name || item.name || "Founder not provided",
+      })));
       setLoading(false);
     };
-
     fetchRows();
   }, []);
 
-  const totalMrr = useMemo(
-    () => rows.reduce((sum, row) => sum + (Number.isFinite(row.mrr) ? row.mrr : 0), 0),
-    [rows]
-  );
-  const totalCountries = useMemo(
-    () => new Set(rows.map((row) => row.city.trim()).filter(Boolean)).size,
-    [rows]
-  );
-  
-  const getScoreColor = (score: number) => {
-    if (score > 70) return "bg-green-500";
-    if (score > 40) return "bg-yellow-500";
-    return "bg-red-500";
+  const totalMrr = useMemo(() => rows.reduce((sum, row) => sum + (row.mrr || 0), 0), [rows]);
+
+  const getStrengthLevel = (score: number) => {
+    if (score >= 70) return { label: "Strong", color: "text-green-400 bg-green-400/10 border-green-400/20" };
+    if (score >= 31) return { label: "Moderate", color: "text-amber-400 bg-amber-400/10 border-amber-400/20" };
+    return { label: "Weak", color: "text-red-400 bg-red-400/10 border-red-400/20" };
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-indigo-500/30">
       <Navbar />
 
-      <main className="pt-20">
-        <div className="mx-auto max-w-[1000px] px-6">
-          <section className="mb-12 mt-12 rounded-2xl border border-border bg-card p-6 shadow-[0_0_40px_rgba(185,255,75,0.08)] md:p-8">
-            <h1 className="font-syne text-[40px] font-extrabold tracking-[-1.5px] text-foreground md:text-[48px]">
-              Top Verified Startups
-            </h1>
-            <p className="mt-3 max-w-[680px] text-[16px] font-light text-muted-foreground">
-              Discover the fastest-growing verified startups ranked by revenue,
-              with transparent founder and city-level insights.
-            </p>
-
-            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="rounded-xl border border-border bg-muted p-5 shadow-sm">
-                <p className="text-[12px] uppercase tracking-[1px] text-muted-foreground">
-                  Total Startups
-                </p>
-                <p className="mt-2 font-syne text-[28px] font-bold text-foreground">
-                  {loading ? "..." : rows.length}
-                </p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted p-5 shadow-md">
-                <p className="text-[12px] uppercase tracking-[1px] text-muted-foreground">
-                  Total MRR
-                </p>
-                <p className="mt-2 font-syne text-[28px] font-bold text-primary">
-                  {loading ? "..." : formatInr(totalMrr)}
-                </p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted p-5 shadow-sm">
-                <p className="text-[12px] uppercase tracking-[1px] text-muted-foreground">
-                  Countries
-                </p>
-                <p className="mt-2 font-syne text-[28px] font-bold text-foreground">
-                  {loading ? "..." : totalCountries}
-                </p>
-              </div>
+      <main className="max-w-6xl mx-auto px-6 pt-32 pb-24">
+        {/* Header Stats */}
+        <section className="mb-12">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+            <div className="space-y-4">
+              <h1 className="text-4xl md:text-5xl font-black tracking-tight">Verified Startup Rankings</h1>
+              <p className="text-neutral-400 max-w-xl text-lg">Ranking fastest-growing startups based on verified revenue and profile strength.</p>
             </div>
-          </section>
-
-          <section className="mb-8">
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3">
-              <input
-                type="text"
-                placeholder="Search startup or founder..."
-                className="h-11 min-w-[220px] flex-1 rounded-lg border border-border bg-[#161616] px-4 text-[14px] text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-border"
-              />
-
-              <select
-                defaultValue="MRR"
-                className="h-11 min-w-[150px] rounded-lg border border-border bg-[#161616] px-3 text-[14px] text-foreground outline-none transition-colors focus:border-border"
-                aria-label="Sort"
-              >
-                <option>MRR</option>
-                <option>ARR</option>
-              </select>
-
-              <select
-                defaultValue="All categories"
-                className="h-11 min-w-[180px] rounded-lg border border-border bg-[#161616] px-3 text-[14px] text-foreground outline-none transition-colors focus:border-border"
-                aria-label="Category"
-              >
-                <option>All categories</option>
-                <option>SaaS/Software</option>
-                <option>Artificial Intelligence</option>
-                <option>Mobile App</option>
-                <option>D2C/E-commerce</option>
-                <option>Content/Creator</option>
-                <option>Agency/Services</option>
-                <option>Developer Tools</option>
-                <option>Marketing Tools</option>
-              </select>
-
-              <select
-                defaultValue="All countries"
-                className="h-11 min-w-[150px] rounded-lg border border-border bg-[#161616] px-3 text-[14px] text-foreground outline-none transition-colors focus:border-border"
-                aria-label="Country"
-              >
-                <option>All countries</option>
-                <option>India</option>
-                <option>Global</option>
-              </select>
+            <div className="flex gap-4">
+               <div className="bg-neutral-900 border border-white/5 p-4 rounded-2xl">
+                  <p className="text-[10px] uppercase font-bold text-neutral-500 mb-1">Total MRR</p>
+                  <p className="text-xl font-bold text-indigo-400">{formatInr(totalMrr)}</p>
+               </div>
+               <div className="bg-neutral-900 border border-white/5 p-4 rounded-2xl">
+                  <p className="text-[10px] uppercase font-bold text-neutral-500 mb-1">Startups</p>
+                  <p className="text-xl font-bold">{rows.length}</p>
+               </div>
             </div>
-          </section>
+          </div>
 
-          <section className="w-full overflow-x-auto">
-            <div className="min-w-[980px] overflow-hidden rounded-xl border border-border">
-              <div className="grid w-full grid-cols-6 items-center gap-4 border-b border-border bg-card px-4 py-3 text-[11px] font-medium uppercase tracking-[1px] text-muted-foreground">
-                <div>#</div>
-                <div>Startup</div>
-                <div className="text-right">MRR</div>
-                <div className="text-center">Growth</div>
-                <div className="text-center">Country</div>
-                <div className="text-right">Verified</div>
-              </div>
+          <div className="mt-8 flex gap-3 p-2 bg-neutral-900/50 border border-white/5 rounded-2xl max-w-md">
+             <div className="bg-white/5 p-2 rounded-xl"><Search className="w-4 h-4 text-neutral-500" /></div>
+             <input placeholder="Search company or founder..." className="bg-transparent text-sm outline-none w-full" />
+          </div>
+        </section>
 
-              {loading ? (
-                <div className="border-b border-border bg-[#0d0d0d] px-4 py-8 text-center text-sm text-muted-foreground">
-                  Loading leaderboard...
-                </div>
-              ) : loadError ? (
-                <div className="border-b border-border bg-[#0d0d0d] px-4 py-8 text-center text-sm text-[#ff4b4b]">
-                  {loadError}
-                </div>
-              ) : rows.length === 0 ? (
-                <div className="border-b border-border bg-[#0d0d0d] px-4 py-8 text-center text-sm text-muted-foreground">
-                  No startups listed yet.
-                </div>
-              ) : (
-                rows.map((row) => {
-                const isTopThree = row.rank <= 3;
-                const rankClassName =
-                  row.rank === 1
-                    ? "text-[#f5a623]"
-                    : row.rank === 2
-                      ? "text-muted-foreground"
-                      : row.rank === 3
-                        ? "text-[#cd7c3a]"
-                        : "text-muted-foreground";
+        {/* Leaderboard Table */}
+        <section className="bg-neutral-900/30 border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="grid grid-cols-12 px-8 py-6 text-[10px] uppercase font-black text-neutral-500 tracking-[0.2em] border-b border-white/5">
+             <div className="col-span-1">Rank</div>
+             <div className="col-span-4">Company & Founder</div>
+             <div className="col-span-2 text-right">Revenue</div>
+             <div className="col-span-3 text-center">Profile Strength</div>
+             <div className="col-span-2 text-right">Status</div>
+          </div>
 
+          {loading ? (
+             <div className="p-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-neutral-700" /></div>
+          ) : rows.length === 0 ? (
+             <div className="p-20 text-center text-neutral-500 font-bold uppercase tracking-widest">No verified startups yet</div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {rows.map((row) => {
+                const strength = getStrengthLevel(row.final_score || 0);
                 return (
-                  <div
+                  <Link 
+                    href={`/startup/${row.id}`} 
                     key={row.id}
-                    className={`grid w-full grid-cols-6 items-center gap-4 border-b border-border px-4 py-4 transition-colors duration-150 hover:bg-[#111111] ${
-                      isTopThree ? "bg-muted" : "bg-[#0d0d0d]"
-                    }`}
+                    className="grid grid-cols-12 px-8 py-6 items-center hover:bg-white/5 transition-all group"
                   >
-                    <div className={`font-syne text-[18px] font-bold ${rankClassName}`}>
-                      {row.rank}
+                    <div className="col-span-1 font-black text-lg text-neutral-700 group-hover:text-indigo-500 transition-colors">
+                      {row.rank.toString().padStart(2, '0')}
+                    </div>
+                    
+                    <div className="col-span-4 space-y-1">
+                       <p className="font-bold text-base tracking-tight">{row.startup_name}</p>
+                       <p className="text-xs text-neutral-500 font-medium">{row.founder}</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-[14px] font-medium text-foreground">
-                        {row.startup_name}
-                      </span>
-                      <span className="truncate text-[13px] text-muted-foreground">
-                        {row.founder}
-                      </span>
+                    <div className="col-span-2 text-right">
+                       <p className="font-bold text-white tabular-nums">{formatInr(row.mrr)}</p>
+                       <p className="text-[10px] text-neutral-600 font-bold uppercase">Monthly</p>
                     </div>
 
-                    <div className="flex flex-col items-end justify-center">
-                      <div className="text-right font-syne text-[16px] font-bold text-foreground">
-                        {formatInr(row.mrr)}
-                      </div>
-                      {row.final_score !== null && (
-                        <>
-                          <span className="text-xs text-gray-400 font-medium whitespace-nowrap">
-                            Trust Score: {Math.round(row.final_score)}
-                          </span>
-                          <div className="mt-1 w-full max-w-[100px] bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className={`h-full ${getScoreColor(Math.round(row.final_score))}`}
-                              style={{ width: `${Math.round(row.final_score)}%` }}
-                            />
+                    <div className="col-span-3 flex flex-col items-center gap-2">
+                       <div className="w-full max-w-[120px] h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-1000 ${strength.color.split(' ')[0].replace('text-', 'bg-')}`} 
+                            style={{ width: `${Math.max(10, row.final_score || 0)}%` }} 
+                          />
+                       </div>
+                       <span className={`px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-tighter ${strength.color} ${strength.bg} ${strength.border}`}>
+                          {strength.label}
+                       </span>
+                    </div>
+
+                    <div className="col-span-2 flex justify-end">
+                       {row.verification_status === 'approved' ? (
+                          <div className="flex items-center gap-2 text-green-400 bg-green-400/5 px-3 py-1.5 rounded-xl border border-green-400/10">
+                             <ShieldCheck className="w-4 h-4" />
+                             <span className="text-[10px] font-black uppercase">Verified</span>
                           </div>
-                          {row.trust_summary && row.trust_summary.length > 0 ? (
-                            <div className="mt-2 text-[10px] text-gray-500 space-y-0.5 text-right">
-                              {row.trust_summary.slice(0, 3).map((point, index) => (
-                                <p key={index}>• {point}</p>
-                              ))}
-                            </div>
-                          ) : row.trust_breakdown ? (
-                            <div className="text-[10px] text-gray-500 mt-1 space-y-0.5 text-right">
-                              {row.trust_breakdown.api_verified && <p>✔ API Verified</p>}
-                              {row.trust_breakdown.proof_uploaded && <p>✔ Proof Uploaded</p>}
-                              {row.trust_breakdown.has_website && <p>✔ Website</p>}
-                              {row.trust_breakdown.has_socials && <p>✔ Social Presence</p>}
-                              {row.trust_breakdown.complete_profile && <p>✔ Complete Profile</p>}
-                            </div>
-                          ) : null}
-                        </>
-                      )}
+                       ) : (
+                          <div className="flex items-center gap-2 text-neutral-500">
+                             <CircleDashed className="w-4 h-4" />
+                             <span className="text-[10px] font-black uppercase">Auditing</span>
+                          </div>
+                       )}
                     </div>
-
-                    <div
-                      className={`text-center text-[14px] font-medium ${
-                        row.growth_pct !== null && row.growth_pct >= 0
-                          ? "text-primary"
-                          : "text-[#ff4b4b]"
-                      }`}
-                    >
-                      {row.growth_pct === null
-                        ? "-"
-                        : `${row.growth_pct >= 0 ? "+" : ""}${row.growth_pct.toFixed(1)}%`}
-                    </div>
-
-                    <div className="text-center text-[14px] text-muted-foreground">
-                      {row.city}
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1 justify-center">
-                      <div className="flex flex-col items-start gap-1">
-                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">
-                          Verified by
-                        </p>
-                        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
-                        {row.verification_label === "API Verified" && (
-                          <span className="rounded bg-green-500/20 px-3 py-1 text-green-400">
-                            ✔ API Verified
-                          </span>
-                        )}
-
-                        {row.verification_label === "Proof Verified" && (
-                          <span className="rounded bg-yellow-500/20 px-3 py-1 text-yellow-400">
-                            ✔ Proof Verified
-                          </span>
-                        )}
-
-                        {row.verification_label === "Unverified" && (
-                          <span className="rounded bg-gray-500/20 px-3 py-1 text-gray-400">
-                            Unverified
-                          </span>
-                        )}
-
-                        {row.risk_level === "low" && (
-                          <span className="rounded bg-blue-500/20 px-3 py-1 text-blue-400">
-                            Low Risk
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                      <span className="text-[11px] text-muted-foreground">{row.confidence_score}%</span>
-                    </div>
-                  </div>
+                  </Link>
                 );
-              })
-              )}
+              })}
             </div>
-          </section>
-        </div>
+          )}
+        </section>
+
+        {/* Incentive Footer */}
+        <section className="mt-12 text-center space-y-4">
+           <div className="inline-flex items-center gap-3 p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl">
+              <TrendingUp className="w-5 h-5 text-indigo-400" />
+              <p className="text-sm text-neutral-400">
+                Top individual startups have a <span className="text-white font-black">Strong (70+)</span> profile strength. 
+                <Link href="/add-startup" className="text-indigo-400 font-bold ml-1 hover:underline">Get started →</Link>
+              </p>
+           </div>
+        </section>
       </main>
     </div>
+  );
+}
+
+function Loader2(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
+function CircleDashed(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10.1 2.18a10 10 0 0 1 3.8 0" />
+      <path d="M17.6 4.38a10 10 0 0 1 2.02 2.02" />
+      <path d="M21.82 10.1a10 10 0 0 1 0 3.8" />
+      <path d="M19.62 17.6a10 10 0 0 1-2.02 2.02" />
+      <path d="M13.9 21.82a10 10 0 0 1-3.8 0" />
+      <path d="M6.4 19.62a10 10 0 0 1-2.02-2.02" />
+      <path d="M2.18 13.9a10 10 0 0 1 0-3.8" />
+      <path d="M4.38 6.4a10 10 0 0 1 2.02-2.02" />
+    </svg>
   );
 }
