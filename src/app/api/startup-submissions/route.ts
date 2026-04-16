@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { calculateVerificationScore } from "@/lib/verification";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { detectFraud } from "@/lib/fraud-detection";
 
 type StartupSubmissionPayload = {
   name: string;
@@ -152,34 +153,17 @@ export async function POST(req: Request) {
       verification_label = "Proof Verified";
     }
 
-    let fraud_score = 0;
+    const fraudAssessment = detectFraud({
+      mrr: mrrValue,
+      arr: arrValue,
+      has_proof: !!data.proof_url,
+      has_api: !!data.verified_revenue,
+      has_website: !!data.website,
+      has_socials: !!(data.twitter || data.linkedin),
+    });
 
-    // High MRR without API verification
-    if (mrrValue > 50000 && !data.verified_revenue) {
-      fraud_score += 40;
-    }
-
-    // Proof but no API
-    if (data.proof_url && !data.verified_revenue) {
-      fraud_score += 20;
-    }
-
-    // Missing signals
-    if (!data.website) {
-      fraud_score += 10;
-    }
-
-    if (!data.twitter && !data.linkedin) {
-      fraud_score += 10;
-    }
-
-    let risk_level = "low";
-
-    if (fraud_score >= 50) {
-      risk_level = "high";
-    } else if (fraud_score >= 20) {
-      risk_level = "medium";
-    }
+    const fraud_score = fraudAssessment.score;
+    const risk_level = fraudAssessment.risk_level;
 
     let trust_score = 0;
 

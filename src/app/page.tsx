@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowUpRight, BadgeCheck, BarChart3, Eye } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
+import { useEffect, useState } from "react";
 
 type StartupCard = {
   initials: string;
@@ -96,6 +97,65 @@ function AdSlot() {
 }
 
 export default function HomePage() {
+  const [stats, setStats] = useState({ count: 142, totalRevenue: 2400000 });
+  const [leaderboard, setLeaderboard] = useState(leaderboardPreview);
+  const [recentlyListedData, setRecentlyListedData] = useState(recentlyListed);
+
+  useEffect(() => {
+    // 1. Fetch real counts
+    fetch("/api/startup-submissions/count")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.count) setStats((prev) => ({ ...prev, count: data.count }));
+      })
+      .catch(console.error);
+
+    // 2. Fetch submissions for leaderboard & recently listed
+    fetch("/api/startup-submissions")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          const list = data.data;
+          
+          // Total Revenue calculation
+          const total = list.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
+          setStats((prev) => ({ ...prev, totalRevenue: total }));
+
+          // Top 5 for leaderboard
+          const top5 = list
+            .slice()
+            .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
+            .slice(0, 5)
+            .map((s: any, i: number) => ({
+              rank: i + 1,
+              name: s.startup_name,
+              founder: s.name,
+              mrr: `₹${(s.mrr / 100000).toFixed(1)}L`,
+            }));
+          if (top5.length > 0) setLeaderboard(top5);
+
+          // Recently listed
+          const recent = list.slice(0, 3).map((s: any) => ({
+            initials: s.startup_name ? s.startup_name.substring(0, 2).toUpperCase() : "ST",
+            name: s.startup_name,
+            category: s.biz_type,
+            description: s.notes || "No description provided.",
+            mrr: `₹${(s.mrr / 100000).toFixed(1)}L`,
+            growth: "+0%", // Needs real growth data if available
+            badge: s.verification_label || "Unverified",
+          }));
+          if (recent.length > 0) setRecentlyListedData(recent);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const formatStatsRevenue = (val: number) => {
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
+    return `₹${val}`;
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navbar />
@@ -155,13 +215,13 @@ export default function HomePage() {
               >
                 <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
                   <div className="font-syne text-[28px] font-bold text-foreground">
-                    142
+                    {stats.count}
                   </div>
                   <div className="text-[13px] text-muted-foreground">startups listed</div>
                 </div>
                 <div className="rounded-xl border border-border bg-card p-5 shadow-md">
                   <div className="font-syne text-[28px] font-bold text-primary">
-                    ₹2.4Cr
+                    {formatStatsRevenue(stats.totalRevenue)}
                   </div>
                   <div className="text-[13px] text-muted-foreground">
                     total verified revenue
@@ -169,7 +229,7 @@ export default function HomePage() {
                 </div>
                 <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
                   <div className="font-syne text-[28px] font-bold text-foreground">
-                    12
+                    1
                   </div>
                   <div className="text-[13px] text-muted-foreground">countries</div>
                 </div>
@@ -192,7 +252,7 @@ export default function HomePage() {
               </div>
 
               <div className="divide-y divide-[#151515]">
-                {leaderboardPreview.map((startup) => (
+                {leaderboard.map((startup) => (
                   <div
                     key={startup.rank}
                     className="flex items-center justify-between px-5 py-4 transition-colors hover:bg-muted"
@@ -246,7 +306,7 @@ export default function HomePage() {
                 className="mt-6 overflow-hidden rounded-none border border-border bg-accent"
               >
                 <div className="grid grid-cols-1 gap-px md:grid-cols-3">
-                  {recentlyListed.map((s) => (
+                  {recentlyListedData.map((s) => (
                     <div
                       key={s.name}
                       className="cursor-pointer bg-card p-6 transition-colors duration-200 hover:bg-accent"

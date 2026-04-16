@@ -98,16 +98,6 @@ Track progress by checking each item.
   - **Write:** Client page scaffold, import `Navbar`, header section.
   - **Expected outcome:** `/leaderboard` route available.
 
-- [x] **Add typed mock dataset**
-  - **File:** `src/app/leaderboard/page.tsx`
-  - **Write:** Startup row type and seed list for rendering.
-  - **Expected outcome:** Table has stable source data.
-
-- [x] **Build filter controls**
-  - **File:** `src/app/leaderboard/page.tsx`
-  - **Write:** Sort/category/country selects with dark custom styles.
-  - **Expected outcome:** Controls visible and interactive.
-
 - [x] **Implement filter + sort logic**
   - **File:** `src/app/leaderboard/page.tsx`
   - **Write:** `useState` + `useMemo` for category/country filtering and metric sorting.
@@ -118,18 +108,95 @@ Track progress by checking each item.
   - **Write:** Rank colors, startup meta, verification badge, founder, MRR, growth arrows.
   - **Expected outcome:** Production-style leaderboard table complete.
 
-- [x] **Add responsive behavior**
-  - **File:** `src/app/leaderboard/page.tsx`
-  - **Write:** Mobile-friendly layout/scroll handling for table columns.
-  - **Expected outcome:** Leaderboard usable on small screens.
+## Phase 4 — Startup Detail & Trust Dashboard
 
-- [x] **Move leaderboard to Supabase data**
-  - **File:** `src/app/leaderboard/page.tsx` (or `src/app/api/leaderboard/route.ts`)
-  - **Write:** Fetch verified startup rows from Supabase and map to UI.
-  - **Expected outcome:** Live leaderboard backed by database.
+- [x] **Implement Dynamic Routing**
+  - **File:** `src/app/startup/[id]/page.tsx`
+  - **Write:** Server-side data fetching with Supabase service role.
+  - **Expected outcome:** Each startup has a unique, SEO-friendly detail page.
+
+- [x] **Build Profile Strength System**
+  - **File:** `src/components/startup/VerificationFlow.tsx`
+  - **Write:** Circular progress meter + strength categorization (Weak/Moderate/Strong).
+  - **Expected outcome:** Gamified feedback loop for data completeness.
+
+- [x] **Modular Verification Flow**
+  - **File:** `src/components/startup/VerificationFlow.tsx`
+  - **Write:** Focus modals for Website, KYC, and PaymentGateways.
+  - **Expected outcome:** Founders can verify incrementally without full form resubmission.
+
+## Phase 5 — Payment Gateway Integrations
+
+- [x] **Stripe Connect Integration**
+  - **File:** `src/app/api/stripe/connect/route.ts`
+  - **Write:** Secure Express account creation and onboarding link generation.
+  - **Expected outcome:** Founders can link real payment data for revenue verification.
+
+- [x] **Razorpay Verification Flow**
+  - **File:** `src/app/api/razorpay/create-account/route.ts`
+  - **Write:** Contact creation API for identity-linking in the Razorpay ecosystem.
+  - **Expected outcome:** Alternative verification path for regional markets.
 
 ## Optional Next
 
-- [ ] Add Google OAuth gate before submit (`/submit`)
-- [ ] Add payment provider API key connection step post-login
-- [ ] Add admin moderation queue for verification review
+- [x] Add real-time revenue syncing (Stripe Webhooks)
+  - **File:** `src/app/api/stripe/webhook/route.ts`
+  - **Write:** Webhook handler for `account.updated` to automate verification tagging.
+  - **Expected outcome:** Status updates automatically when onboarding completes.
+- [x] Add founder video verification step
+  - **File:** `src/components/startup/VerificationFlow.tsx`
+  - **Write:** Video link input modal and trust score logic (+30 points).
+  - **Expected outcome:** Founders can link a video explanation for higher trust.
+- [x] Implement automated fraud detection (anomaly detection in revenue patterns)
+  - **File:** `src/lib/fraud-detection.ts`, `src/app/api/startup-submissions/route.ts`
+  - **Write:** Logic to flag MRR/ARR inconsistencies and high-risk manual entries.
+  - **Expected outcome:** Submissions are automatically categorized by risk level.
+
+## Phase 6 — Automated Revenue Audits & Security
+
+- [x] **Secure Credential Storage**
+  - **File:** `src/lib/encryption.ts`
+  - **Write:** AES-256-CTR encryption/decryption utilities.
+  - **Expected outcome:** sensitive API keys are never stored in raw text.
+
+- [x] **Razorpay Verification Overhaul**
+  - **File:** `src/app/api/razorpay/verify/route.ts`
+  - **Write:** Credential testing + encrypted persistence logic.
+  - **Expected outcome:** Immediate feedback on API key validity.
+
+- [x] **Automated Revenue Sync (Cron)**
+  - **File:** `src/app/api/cron/sync-revenue/route.ts`
+  - **Write:** Idempotent snapshot fetcher with `upsert` logic.
+  - **Expected outcome:** Daily/Hourly revenue updates without user intervention.
+
+- [x] **Deterministic Trust Scoring**
+  - **File:** `src/lib/trust.ts`
+  - **Write:** Backend scoring engine (Payments: +50, Consensus: +20, Consistency: +20).
+  - **Expected outcome:** Trust scores that can't be "gamed".
+
+- [x] **Leaderboard UX Restoration**
+  - **File:** `src/app/leaderboard/page.tsx`
+  - **Write:** Unfiltered sorting by `trust_score` + "Connected" status badges.
+  - **Expected outcome:** Accurate, high-performance leaderboard rendering.
+
+## Phase 7 — Forensic Integrity & Anomaly Detection
+
+- [x] **Fraud Signal Schema**
+  - **File:** `supabase/migrations/20240416000004_fraud_detection.sql`
+  - **Write:** Severity-based anomaly tracking table (`fraud_signals`).
+  - **Expected outcome:** Database ready to store suspicious patterns.
+
+- [x] **Anomaly Detection Engine**
+  - **File:** `src/lib/fraud.ts`
+  - **Write:** Detection rules for Revenue Spikes, Sudden Drops, and Micro-transaction Spam.
+  - **Expected outcome:** Automated identification of "gaming" attempts.
+
+- [x] **Integrity Penalty System**
+  - **File:** `src/lib/scoring.ts`
+  - **Write:** Dynamic score deduction based on fraud severity (Up to -40 points).
+  - **Expected outcome:** "Flagged" status for high-risk profiles.
+
+- [x] **Diagnostic UI & Hardening**
+  - **Files:** `src/app/startup/[id]/page.tsx`, `src/app/leaderboard/page.tsx`
+  - **Write:** High-visibility fraud banners + Leaderboard filtering for flagged accounts.
+  - **Expected outcome:** Clean, trusted platform experience.

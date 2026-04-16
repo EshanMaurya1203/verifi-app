@@ -604,7 +604,7 @@ export default function SubmitPage() {
                         { id: "manual", label: "Manual", description: "(fastest, lowest trust)" },
                         { id: "social", label: "Social proof", description: "(LinkedIn/Twitter based)" },
                         { id: "proof", label: "Upload proof", description: "(screenshot)" },
-                        { id: "api", label: "Connect API", description: "(Stripe/Razorpay - coming soon)" },
+                        { id: "api", label: "Connect API", description: "Verify via Stripe or Razorpay" },
                       ].map((option) => {
                         const isSelected = form.verificationType === option.id;
                         return (
