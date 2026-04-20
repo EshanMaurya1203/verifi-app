@@ -1,4 +1,11 @@
-export type FraudSignals = {
+/**
+ * Fraud Detection Module (v2)
+ * Analyzes patterns in payment events or submission profiles
+ * to identify high-risk entries.
+ */
+
+/** Profile-based fraud check (used at submission time) */
+type FraudProfile = {
   mrr: number;
   arr: number;
   has_proof: boolean;
@@ -10,56 +17,64 @@ export type FraudSignals = {
 export type FraudAssessment = {
   score: number;
   risk_level: "low" | "medium" | "high";
-  signals: string[];
+  flags: string[];
 };
 
-export function detectFraud(signals: FraudSignals): FraudAssessment {
-  let score = 0;
-  const issues: string[] = [];
+export function detectFraud(input: any[] | FraudProfile): string[] | FraudAssessment {
+  // ── Profile-based fraud detection (submission flow) ──
+  if (!Array.isArray(input)) {
+    const profile = input as FraudProfile;
+    let score = 0;
+    const flags: string[] = [];
 
-  // 1. High Revenue Anomaly
-  if (signals.mrr > 50000 && !signals.has_api) {
-    score += 40;
-    issues.push("High MRR without API verification");
+    if (profile.mrr > 0 && profile.arr > 0 && profile.arr < profile.mrr * 10) {
+      score += 10; // plausible MRR/ARR ratio
+    } else {
+      flags.push("mrr_arr_mismatch");
+      score -= 15;
+    }
+
+    if (profile.has_api) score += 30;
+    if (profile.has_proof) score += 15;
+    if (profile.has_website) score += 10;
+    if (profile.has_socials) score += 10;
+
+    if (profile.mrr > 500000 && !profile.has_api && !profile.has_proof) {
+      flags.push("unverified_high_revenue");
+      score -= 25;
+    }
+
+    const risk_level: "low" | "medium" | "high" =
+      score >= 30 ? "low" : score >= 0 ? "medium" : "high";
+
+    return { score: Math.max(0, Math.min(100, score)), risk_level, flags };
   }
 
-  // 2. Proof Inconsistency
-  if (signals.has_proof && !signals.has_api && signals.mrr > 10000) {
-    score += 20;
-    issues.push("Manual proof provided for significant revenue without API link");
+  // ── Event-based fraud detection (payment sync flow) ──
+  const events = input;
+  const flags: string[] = [];
+
+  if (!events || events.length < 2) {
+    flags.push("low_data");
+    return flags;
   }
 
-  // 3. Ratio Anomaly (ARR should be ~12x MRR)
-  const expectedArr = signals.mrr * 12;
-  const arrDiff = Math.abs(signals.arr - expectedArr);
-  if (signals.mrr > 0 && arrDiff > expectedArr * 0.5) {
-    score += 30;
-    issues.push("Inconsistent MRR to ARR ratio");
+  const amounts = events.map(e => Number(e.amount));
+
+  const max = Math.max(...amounts);
+  const min = Math.min(...amounts);
+
+  // Spiky revenue: Max is 10x greater than min
+  if (min > 0 && max > min * 10) {
+    flags.push("spiky_revenue");
   }
 
-  // 4. Missing Infrastructure
-  if (!signals.has_website) {
-    score += 15;
-    issues.push("Missing business website");
+  // High failure rate: more than 5 failed payments
+  const failureCount = events.filter(e => e.status === "failed" || e.status === "rejected").length;
+  if (failureCount > 5) {
+    flags.push("high_failure_rate");
   }
 
-  if (!signals.has_socials) {
-    score += 10;
-    issues.push("No founder social presence linked");
-  }
-
-  // 5. Unrealistic Growth (If we had historical data, we'd check here)
-
-  let risk_level: "low" | "medium" | "high" = "low";
-  if (score >= 50) {
-    risk_level = "high";
-  } else if (score >= 20) {
-    risk_level = "medium";
-  }
-
-  return {
-    score: Math.min(score, 100),
-    risk_level,
-    signals: issues,
-  };
+  return flags;
 }
+

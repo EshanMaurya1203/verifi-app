@@ -94,28 +94,5 @@ export async function verifyStripeRevenue(apiKey: string): Promise<RevenueResult
   }
 }
 
-/**
- * Calculates the Monthly Recurring Revenue for a startup based on snapshots.
- */
-export async function calculateMRR(startup_id: number) {
-  const supabase = getSupabaseServer();
-
-  const last30 = new Date();
-  last30.setDate(last30.getDate() - 30);
-
-  const { data, error } = await supabase
-    .from("revenue_snapshots")
-    .select("amount")
-    .eq("startup_id", startup_id)
-    .gte("created_at", last30.toISOString());
-
-  if (error) {
-    console.error("Error calculating MRR:", error);
-    return 0;
-  }
-
-  // Sum amounts (stored in smallest unit) and return in base currency
-  const totalSmallestUnit = data?.reduce((sum, r) => sum + r.amount, 0) || 0;
-  
-  return totalSmallestUnit / 100;
-}
+// calculateMRR has been replaced by getAggregatedRevenue() in @/lib/revenue-aggregation.ts
+// That function is now the ONLY source of truth for startup revenue.

@@ -53,13 +53,13 @@ export async function POST(req: Request) {
         
         // Find the startup matching this connected account
         const { data: connection } = await supabaseAdmin
-          .from("payment_connections")
+          .from("provider_connections")
           .select("startup_id")
           .eq("account_id", connectedAccountId)
           .single();
 
         if (connection?.startup_id) {
-          await supabaseAdmin.from("revenue_snapshots").upsert({
+          await supabaseAdmin.from("revenue_transactions").upsert({
             startup_id: connection.startup_id,
             provider: "stripe",
             amount: charge.amount, // stored in cents
@@ -82,8 +82,3 @@ export async function POST(req: Request) {
   }
 }
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};

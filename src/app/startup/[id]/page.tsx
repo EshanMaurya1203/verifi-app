@@ -3,12 +3,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { ShieldCheck, AlertTriangle, TrendingUp, Award, Globe, Info, CheckCircle2, XCircle, User } from "lucide-react";
 import VerificationFlow from "@/components/startup/VerificationFlow";
 import { redirect } from "next/navigation";
-import Stripe from "stripe";
 import { computeTrustScore } from "@/lib/scoring";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-03-25.dahlia" as any,
-});
 
 function SignalItem({ label, active, description }: { label: string, active: boolean, description: string }) {
   return (
@@ -36,7 +31,6 @@ export default async function Page({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const resolvedParams = await params;
-  const resolvedSearch = await searchParams;
   const rawId = resolvedParams.id;
   
   if (!rawId) {
@@ -63,36 +57,6 @@ export default async function Page({
         <p className="text-neutral-400">Startup profile not found</p>
       </div>
     );
-  }
-
-  // 2. Handle Stripe Onboarding Return
-  if (resolvedSearch.success === "true" && startup.stripe_account_id && !startup.onboarding_complete) {
-    try {
-      const account = await stripe.accounts.retrieve(startup.stripe_account_id);
-      
-      if (account.details_submitted) {
-        // Success! Perform Atomic Update
-        const status = account.charges_enabled ? "verified" : "pending";
-        
-        await supabase
-          .from("startup_submissions")
-          .update({ 
-            payment_connected: true,
-            onboarding_complete: true,
-            verification_method: "api",
-            verification_status: status
-          })
-          .eq("id", rawId);
-          
-        // Re-crunch trust score
-        await computeTrustScore(Number(rawId));
-        
-        // Final Redirect to clear query params
-        redirect(`/startup/${rawId}?connected=true`);
-      }
-    } catch (stripeErr) {
-      console.error("Stripe Verification Error:", stripeErr);
-    }
   }
 
   const formatInr = (value: number) => 
@@ -173,6 +137,11 @@ export default async function Page({
                 label="Founder Identity Verified" 
                 active={startup.verification_status === 'verified' || startup.verification_status === 'approved'} 
                 description="Identity cross-referenced with KYC/social databases."
+              />
+              <SignalItem 
+                label="Founder Video Verified" 
+                active={!!startup.video_url && startup.video_url.length > 5} 
+                description="Personal video walkthrough or pitch verification recorded by the founder."
               />
               <SignalItem 
                 label="Active Business Website" 

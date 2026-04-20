@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { CheckCircle2, Globe, User, ShieldCheck, XCircle, ArrowRight, CircleDashed, Award, Zap, TrendingUp, X, Upload, CreditCard, Loader2, Link as LinkIcon, Sparkles, Video } from "lucide-react";
 
@@ -18,6 +18,7 @@ type StartupProfile = {
   video_url?: string;
   trust_score?: number;
   mrr?: number;
+  email?: string;
 };
 
 interface VerificationFlowProps {
@@ -34,7 +35,26 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
   const [errorMsg, setErrorMsg] = useState<{ field: string; message: string } | null>(null);
   const [keyId, setKeyId] = useState("");
   const [keySecret, setKeySecret] = useState("");
-  const [razorpayView, setRazorpayView] = useState<"options" | "credentials">("options");
+  const [stripeKey, setStripeKey] = useState("");
+  const [paymentView, setPaymentView] = useState<"options" | "razorpay" | "stripe">("options");
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [stripeSuccess, setStripeSuccess] = useState(false);
+  const [razorpayError, setRazorpayError] = useState<string | null>(null);
+
+  const [connections, setConnections] = useState<{provider: string; amount: number}[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+
+  useEffect(() => {
+    async function fetchConnections() {
+      const res = await fetch(`/api/startup/${id}/connections`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.providers) setConnections(data.providers);
+        if (data.totalMRR !== undefined) setTotalRevenue(data.totalMRR);
+      }
+    }
+    fetchConnections();
+  }, [id, successMsg]);
 
   // --- Logic ---
   const isApproved = startup?.verification_status === "approved";
@@ -42,12 +62,15 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
   const hasWebsite = !!startup?.website && !startup.website.includes('@');
   const hasIdentity = !!startup?.founder_name;
   const hasLinkedIn = !!startup?.founder_linkedin;
-  const hasPaymentSource = startup?.verification_method === "api" || startup?.verification_method === "razorpay" || startup?.verification_method === "stripe";
+  const hasPaymentSource = startup?.verification_method === "api" || startup?.verification_method === "razorpay" || startup?.verification_method === "stripe" || connections.length > 0;
   const hasVideo = !!startup?.video_url;
+
+  const hasStripe = connections.some(c => c.provider === "stripe");
+  const hasRazorpay = connections.some(c => c.provider === "razorpay");
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const steps = [hasProof, hasWebsite, hasIdentity, hasPaymentSource, hasVideo];
+  const steps = [hasProof, hasWebsite, hasIdentity, connections.length > 0, hasVideo];
   const stepsCompleted = steps.filter(Boolean).length;
   const totalSteps = steps.length;
 
@@ -65,7 +88,15 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
     setLoading(true);
     const { data: updated, error } = await supabase.from("startup_submissions").update(data).eq("id", id).select().single();
     if (!error) {
-      setStartup(updated);
+      // Trigger deterministic re-score
+      const res = await fetch("/api/trust/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startup_id: id })
+      });
+      const scoreData = await res.json();
+      
+      setStartup({ ...updated, ...scoreData });
       setSuccessMsg(msg);
       setPointsGained(pointsVal);
       setActiveModal(null);
@@ -76,27 +107,47 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
 
   const [selectedCountry, setSelectedCountry] = useState("US");
 
-  const handleStripeConnect = async () => {
+  const handleStripeVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripeKey.startsWith("sk_")) {
+      setStripeError("Invalid format. Key must start with sk_");
+      return;
+    }
     setLoading(true);
-    setErrorMsg(null);
+    setStripeError(null);
     try {
-      const res = await fetch("/api/stripe/connect", {
+      const res = await fetch("/api/stripe/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startup_id: id,
-          country: selectedCountry,
-          email: startup.founder_linkedin ? undefined : ""
+          apiKey: stripeKey,
+          startupId: id
         })
       });
+      
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
+      
+      if (res.ok && data.revenue !== undefined) {
+        setStripeSuccess(true);
+        await updateStartup({
+          verification_method: 'stripe',
+          verification_status: 'api_verified',
+          payment_connected: true,
+          last_verified_at: new Date().toISOString()
+        }, "Stripe connected: Revenue synced!", 50);
+        
+        // Modal will stay open for a moment to show success state before auto-closing
+        setTimeout(() => {
+          setActiveModal(null);
+          setPaymentView("options");
+          setStripeSuccess(false);
+          setStripeKey("");
+        }, 2500);
       } else {
-        setErrorMsg({ field: "payment", message: data.error || "Failed to initiate Stripe" });
+        setStripeError(data.error || "Stripe verification failed");
       }
-    } catch (err) {
-      setErrorMsg({ field: "payment", message: "Network error during Stripe initiation" });
+    } catch (err: any) {
+      setStripeError(err.message);
     }
     setLoading(false);
   };
@@ -104,7 +155,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
   const handleRazorpayVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setErrorMsg(null);
+    setRazorpayError(null);
 
     try {
       const res = await fetch("/api/razorpay/verify", {
@@ -124,12 +175,12 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
           verification_status: 'api_verified',
           payment_connected: true
         }, "Razorpay connected & revenue audited!", 50);
-        setRazorpayView("options");
+        setPaymentView("options");
       } else {
-        setErrorMsg({ field: "payment", message: data.error || "Connection failed" });
+        setRazorpayError(data.error || "Connection failed");
       }
     } catch (err) {
-      setErrorMsg({ field: "payment", message: "Network error during verification" });
+      setRazorpayError("Network error during verification");
     }
     setLoading(false);
   };
@@ -148,7 +199,6 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
       const data = await res.json();
       if (data.success) {
         await updateStartup({
-          mrr: data.revenue,
           last_verified_at: new Date().toISOString()
         }, `Revenue refreshed: ₹${Math.round(data.revenue).toLocaleString()}`, 10);
       }
@@ -159,6 +209,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
   };
 
   const isRazorpayValid = keyId.startsWith("rzp_") && keySecret.length > 10;
+  const isStripeValid = stripeKey.startsWith("sk_") && stripeKey.length > 20;
 
   return (
     <div className="relative">
@@ -210,6 +261,74 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
         </div>
       </section>
 
+      {/* Revenue Sources */}
+      <section className="mt-6 bg-neutral-900/20 border border-white/5 p-8 rounded-3xl space-y-6">
+        <div className="flex items-center justify-between pb-4 border-b border-white/5">
+          <div className="space-y-1">
+            <h3 className="text-xl font-bold">Connect your revenue sources</h3>
+            <p className="text-sm text-neutral-500 font-medium tracking-tight">Link multiple providers. Trust score increments dynamically per provider.</p>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-widest block">Aggregated Total MRR</span>
+            <span className="text-2xl font-black text-green-400">
+              ₹{totalRevenue.toLocaleString()}
+            </span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`p-5 rounded-3xl border transition-all ${hasStripe ? 'bg-indigo-500/5 border-indigo-500/20 shadow-[0_0_30px_rgba(99,91,255,0.05)]' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
+            <div className="flex justify-between items-start mb-6">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-2xl ${hasStripe ? 'bg-indigo-500/10' : 'bg-white/5'}`}>
+                  <Globe className={`w-6 h-6 ${hasStripe ? 'text-indigo-400' : 'text-neutral-500'}`} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-lg">Stripe Global</h4>
+                  <p className="text-[10px] text-neutral-500 uppercase font-black tracking-wider">USD / Global</p>
+                </div>
+              </div>
+              {hasStripe ? (
+                <span className="px-3 py-1 bg-green-500/10 text-green-400 text-[10px] uppercase font-bold tracking-widest border border-green-500/20 rounded-lg flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Connected</span>
+              ) : (
+                <button onClick={() => { setPaymentView('stripe'); setActiveModal('payment'); }} className="px-4 py-2 bg-white text-black text-[10px] uppercase font-black tracking-widest rounded-xl hover:bg-neutral-200 transition-colors shadow-lg shadow-white/10">Connect</button>
+              )}
+            </div>
+            {hasStripe && (
+              <div className="pt-4 border-t border-white/5 flex justify-between items-end">
+                <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-widest">Provider MRR</span>
+                <span className="text-xl font-bold">₹{connections.find(c => c.provider === 'stripe')?.amount?.toLocaleString() || 0}</span>
+              </div>
+            )}
+          </div>
+
+          <div className={`p-5 rounded-3xl border transition-all ${hasRazorpay ? 'bg-blue-500/5 border-blue-500/20 shadow-[0_0_30px_rgba(59,130,246,0.05)]' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
+            <div className="flex justify-between items-start mb-6">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-2xl ${hasRazorpay ? 'bg-blue-500/10' : 'bg-white/5'}`}>
+                  <CreditCard className={`w-6 h-6 ${hasRazorpay ? 'text-blue-400' : 'text-neutral-500'}`} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-lg">Razorpay</h4>
+                  <p className="text-[10px] text-neutral-500 uppercase font-black tracking-wider">INR / India</p>
+                </div>
+              </div>
+              {hasRazorpay ? (
+                <span className="px-3 py-1 bg-green-500/10 text-green-400 text-[10px] uppercase font-bold tracking-widest border border-green-500/20 rounded-lg flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Connected</span>
+              ) : (
+                <button onClick={() => { setPaymentView('razorpay'); setActiveModal('payment'); }} className="px-4 py-2 bg-white text-black text-[10px] uppercase font-black tracking-widest rounded-xl hover:bg-neutral-200 transition-colors shadow-lg shadow-white/10">Connect</button>
+              )}
+            </div>
+            {hasRazorpay && (
+              <div className="pt-4 border-t border-white/5 flex justify-between items-end">
+                <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-widest">Provider MRR</span>
+                <span className="text-xl font-bold">₹{connections.find(c => c.provider === 'razorpay')?.amount?.toLocaleString() || 0}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* Improvement Actions */}
       <section className="mt-6 bg-neutral-900/20 border border-white/5 p-8 rounded-3xl space-y-6">
         <h3 className="text-xs uppercase font-black text-neutral-500 tracking-[0.2em]">Improve your profile:</h3>
@@ -221,10 +340,6 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
           <button onClick={() => setActiveModal('kyc')} className={`w-full flex items-center justify-between p-4 rounded-2xl border ${hasIdentity ? 'bg-green-500/5 border-green-500/10 opacity-60' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
             <div className="flex items-center gap-3"><User className="w-4 h-4" /> <span className="text-sm font-medium">Complete KYC (+20)</span></div>
             {!hasIdentity && <ArrowRight className="w-4 h-4" />}
-          </button>
-          <button onClick={() => setActiveModal('payment')} className={`w-full flex items-center justify-between p-4 rounded-2xl border ${hasPaymentSource ? 'bg-green-500/5 border-green-500/10 opacity-60' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
-            <div className="flex items-center gap-3"><CreditCard className="w-4 h-4" /> <span className="text-sm font-medium">Link payment source (+40)</span></div>
-            {!hasPaymentSource && <ArrowRight className="w-4 h-4" />}
           </button>
           <button onClick={() => setActiveModal('video')} className={`w-full flex items-center justify-between p-4 rounded-2xl border ${hasVideo ? 'bg-green-500/5 border-green-500/10 opacity-60' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
             <div className="flex items-center gap-3"><Video className="w-4 h-4" /> <span className="text-sm font-medium">Founder video (+30)</span></div>
@@ -273,66 +388,93 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
 
             {activeModal === 'payment' && (
               <div className="space-y-8 text-center pb-4">
-                {razorpayView === "options" ? (
-                  <>
-                    <div className="space-y-2">
-                      <CreditCard className="w-12 h-12 text-blue-400 mx-auto" />
-                      <h3 className="text-2xl font-bold">Link Payment Gateway</h3>
-                      <p className="text-sm text-neutral-400 max-w-xs mx-auto">Link your primary payment gateway to verify real-time revenue metrics (+50 trust score).</p>
+                {paymentView === "stripe" && (
+                  <form onSubmit={handleStripeVerify} className="space-y-6 text-left">
+                    <button type="button" onClick={() => setActiveModal(null)} className="text-[10px] font-bold text-neutral-500 uppercase flex items-center gap-1 hover:text-white transition-colors">
+                      ← Close
+                    </button>
+                    <div className="space-y-1">
+                      <h3 className="text-xl font-bold">Stripe Verification</h3>
+                      <p className="text-xs text-neutral-500 font-medium">Link your account via secret API key.</p>
                     </div>
 
-                    {errorMsg?.field === 'payment' && (
-                      <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 font-bold uppercase tracking-tighter">
-                        {errorMsg.message}
+                    {stripeError && (
+                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl space-y-2">
+                        <div className="text-xs text-red-400 font-bold uppercase tracking-tighter">
+                          {stripeError}
+                        </div>
+                        <p className="text-[10px] text-red-400/60 font-medium">Please double check your credentials and try again.</p>
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 gap-4">
-                      {/* Country Selector */}
-                      <div className="bg-neutral-950 border border-white/5 rounded-xl p-4 flex flex-col items-start gap-1">
-                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">Founder Jurisdiction</label>
-                        <select
-                          value={selectedCountry}
-                          onChange={(e) => setSelectedCountry(e.target.value)}
-                          className="w-full bg-transparent border-none text-sm font-bold text-white outline-none focus:ring-0 cursor-pointer"
-                        >
-                          <option value="US" className="bg-neutral-900">United States (Standard)</option>
-                          <option value="IN" className="bg-neutral-900">India</option>
-                          <option value="GB" className="bg-neutral-900">United Kingdom</option>
-                          <option value="CA" className="bg-neutral-900">Canada</option>
-                          <option value="AU" className="bg-neutral-900">Australia</option>
-                          <option value="DE" className="bg-neutral-900">Germany</option>
-                          <option value="FR" className="bg-neutral-900">France</option>
-                        </select>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Stripe Secret Key</label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="sk_live_..."
+                          value={stripeKey}
+                          onChange={(e) => setStripeKey(e.target.value)}
+                          disabled={loading || stripeSuccess}
+                          className={`w-full bg-neutral-950 border p-4 rounded-xl outline-none transition-colors text-sm font-mono ${stripeSuccess ? 'border-green-500/20 text-green-500/50' : 'border-white/5 focus:border-indigo-500'}`}
+                          autoFocus
+                        />
                       </div>
 
-                      <button onClick={handleStripeConnect} disabled={loading} className="w-full bg-[#635BFF] hover:bg-[#5851E0] text-white py-4 rounded-xl font-black uppercase text-xs flex items-center justify-center gap-3 transition-all relative overflow-hidden shadow-[0_0_20px_rgba(99,91,255,0.2)] hover:shadow-[0_0_30px_rgba(99,91,255,0.3)]">
-                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Globe className="w-4 h-4" /> Link Stripe Global</>}
-                      </button>
-
-                      <div className="relative flex items-center justify-center py-2">
-                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/5" /></div>
-                        <span className="relative bg-neutral-900 px-3 text-[10px] font-black text-neutral-600 uppercase">Or</span>
-                      </div>
-
-                      <button onClick={() => setRazorpayView("credentials")} disabled={loading} className="w-full bg-neutral-950 border border-white/5 hover:border-white/10 text-white py-4 rounded-xl font-black uppercase text-xs flex items-center justify-center gap-3 transition-all">
-                        Link Razorpay (India Only)
-                      </button>
+                      {stripeSuccess ? (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                          <div className="flex items-center gap-3 p-4 bg-green-500/10 border border-green-500/20 rounded-xl">
+                            <CheckCircle2 className="w-5 h-5 text-green-400" />
+                            <div className="space-y-0.5">
+                              <p className="text-sm font-black text-green-400 uppercase tracking-tighter">Stripe connected successfully</p>
+                              <p className="text-[10px] text-green-500/60 font-bold uppercase tracking-widest">Revenue synced</p>
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                              <CircleDashed className="w-3 h-3 animate-spin" />
+                              Last synced: Just now
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-[10px] text-neutral-600 font-medium leading-relaxed">
+                            Find this in <span className="text-neutral-400 italic">Stripe Dashboard → Developers → API keys</span>
+                          </p>
+                          <p className="text-[10px] text-amber-500/80 font-bold uppercase tracking-tight flex items-center gap-1.5">
+                            <ShieldCheck className="w-3 h-3" />
+                            Keys are encrypted and used only for read-only audits.
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  </>
-                ) : (
+
+                    {!stripeSuccess && (
+                      <button
+                        type="submit"
+                        disabled={loading || !isStripeValid}
+                        className="w-full bg-white disabled:bg-neutral-800 disabled:text-neutral-500 text-black py-4 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2"
+                      >
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify & Sync Revenue"}
+                      </button>
+                    )}
+                  </form>
+                )}
+                {paymentView === "razorpay" && (
                   <form onSubmit={handleRazorpayVerify} className="space-y-6 text-left">
-                    <button type="button" onClick={() => setRazorpayView("options")} className="text-[10px] font-bold text-neutral-500 uppercase flex items-center gap-1 hover:text-white transition-colors">
-                      ← Back to options
+                    <button type="button" onClick={() => setActiveModal(null)} className="text-[10px] font-bold text-neutral-500 uppercase flex items-center gap-1 hover:text-white transition-colors">
+                      ← Close
                     </button>
                     <div className="space-y-1">
                       <h3 className="text-xl font-bold">Razorpay Credentials</h3>
                       <p className="text-xs text-neutral-500 font-medium">Link your account to verify real-time revenue.</p>
                     </div>
 
-                    {errorMsg?.field === 'payment' && (
+                    {razorpayError && (
                       <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 font-bold uppercase tracking-tighter">
-                        {errorMsg.message}
+                        {razorpayError}
                       </div>
                     )}
 

@@ -9,7 +9,7 @@ export async function detectFraud(startup_id: number) {
   
   // 1. Fetch latest and previous snapshots
   const { data: snapshots } = await supabase
-    .from("revenue_snapshots")
+    .from("revenue_transactions")
     .select("*")
     .eq("startup_id", startup_id)
     .order("created_at", { ascending: false })

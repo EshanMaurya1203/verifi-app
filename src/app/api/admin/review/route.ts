@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdminClient } from "@/lib/supabase-admin";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isAdmin } from "@/lib/isAdmin";
 import { createClient } from "@supabase/supabase-js";
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const supabaseAdmin = getSupabaseAdminClient();
+
 
     const updateData: Record<string, unknown> = {
       verification_status: action === "approve" ? "approved" : "rejected",

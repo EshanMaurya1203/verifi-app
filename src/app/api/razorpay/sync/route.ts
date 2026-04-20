@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { decrypt } from "@/lib/encryption";
-import { computeTrustScore } from "@/lib/scoring";
 import Razorpay from "razorpay";
+import { computeTrustScore } from "@/lib/scoring";
+import { calculateConsistency } from "@/lib/revenue-consistency";
+import { detectFraud } from "@/lib/fraud-detection";
 
 export async function POST(req: Request) {
   try {
@@ -14,11 +16,11 @@ export async function POST(req: Request) {
 
     // 1. Fetch connection details (Service Role only)
     const { data: connection, error: connError } = await supabaseAdmin
-      .from("payment_connections")
+      .from("provider_connections")
       .select("*")
       .eq("startup_id", startup_id)
       .eq("provider", "razorpay")
-      .eq("is_active", true)
+      .eq("status", "connected")
       .single();
 
     if (connError || !connection) {
@@ -26,7 +28,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Initialize Razorpay Client with Decrypted Keys
-    const key_secret = decrypt(connection.access_token);
+    const key_secret = decrypt(connection.api_key_encrypted);
     const razorpay = new Razorpay({
       key_id: connection.account_id,
       key_secret: key_secret,
@@ -46,7 +48,7 @@ export async function POST(req: Request) {
     const mrrAmount = totalPaise / 100;
 
     // 4. Store Snapshots (Aggregate for the period)
-    const { error: snapshotError } = await supabaseAdmin.from("revenue_snapshots").insert({
+    const { error: snapshotError } = await supabaseAdmin.from("revenue_transactions").insert({
       startup_id,
       provider: "razorpay",
       amount: mrrAmount,
@@ -56,6 +58,9 @@ export async function POST(req: Request) {
     });
 
     if (snapshotError) throw snapshotError;
+    
+    const { getAggregatedRevenue } = await import("@/lib/revenue-aggregation");
+    const aggregated = await getAggregatedRevenue(startup_id);
 
     // 5. Log Success
     await supabaseAdmin.from("verification_logs").insert({
@@ -64,18 +69,23 @@ export async function POST(req: Request) {
       metadata: { mrr: mrrAmount, count: payments.items.length }
     });
 
-    // 6. Update Startup Profile
-    await supabaseAdmin.from("startup_submissions").update({
-      mrr: mrrAmount,
-      last_verified_at: new Date().toISOString()
-    }).eq("id", startup_id);
+    // 7. Calculate Advanced Metrics
+    const consistency = calculateConsistency(payments.items);
+    
+    // Fetch startup meta for scoring
+    const { data: startup } = await supabaseAdmin
+      .from("startup_submissions")
+      .select("website, founder_name, founder_twitter, founder_linkedin")
+      .eq("id", startup_id)
+      .single();
 
-    // 7. Recalculate Trust Score
+    // 9. Update Startup Profile with New Scores (handled by engine)
     await computeTrustScore(startup_id);
 
     return NextResponse.json({ 
       success: true, 
-      mrr: mrrAmount 
+      mrr: aggregated.totalRevenue,
+      breakdown: aggregated.breakdown
     });
 
   } catch (err: any) {

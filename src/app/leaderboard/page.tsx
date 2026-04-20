@@ -2,6 +2,7 @@ import { getSupabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award } from "lucide-react";
 import Link from "next/link";
+import { getStartupMetrics } from "@/lib/revenue-aggregation";
 
 function TierBadge({ tier, status }: { tier: string, status: string }) {
   // Flagged override
@@ -53,32 +54,32 @@ export default async function LeaderboardPage() {
   const { data, error } = await supabase
     .from("startup_submissions")
     .select("*")
-    .order("trust_score", { ascending: false });
+    .order("mrr", { ascending: false });
 
   if (error) {
     console.error("Leaderboard Server Fetch Error:", error);
   }
 
-  // Tier-based Sorting Logic
-  const sortedData = (data || []).sort((a, b) => {
-    const priority: Record<string, number> = {
-      verified: 4,
-      trusted: 3,
-      emerging: 2,
-      unverified: 1,
-      flagged: 0,
-    };
+  // Fetch growth metrics via snapshots
+  const dataWithMetrics = await Promise.all(
+    (data || []).map(async (row) => {
+      let metrics;
+      try {
+        metrics = await getStartupMetrics(row.id);
+      } catch (e) {
+        console.error("[Leaderboard] Metrics failed:", e);
+        metrics = { mrr: 0, arr: 0, growthPercentage: 0 };
+      }
+      return { ...row, growth: metrics?.growthPercentage || 0 };
+    })
+  );
 
-    const getPriority = (row: any) => {
-      if (row.verification_status === "flagged") return 0;
-      return priority[row.trust_tier] || priority[row.verification_status] || 1;
-    };
-
-    const pA = getPriority(a);
-    const pB = getPriority(b);
-
-    if (pB !== pA) return pB - pA;
-    return (b.trust_score || 0) - (a.trust_score || 0);
+  // Sorting Logic: Revenue then Growth (No Trust Score)
+  const sortedData = dataWithMetrics.sort((a, b) => {
+    const mrrA = Number(a.mrr) || 0;
+    const mrrB = Number(b.mrr) || 0;
+    if (mrrA !== mrrB) return mrrB - mrrA;
+    return (b.growth || 0) - (a.growth || 0);
   });
 
   const formatInr = (value: number) => 
@@ -108,8 +109,8 @@ export default async function LeaderboardPage() {
           <div className="grid grid-cols-12 px-10 py-6 text-[10px] uppercase font-black text-neutral-700 tracking-[0.2em] border-b border-white/5">
             <div className="col-span-1 text-center">#</div>
             <div className="col-span-4">Company</div>
-            <div className="col-span-2 text-right px-4">Verified MRR</div>
-            <div className="col-span-4 flex justify-center">Trust Integrity Tier</div>
+            <div className="col-span-3 text-right px-4">Verified MRR & Growth</div>
+            <div className="col-span-3 flex justify-center">Trust Integrity Tier</div>
             <div className="col-span-1"></div>
           </div>
 
@@ -137,12 +138,19 @@ export default async function LeaderboardPage() {
                     </div>
                   </div>
 
-                  <div className="col-span-2 text-right px-4">
+                  <div className="col-span-3 text-right px-4">
                     <p className="font-black text-xl text-white tracking-tighter tabular-nums">{formatInr(row.mrr || 0)}</p>
-                    <p className="text-[10px] text-neutral-600 font-black uppercase">Monthly Audited</p>
+                    <p className="text-[10px] space-x-2">
+                       <span className="text-neutral-600 font-black uppercase">Monthly Audited</span>
+                       {row.growth !== undefined && (
+                         <span className={row.growth > 0 ? "text-green-400 font-bold" : row.growth < 0 ? "text-red-400 font-bold" : "text-neutral-500 font-bold"}>
+                           {row.growth > 0 ? '+' : ''}{row.growth}% MoM
+                         </span>
+                       )}
+                    </p>
                   </div>
 
-                  <div className="col-span-4 flex justify-center">
+                  <div className="col-span-3 flex justify-center">
                     <TierBadge tier={row.trust_tier || "unverified"} status={row.verification_status || "unverified"} />
                   </div>
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { calculateVerificationScore } from "@/lib/verification";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { detectFraud } from "@/lib/fraud-detection";
+import { detectFraud, FraudAssessment } from "@/lib/fraud-detection";
 
 type StartupSubmissionPayload = {
   name: string;
@@ -160,7 +160,7 @@ export async function POST(req: Request) {
       has_api: !!data.verified_revenue,
       has_website: !!data.website,
       has_socials: !!(data.twitter || data.linkedin),
-    });
+    }) as FraudAssessment;
 
     const fraud_score = fraudAssessment.score;
     const risk_level = fraudAssessment.risk_level;
@@ -311,7 +311,7 @@ export async function GET() {
     const { data, error } = await supabaseAdmin
       .from("startup_submissions")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("trust_score", { ascending: false });
 
     if (error) {
       console.error("startup submissions fetch error", error.message);

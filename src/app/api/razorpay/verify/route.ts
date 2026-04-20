@@ -27,13 +27,13 @@ export async function POST(req: Request) {
     }
 
     // Store connection in Database
-    const { error: dbError } = await supabaseAdmin.from("payment_connections").insert({
+    const { error: dbError } = await supabaseAdmin.from("provider_connections").upsert({
       startup_id,
       provider: "razorpay",
       account_id: key_id,
-      access_token: encrypt(key_secret),
-      is_active: true
-    });
+      api_key_encrypted: encrypt(key_secret),
+      status: "connected"
+    }, { onConflict: "startup_id,provider" });
 
     if (dbError) {
       console.error("Database connection storage error:", dbError);
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       const payments = await razorpay.payments.all({ count: 20 });
       for (const p of payments.items) {
         if (p.status !== "captured") continue;
-        await supabaseAdmin.from("revenue_snapshots").upsert({
+        await supabaseAdmin.from("revenue_transactions").upsert({
           startup_id,
           provider: "razorpay",
           amount: p.amount,
@@ -57,17 +57,16 @@ export async function POST(req: Request) {
         }, { onConflict: "external_id" });
       }
 
-      // 2. Trigger metric updates
-      const { calculateMRR } = await import("@/lib/revenue-verify");
-      const { calculateTrustScore } = await import("@/lib/trust");
-      
-      const mrr = await calculateMRR(startup_id);
-      await calculateTrustScore(startup_id); // This also updates the DB trust_score
+      // 2. Trigger unified revenue aggregation engine
+      const { getAggregatedRevenue } = await import("@/lib/revenue-aggregation");
+      const { computeTrustScore } = await import("@/lib/scoring");
+
+      await getAggregatedRevenue(startup_id);
+      await computeTrustScore(startup_id);
 
       // 3. Mark connected
       await supabaseAdmin.from("startup_submissions").update({ 
-        payment_connected: true,
-        mrr: mrr
+        payment_connected: true
       }).eq("id", startup_id);
 
     } catch (syncErr) {

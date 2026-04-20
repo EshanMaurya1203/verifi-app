@@ -60,13 +60,7 @@ const categories = [
   { name: "Marketing Tools", description: "SEO, outreach & analytics" },
 ];
 
-const leaderboardPreview = [
-  { rank: 1, name: "LeadMagnet", founder: "Karan Joshi", mrr: "₹5.7L" },
-  { rank: 2, name: "CartPulse", founder: "Riya Patel", mrr: "₹4.5L" },
-  { rank: 3, name: "BrandForge", founder: "Ananya Reddy", mrr: "₹4.2L" },
-  { rank: 4, name: "ContentPilot", founder: "Rahul Kapoor", mrr: "₹3.1L" },
-  { rank: 5, name: "CodeFlow", founder: "Arjun Mehta", mrr: "₹2.5L" },
-];
+const leaderboardPreview: any[] = [];
 
 const fadeUpContainer = {
   hidden: { opacity: 0 },
@@ -116,23 +110,24 @@ export default function HomePage() {
       .then((data) => {
         if (data.success && data.data) {
           const list = data.data;
-          
+
           // Total Revenue calculation
           const total = list.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
           setStats((prev) => ({ ...prev, totalRevenue: total }));
 
-          // Top 5 for leaderboard
+          // Top 5 for leaderboard (Sorted by trust_score desc)
           const top5 = list
             .slice()
-            .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
+            .sort((a: any, b: any) => (b.trust_score || 0) - (a.trust_score || 0))
             .slice(0, 5)
             .map((s: any, i: number) => ({
               rank: i + 1,
               name: s.startup_name,
               founder: s.name,
-              mrr: `₹${(s.mrr / 100000).toFixed(1)}L`,
+              mrr: s.mrr ? `₹${(s.mrr / 100000).toFixed(1)}L` : "₹0",
+              trust_score: s.trust_score || 0,
             }));
-          if (top5.length > 0) setLeaderboard(top5);
+          setLeaderboard(top5);
 
           // Recently listed
           const recent = list.slice(0, 3).map((s: any) => ({
@@ -140,11 +135,12 @@ export default function HomePage() {
             name: s.startup_name,
             category: s.biz_type,
             description: s.notes || "No description provided.",
-            mrr: `₹${(s.mrr / 100000).toFixed(1)}L`,
-            growth: "+0%", // Needs real growth data if available
+            mrr: s.mrr ? `₹${(s.mrr / 100000).toFixed(1)}L` : "₹0",
+            growth: "+0%",
             badge: s.verification_label || "Unverified",
+            trust_score: s.trust_score || 0,
           }));
-          if (recent.length > 0) setRecentlyListedData(recent);
+          setRecentlyListedData(recent);
         }
       })
       .catch(console.error);
@@ -270,11 +266,23 @@ export default function HomePage() {
                         </p>
                       </div>
                     </div>
-                    <div className="font-syne text-[16px] font-bold text-foreground">
-                      {startup.mrr}
+                    <div className="flex items-center gap-6">
+                      <div className="flex flex-col items-end">
+                        <span className="font-syne text-[16px] font-bold text-foreground">{startup.mrr}</span>
+                        <span className="text-[10px] text-neutral-500 uppercase font-black tracking-tighter">Revenue</span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center bg-blue-500/10 border border-blue-500/20 rounded-md px-2 py-1 min-w-[40px]">
+                        <span className="text-[12px] font-black text-blue-400">{startup.trust_score}</span>
+                        <span className="text-[8px] text-blue-500/60 uppercase font-black -mt-0.5">Trust</span>
+                      </div>
                     </div>
                   </div>
                 ))}
+                {leaderboard.length === 0 && (
+                  <div className="px-5 py-8 text-center text-sm text-neutral-500 font-medium">
+                    No startups verified yet. Be the first to join the leaderboard!
+                  </div>
+                )}
               </div>
             </div>
           </section>

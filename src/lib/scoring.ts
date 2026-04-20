@@ -20,6 +20,13 @@ function getTrustTier(score: number): ScoringResult["tier"] {
 export async function computeTrustScore(startup_id: number): Promise<ScoringResult> {
   const supabase = getSupabaseServer();
   let score = 0;
+  const breakdown: Record<string, number> = {
+    payment: 0,
+    revenue: 0,
+    video: 0,
+    website: 0,
+    identity: 0
+  };
 
   // Fetch all necessary signals
   const { data: startup } = await supabase
@@ -30,39 +37,60 @@ export async function computeTrustScore(startup_id: number): Promise<ScoringResu
 
   if (!startup) return { score: 0, status: "unverified", tier: "unverified" };
 
-  // 1. payment_connected → +50
+  // 1. Payment Gateway Connection (+30 base)
   if (startup.payment_connected) {
-    score += 50;
+    breakdown.payment = 30;
+    score += 30;
   }
 
-  // 2. revenue_snapshots exists → +20
-  const { count: snapshotCount } = await supabase
-    .from("revenue_snapshots")
-    .select("*", { count: 'exact', head: true })
-    .eq("startup_id", startup_id)
-    .eq("source", "api");
+  // 2. Revenue Tiers (Incremental trust based on scale)
+  const mrrValue = Number(startup.mrr) || 0;
+  let revenueBonus = 0;
+  
+  if (mrrValue > 0) revenueBonus += 5;       // Tier 1: Generating Revenue
+  if (mrrValue >= 1000) revenueBonus += 5;   // Tier 2: $1k+ MRR
+  if (mrrValue >= 5000) revenueBonus += 5;   // Tier 3: $5k+ MRR
+  if (mrrValue >= 10000) revenueBonus += 5;  // Tier 4: $10k+ MRR
 
-  if (snapshotCount && snapshotCount > 0) {
+  breakdown.revenue = revenueBonus;
+  score += revenueBonus;
+
+  // 3. Consistent Payments Check (+10)
+  let hasConsistentPayments = false;
+  if (startup.raw_metrics && startup.raw_metrics.payment_count >= 3) {
+    hasConsistentPayments = true;
+  } else {
+    const { count: snapshotCount } = await supabase
+      .from("revenue_transactions")
+      .select("*", { count: 'exact', head: true })
+      .eq("startup_id", startup_id)
+      .in("provider", ["stripe", "razorpay"]);
+    if (snapshotCount && snapshotCount > 0) hasConsistentPayments = true;
+  }
+
+  if (hasConsistentPayments) {
+    const historicalBonus = 10;
+    breakdown.revenue += historicalBonus;
+    score += historicalBonus;
+  }
+
+  // 4. Video Verification (+20)
+  if (startup.video_url && startup.video_url.trim().length > 5) {
+    breakdown.video = 20;
     score += 20;
   }
 
-  // 3. last_verified_at < 24h → +10
-  if (startup.last_verified_at) {
-    const lastSync = new Date(startup.last_verified_at);
-    const diffHours = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60);
-    if (diffHours < 24) {
-      score += 10;
-    }
-  }
-
-  // 4. has website → +10
-  if (startup.website && startup.website.trim().length > 5) {
+  // 5. Website (+10)
+  if (startup.website && startup.website.trim().length > 5 && !startup.website.includes("@")) {
+    breakdown.website = 10;
     score += 10;
   }
 
-  // 5. founder verified → +10
-  if (startup.verification_status === "identity_verified" || startup.verification_status === "approved" || startup.verification_status === "verified") {
-    score += 10;
+  // 6. Identity Verified (+20)
+  const isVerified = ["identity_verified", "approved", "verified"].includes(startup.verification_status);
+  if (isVerified) {
+    breakdown.identity = 20;
+    score += 20;
   }
 
   // --- FRAUD PENALTIES ---
@@ -103,7 +131,8 @@ export async function computeTrustScore(startup_id: number): Promise<ScoringResu
     .update({ 
       trust_score: score,
       trust_tier: tier,
-      verification_status: status
+      verification_status: status,
+      trust_breakdown: breakdown
     })
     .eq("id", startup_id);
 
