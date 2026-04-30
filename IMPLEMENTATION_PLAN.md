@@ -1,6 +1,6 @@
 # Verifi — Implementation Plan
 
-> **Last audited:** 2026-04-20
+> **Last audited:** 2026-04-27
 > **Source of truth:** This document reflects the ACTUAL codebase, not aspirational features.
 
 ---
@@ -19,18 +19,17 @@
 | **Razorpay API Key Verification** | `src/app/api/razorpay/verify/route.ts` | Accepts key_id + key_secret → validates via test API call → stores encrypted credentials → syncs initial payments to `revenue_snapshots` → calculates MRR → triggers `computeTrustScore`. |
 | **Razorpay Revenue Sync** | `src/app/api/razorpay/sync/route.ts` | Full sync flow: decrypts stored keys → fetches 30-day payments → inserts aggregate snapshot → logs to `verification_logs` → runs consistency + fraud checks → updates trust score. |
 | **Unified Revenue Verify** | `src/app/api/verify/revenue/route.ts` | Provider-agnostic endpoint. Resolves keys from request body OR database (decrypted) OR platform env vars. Calls `verifyStripeRevenue` / `verifyRazorpayRevenue` and records snapshots. |
-| **Trust Scoring Engine** | `src/lib/scoring.ts` → `computeTrustScore()` | Deterministic, multi-signal scoring (0–100). Signals: payment connection (+30), revenue tiers (+5 to +20), consistent payments (+10), video (+20), website (+10), identity (+20). Fraud penalties up to -40. Persists score, tier, status, and breakdown to DB. |
+| **Trust Scoring Engine** | `src/lib/scoring.ts` → `computeTrustScore()` | Deterministic, multi-signal scoring (0–100). Signals: payment connection (+30), revenue tiers (+5 to +20), consistent payments (+10), video (+20), website (+10), identity (+20). Fraud penalties up to -40. Persists score, tier, status, and breakdown to DB. Includes trust inertia (`last_penalty_at`), penalty persistence, and earned recovery (`clean_events`). |
 | **Fraud Detection (Deep)** | `src/lib/fraud.ts` → `detectFraud()` | Queries `revenue_snapshots` history. Rules: revenue spike (>3x previous, severity 4), sudden drop (>50k→0, severity 3), micro-transaction spam (>50 micro payments, severity 5), inconsistent variance (stdDev > 2x mean, severity 3). Logs to `fraud_signals` + `verification_logs`. |
 | **Fraud Detection (Lightweight)** | `src/lib/fraud-detection.ts` → `detectFraud()` | Pattern-based: spiky revenue (max > 10x min), high failure rate. Returns flag strings. Used in razorpay sync flow → inserts to `fraud_flags`. |
 | **Revenue Consistency** | `src/lib/revenue-consistency.ts` → `calculateConsistency()` | Variance-based consistency score (0–1). Inverted volatility measure. |
 | **Encryption** | `src/lib/encryption.ts` | AES-256-CTR encrypt/decrypt for API keys. Uses `ENCRYPTION_SECRET` env var. |
 | **Cron Revenue Sync** | `src/app/api/cron/sync-revenue/route.ts` | Iterates ALL active `payment_connections`. For each: decrypts keys → fetches payments from Razorpay/Stripe → upserts to `revenue_snapshots` → recalculates MRR + trust score. Protected by `CRON_SECRET` in production. |
-| **Stripe Webhook** | `src/app/api/stripe/webhook/route.ts` | Handles `account.updated` (marks startup as connected) and `charge.succeeded` (upserts revenue snapshot). Signature-verified. |
-| **Admin Moderation** | `src/app/admin/page.tsx` | Client-rendered queue. Shows pending/unverified submissions with MRR, fraud score, risk level. Approve/Reject actions. |
-| **VerificationFlow Component** | `src/components/startup/VerificationFlow.tsx` | Interactive client component. Profile strength meter (circular SVG), multi-provider connection cards (Stripe + Razorpay with per-provider MRR), improvement actions (website, KYC, video), and modal-based forms. Fetches connections from `/api/startup/[id]/connections`. |
-| **Connections API** | `src/app/api/startup/[id]/connections/route.ts` | Returns active provider connections with latest revenue per provider and aggregated total MRR. |
-| **Trust Calculation API** | `src/app/api/trust/calculate/route.ts` | POST endpoint wrapping `computeTrustScore()`. Called by VerificationFlow after each update. |
-| **Database Schema** | `supabase/migrations/` (11 files) | Tables: `startup_submissions`, `payment_connections` (RLS), `revenue_snapshots`, `verification_logs`, `fraud_signals` (RLS), `fraud_flags` (RLS). Indexes on trust_score, created_at, startup_id. |
+| **Stripe Webhook** | `src/app/api/stripe/webhook/route.ts` | Production-grade handler for `payment_intent.succeeded`. Automatically maps payments to startups via metadata or `provider_connections` fallback. Calls `updateRevenueAndSnapshot` for real-time MRR updates, snapshotting, and trust score recomputation. |
+| **Razorpay Webhook** | `src/app/api/razorpay/webhook/route.ts` | Production-grade handler with HMAC-SHA256 signature verification. Processes `payment.captured` events and handles startup mapping via payment notes. |
+| **Unified Webhook Handler** | `src/lib/webhook-handler.ts` | Centralized business logic for processing webhook events. Ensures atomic MRR updates, historical snapshot persistence with event-level deduplication (idempotency), and safe trust score recalculation. |
+| **One-Off Verification API** | `src/app/api/verify/one-off/route.ts` | Special API for the submission form that verifies Stripe/Razorpay revenue *before* a startup record exists, allowing for verified signup. |
+| **Database Schema** | `supabase/migrations/` (14 files) | Tables: `startup_submissions`, `provider_connections` (RLS), `revenue_snapshots`, `revenue_transactions`, `verification_logs`, `fraud_signals`. Corrected columns: `mrr_breakdown`, `trust_tier`, `trust_breakdown`, `payment_connected`. |
 
 ### ⚠️ Partial (Needs Improvement)
 
@@ -49,13 +48,10 @@
 
 | Gap | Why It Matters |
 |---|---|
-| **Multi-provider MRR aggregation at DB level** | The `connections` API does aggregate per-provider revenue for *display*, but the canonical `startup_submissions.mrr` (used by leaderboard) stores only the last-verified provider's revenue. No DB trigger or aggregation function combines them. |
 | **Time-series revenue snapshots** | Current snapshots are either raw transactions or ad-hoc aggregates. No standardized periodic snapshots (daily/weekly) designed for charting revenue over time or calculating growth rates. |
 | **Growth rate calculations** | No MoM growth, ARR projection, or revenue velocity computed anywhere. Leaderboard shows static MRR only. |
-| **Revenue-based leaderboard ranking** | PRD requires ranking by revenue metrics. Current system ranks by trust_score (credibility), not financial performance. |
-| **Persistent dashboard** | Startup detail page uses modal-based VerificationFlow. No persistent, always-visible dashboard showing connected providers, revenue charts, audit history, or verification timeline. |
-| **Clear verification state machine** | Status values are ad-hoc strings (`"pending"`, `"unverified"`, `"api_verified"`, `"stripe_connected"`, `"verified"`, `"approved"`, `"flagged"`, `"identity_verified"`, `"proof_submitted"`, `"rejected"`). No enum constraint at DB level, no documented state transitions. |
-| **Rate limiting on verification APIs** | `src/lib/rate-limit.ts` exists (789 bytes) but is not imported or used by any API route. |
+| **Clear verification state machine** | Status values are ad-hoc strings. No enum constraint at DB level. |
+| **Rate limiting on verification APIs** | `src/lib/rate-limit.ts` exists but is not imported or used by any API route. |
 
 ---
 
@@ -143,21 +139,24 @@ Leaderboard query should change to `ORDER BY mrr DESC, trust_score DESC` — wit
 | A4 | [x] | **Refactor Stripe verify to call `aggregateMRR`** | `src/app/api/stripe/verify/route.ts` | Integrated. Delegates revenue calculation and persistence to the unified engine. |
 | A5 | [x] | **Refactor Razorpay verify to call `aggregateMRR`** | `src/app/api/razorpay/verify/route.ts` | Integrated. Simplified flow by delegating metrics to the unified engine. |
 | A6 | [x] | **Refactor cron sync to call `aggregateMRR`** | `src/app/api/cron/sync-revenue/route.ts` | Integrated. Multi-provider sync now uses the engine for canonical MRR persistence. |
-| A7 | [x] | **Fix leaderboard ranking** | `src/app/leaderboard/page.tsx` | Order by MRR DESC, then trust_score DESC. |
+| A7 | [x] | **Fix leaderboard ranking** | `src/app/leaderboard/page.tsx` | Order by MRR DESC, then growth DESC. |
 | A8 | [x] | **Consolidate scoring modules** | `src/lib/scoring.ts` | Merged trust-score.ts into scoring.ts. Updated all callers. |
 | A9 | [x] | **Remove Stripe OAuth remnants** | `src/app/startup/[id]/page.tsx` | Purged legacy Stripe initialization and onboarding code. |
-| A10 | [x] | **Standardize verification status strings** | API Routes | Standardized on: `unverified`, `pending`, `api_verified`, `verified`, `flagged`. (Migration pending for Enum constraint). |
+| A10 | [x] | **Standardize verification status strings** | API Routes | Standardized on: `unverified`, `pending`, `api_verified`, `verified`, `flagged`. |
+| A11 | [x] | **Implement Real-time Webhook Engine** | `src/lib/webhook-handler.ts` | Webhook events trigger immediate revenue updates and snapshots. |
+| A12 | [x] | **Fix Verified Signup Flow** | `src/app/submit/page.tsx` | New startups can verify revenue via API during registration. |
 
 ### Phase B — Data Integrity Layer (Week 2)
 
 | # | Status | Task | Files | Acceptance Criteria |
 |---|---|---|---|---|
-| B1 | [ ] | **Standardize revenue snapshot schema** | New migration, update all sync routes | Single table with: `startup_id`, `provider`, `amount` (base currency), `period_start`, `period_end`, `snapshot_type` (`transaction` or `aggregate`). Drop conflicting duplicate table definition. |
-| B2 | [ ] | **Daily aggregate snapshot generation** | Update cron job | After syncing transactions, compute daily aggregate snapshot per provider per startup. |
-| B3 | [ ] | **Growth rate calculation** | `src/lib/growth.ts` | `calculateGrowthRate(startup_id)` → compares current period snapshot vs previous period. Returns MoM percentage. |
-| B4 | [ ] | **Fix encryption IV** | `src/lib/encryption.ts` | Generate random IV per encryption, prepend to ciphertext. Update decrypt to extract IV. Migrate existing encrypted values. |
-| B5 | [ ] | **Wire rate limiting** | `src/lib/rate-limit.ts` → verification routes | Apply rate limiting middleware to all `/api/verify/*`, `/api/stripe/*`, `/api/razorpay/*` routes. |
-| B6 | [ ] | **Deduplicate fraud detection** | Merge `fraud.ts` + `fraud-detection.ts` | Single module. Keep deep analysis from `fraud.ts`, add failure-rate check from `fraud-detection.ts`. Remove `fraud_flags` table references; standardize on `fraud_signals`. |
+| B1 | [x] | **Standardize revenue snapshot schema** | New migration, update all sync routes | Single table with: `startup_id`, `provider`, `amount` (base currency), `period_start`, `period_end`, `snapshot_type` (`transaction` or `aggregate`). Drop conflicting duplicate table definition. |
+| B2 | [x] | **Daily aggregate snapshot generation** | Update cron job | After syncing transactions, compute daily aggregate snapshot per provider per startup. |
+| B3 | [x] | **Growth rate calculation** | `src/lib/growth.ts` | `calculateGrowthRate(startup_id)` → compares current period snapshot vs previous period. Returns MoM percentage. |
+| B4 | [x] | **Trust Scoring Resilience** | `src/lib/scoring.ts`, `webhook-handler.ts` | Implemented trust inertia (`last_penalty_at`), penalty persistence (`penalty_count`), and earned trust recovery (`clean_events`) to deter rapid-fire and slow-oscillation abuse patterns. |
+| B5 | [ ] | **Fix encryption IV** | `src/lib/encryption.ts` | Generate random IV per encryption, prepend to ciphertext. Update decrypt to extract IV. Migrate existing encrypted values. |
+| B6 | [x] | **Wire rate limiting** | `src/lib/rate-limit.ts` → verification routes | Applied `checkRateLimit` helper to all non-cron API routes to enforce standard 429 responses. |
+| B7 | [x] | **Deduplicate fraud detection** | `src/lib/fraud.ts` | Merged `fraud.ts` and `fraud-detection.ts`. Refactored all calling sites to use the unified, deterministic module. |
 
 ### Phase C — Product Layer (Week 3)
 
@@ -166,7 +165,7 @@ Leaderboard query should change to `ORDER BY mrr DESC, trust_score DESC` — wit
 | C1 | [ ] | **Persistent dashboard layout** | Refactor `VerificationFlow.tsx` | Replace modal-based verification with an always-visible dashboard section. Connected providers show inline with status, last sync time, and per-provider MRR. Actions are inline, not modals. |
 | C2 | [ ] | **Provider connection status panel** | `src/components/startup/ConnectionStatus.tsx` | Card per provider: connection status, last synced, revenue amount, sync button. Color-coded (green/red/gray). |
 | C3 | [ ] | **Revenue chart** | New component | Time-series chart using period snapshots. Show MRR over last 30/60/90 days. Use lightweight charting library (e.g., Recharts). |
-| C4 | [ ] | **Growth indicators on leaderboard** | `src/app/leaderboard/page.tsx` | Show MoM growth arrow and percentage next to MRR. |
+| C4 | [x] | **Growth indicators on leaderboard** | `src/app/leaderboard/page.tsx` | Show MoM growth arrow and percentage next to MRR. |
 | C5 | [ ] | **Verification state badges** | Refactor `TierBadge` component | Use standardized status enum. Show both trust tier AND verification status. |
 | C6 | [ ] | **Admin dashboard improvements** | `src/app/admin/page.tsx` | Show provider connections, revenue breakdown, fraud signals history, snapshot timeline per startup. |
 
@@ -187,3 +186,19 @@ Leaderboard query should change to `ORDER BY mrr DESC, trust_score DESC` — wit
 | **Multi-currency normalization** | Requires reliable exchange rate service and standardized snapshot amounts. Currently Stripe stores USD, Razorpay stores INR, no conversion. |
 | **Investor View / Access Control** | Requires auth + role-based permissions. |
 | **Additional Providers** (Cashfree, Paddle, Lemon Squeezy) | Architecture must support multi-provider first (Phase A). Then adding providers is additive. |
+
+---
+
+## 5. 🐞 Errors & Fixes (Today's Work)
+
+### ✅ Fixed Today
+- **Fraud Logic Unification (B7)**: Audited entire codebase and removed all manual spike/rate-limit checks. Standardized on `detectFraud()` in `src/lib/fraud.ts`.
+- **Deterministic Fraud Analysis**: Refactored `detectFraud` to be fully deterministic (using injected timestamps) and handle edge cases for historical data length.
+- **API Route Rate Limiting (B6)**: Integrated `checkRateLimit()` into all non-cron API routes with standardized 429 error responses.
+- **Scoring Engine Hardening**: Refactored `scoring.ts` to use unified fraud signals, ensuring trust scores react consistently to abuse.
+- **Automated Fraud Testing**: Created a suite of Node.js test scripts (`scripts/test-fraud-*`) to validate clean vs. suspicious behavior.
+
+### 🔴 Next Up
+- **Fix Encryption IV (B5)**: Replace static zero-filled IV with a unique random IV per encryption to prevent ciphertext patterns.
+- **Provider Connection Status (C2)**: Build a live status panel for the startup detail page showing per-provider MRR and connection health.
+- **Interactive Revenue Chart (C3)**: Visualize growth using historical snapshots.

@@ -130,8 +130,6 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
       if (res.ok && data.revenue !== undefined) {
         setStripeSuccess(true);
         await updateStartup({
-          verification_method: 'stripe',
-          verification_status: 'api_verified',
           payment_connected: true,
           last_verified_at: new Date().toISOString()
         }, "Stripe connected: Revenue synced!", 50);
@@ -171,9 +169,8 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
 
       if (data.success) {
         await updateStartup({
-          verification_method: 'razorpay',
-          verification_status: 'api_verified',
-          payment_connected: true
+          payment_connected: true,
+          last_verified_at: new Date().toISOString()
         }, "Razorpay connected & revenue audited!", 50);
         setPaymentView("options");
       } else {
@@ -192,7 +189,6 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: startup?.verification_method,
           startup_id: id
         })
       });

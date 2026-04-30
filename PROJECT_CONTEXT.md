@@ -1,7 +1,7 @@
 # Verifi — Project Context
 
-> **Last updated:** 2026-04-20
-> **Source of truth:** Reflects actual system state, after the Unified Revenue Engine refactor.
+> **Last updated:** 2026-04-22
+> **Source of truth:** Reflects actual system state, after the Real-Time Webhook Engine deployment.
 
 ---
 
@@ -21,7 +21,7 @@ Key differentiator: **Aggregation Engine**. Verifi supports multiple concurrent 
 | **Language** | TypeScript |
 | **Styling** | Tailwind CSS (Dark mode, Glassmorphism, CSS Variables) |
 | **Database** | Supabase (PostgreSQL + Row Level Security) |
-| **Integrations** | Stripe API (Balance Transactions), Razorpay API (Payments) |
+| **Integrations** | Stripe API, Razorpay API, HMAC-SHA256 Webhooks |
 | **Security** | AES-256-CTR encryption for stored API keys |
 | **Hosting** | Vercel-compatible (Cron via `CRON_SECRET`) |
 
@@ -34,6 +34,7 @@ Key differentiator: **Aggregation Engine**. Verifi supports multiple concurrent 
 │                    PRESENTATION LAYER                        │
 │  Landing (page.tsx) │ Leaderboard │ Startup Detail │ Admin   │
 │  VerificationFlow (Multi-provider connection UI)             │
+│  Submit (Verified Signup support)                            │
 └──────────────────────────┬───────────────────────────────────┘
                            │
 ┌──────────────────────────▼───────────────────────────────────┐
@@ -51,43 +52,29 @@ Key differentiator: **Aggregation Engine**. Verifi supports multiple concurrent 
 └──────────────────────────┬───────────────────────────────────┘
                            │
 ┌──────────────────────────▼───────────────────────────────────┐
-│                   PERSISTENCE LAYER                           │
-│  revenue_snapshots — granular historical records             │
-│  verification_logs — audit trail for all operations          │
-│  fraud_signals — detected anomalies & risk levels            │
+│                   WEBHOOK ENGINE (NEW)                       │
+│  Stripe / Razorpay Handlers → updateRevenueAndSnapshot()     │
+│  Real-time MRR updates & deduplicated snapshots              │
 └──────────────────────────┬───────────────────────────────────┘
                            │
 ┌──────────────────────────▼───────────────────────────────────┐
-│                  DATA INGESTION LAYER                         │
-│                                                              │
-│  ┌─────────────────┐    ┌──────────────────┐                │
-│  │  Stripe Verify  │    │  Razorpay Verify │                │
-│  │  /stripe/verify │    │  /razorpay/verify│                │
-│  └────────┬────────┘    └────────┬─────────┘                │
-│           │                      │                           │
-│  ┌────────▼──────────────────────▼─────────┐                │
-│  │      Cron Jobs (Phase 1 & Phase 2)       │                │
-│  │  1. Snapshot individual connections       │                │
-│  │  2. Invoke Aggregate Engine per startup   │                │
-│  └─────────────────────────────────────────┘                │
-│                                                              │
-│  ┌─────────────────────────────────────────┐                │
-│  │      provider_connections (RLS)         │                │
-│  │  Encrypted keys & per-provider MRR       │                │
-│  └─────────────────────────────────────────┘                │
-└──────────────────────────────────────────────────────────────┘
+│                   PERSISTENCE LAYER                           │
+│  revenue_snapshots — granular historical records             │
+│  revenue_transactions — payment-level log                    │
+│  verification_logs — audit trail for all operations          │
+│  fraud_signals — detected anomalies & risk levels            │
+└──────────────────────────┬───────────────────────────────────┘
 ```
 
 ### Layer Details
 
 **Unified Aggregation Engine**
 - `getAggregatedRevenue(startupId)`: Orchestrates live API calls to all connected providers, normalizes values to INR, aggregates the total, and updates both `provider_connections` and `startup_submissions` in one transaction.
-- Standardized Response: Every fetcher (Stripe/Razorpay) returns a `ProviderRevenue` shape.
 
-**Data Ingestion Layer**
-- **Stripe**: Uses `balance_transactions` for precise realized revenue calculation.
-- **Razorpay**: Uses `payments.all()` filtered for `captured` status.
-- **Cron**: Two-phase sync. Standardized `/api/cron/sync-revenue` handles both transaction logging and global MRR aggregation.
+**Webhook Engine**
+- **Stripe**: Handles `payment_intent.succeeded`. Maps via metadata or `provider_connections`.
+- **Razorpay**: Handles `payment.captured`. Verified via HMAC signature.
+- **Shared Handler**: `updateRevenueAndSnapshot()` ensures atomic updates and triggers trust score recomputation.
 
 ---
 
@@ -101,87 +88,44 @@ Key differentiator: **Aggregation Engine**. Verifi supports multiple concurrent 
 | `mrr_breakdown` | jsonb | `{ stripe: number, razorpay: number }` contribution map. |
 | `trust_score` | integer | 0–100 deterministic score. |
 | `trust_tier` | text | `verified` / `trusted` / `emerging` / `unverified` / `flagged`. |
-| `verification_status`| text | `unverified`, `pending`, `api_verified`, `verified`, `flagged`. |
-| `last_verified_at` | timestamptz | Timestamp of the last successful aggregation event. |
+| `payment_connected`| boolean | True if at least one API source is connected. |
+| `last_verified_at` | timestamptz | Timestamp of the last successful aggregation/webhook event. |
+| `last_penalty_at` | timestamptz | Timestamp of the last trust score penalty (used for inertia). |
+| `penalty_count` | integer | Number of recent violations. Scales penalty severity. |
+| `clean_events` | integer | Consecutive valid transactions. Used for earned trust recovery. |
 
-### `provider_connections` (Replaces payment_connections)
+### `provider_connections`
 
 | Column | Type | Purpose |
 |---|---|---|
-| `id` | uuid PK | Connection identifier. |
-| `startup_id` | bigint FK | References `startup_submissions(id)`. |
 | `provider` | text | `stripe` / `razorpay`. |
-| `account_id` | text | Provider identifier (e.g., Razorpay key_id). |
-| `api_key_encrypted` | text| AES-256-CTR encrypted secret key. |
-| `status` | text | `connected` / `failed`. |
-| `latest_revenue` | numeric | Last synced MRR contribution from this provider. |
-| `last_synced_at` | timestamptz | Timestamp of last provider-specific sync. |
+| `key_id` | text | Provider identifier. |
+| `key_secret` | text | Encrypted secret key. |
+| `last_mrr` | numeric | Last synced MRR contribution from this provider. |
 
-### `revenue_snapshots` (Metrics Tracking)
+### `revenue_snapshots`
 
 | Column | Type | Purpose |
 |---|---|---|
-| `id` | uuid PK | Snapshot identifier. |
-| `startup_id` | bigint FK | References `startup_submissions(id)`. |
 | `total_revenue` | numeric | The globally aggregated MRR at this point in time. |
 | `provider_breakdown` | jsonb | Snapshot of which providers contributed. |
-| `created_at` | timestamptz | When snapshot was recorded. |
-
-### `revenue_transactions` (Legacy / Event ingestion)
-Note: Formerly called `revenue_snapshots`. Tracks granular chronological `captured`/`succeeded` payment intents per provider to drive the fraud detection engine.
 
 ---
 
-## 5. Trust Scoring Logic
+## 5. Resolved Technical Debt (Recent)
 
-Engine: `src/lib/scoring.ts` → `computeTrustScore(startup_id)`
-
-### Positive Signals (Max 100)
-- **Payment Gateway Connected (+30):** Any active connection in `provider_connections`.
-- **Verified Revenue (Tiers):** +5 to +20 depending on MRR brackets.
-- **Verification Sources:** Multi-provider connections provide higher reliability signals.
-- **Social & Web (+20):** Website, LinkedIn, Twitter presence.
-- **Verification Methods (+20):** Video verification, KYC.
-
----
-
-## 6. Verification Philosophy
-
-### The Aggregation First Approach
-Verifi no longer treats providers as mutually exclusive. If a founder uses Razorpay for domestic (India) and Stripe for international (Global) sales, the system:
-1. Connects both independently.
-2. Normalizes Global (USD) revenue to local baseline (INR) if required.
-3. Sums them into a single **Consolidated MRR**.
-4. Flags inconsistencies across providers via the aggregation engine's audit trail.
+- ✅ **Real-Time Updates**: Webhooks now update the platform instantly instead of waiting for cron.
+- ✅ **Verified Signup**: Founders can verify revenue via API during the initial submission.
+- ✅ **Multi-Provider UI**: Fixed dashboard logic to support concurrent Stripe + Razorpay.
+- ✅ **Admin Sync**: Moderation actions now trigger instant trust score updates.
+- ✅ **Schema Integrity**: All required columns for scoring and breakdown are now in production.
+- ✅ **Crash-proof Metrics**: Standardized growth and ARR calculations to handle null states safely.
+- ✅ **Trust Resilience**: Added penalty persistence, trust inertia, and earned recovery logic to prevent rapid-fire and slow-oscillation manipulation tactics.
 
 ---
 
-## 7. API Route Map (Current)
+## 6. Remaining Technical Debt
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/verify/revenue` | POST | Unified portal for verifying any provider. Calls aggregation engine. |
-| `/api/stripe/verify` | POST | Legacy-wrapped; delegates to Aggregation Engine. |
-| `/api/razorpay/verify` | POST | Legacy-wrapped; delegates to Aggregation Engine. |
-| `/api/cron/sync-revenue`| GET | Multi-phase cron for total platform reconciliation. |
-| `/api/startup/[id]/connections` | GET | Returns connection list + aggregated totals for UI. |
-
----
-
-## 8. Resolved Technical Debt (Recent)
-
-- ✅ **Cross-provider aggregation:** Fixed. MRR is no longer "last-write-wins".
-- ✅ **Stale References:** Purged `payment_connections`, `calculateMRR`, and `aggregateMRR` legacy code.
-- ✅ **Next.js 16 Compatibility:** Fixed Promise-based `params` and `config` deprecations.
-- ✅ **Type Safety:** Corrected multi-module type mismatches between fraud detection and sync routes.
-- ✅ **Two competing `revenue_snapshots` schemas:** Resolved. Legacy table renamed to `revenue_transactions`. A new macro-level `revenue_snapshots` table strictly tracks aggregated MRR across time.
-- ✅ **Scoring Consolidation:** Resolved. `trust-score.ts` logic merged into a unified `scoring.ts` engine. Removed all synchronous `fs` debug functions.
-- ✅ **Leaderboard Bias:** Resolved. Leaderboard ranking completely decoupled from `trust_score`. Order is strictly dictated by Verified MRR and MoM Growth.
-- ✅ **Error Suppression:** Resolved. Vague `{}` objects replaced with hardened full JSON stringified tracebacks globally in the revenue engine.
-
----
-
-## 9. Remaining Technical Debt
-
-1. **Encryption Security** — Fixed IV should be replaced with random per-encryption IV.
-2. **Authentication** — Admin and Verification mutations are still technically unauthenticated.
+1. **Rate Limiting** — Middleware is present but needs to be wired to all API routes.
+2. **Standardized Snapshotting** — Periodic daily aggregation snapshots for long-term charts.
+3. **Authentication** — Admin and Verification mutations are still technically unauthenticated.

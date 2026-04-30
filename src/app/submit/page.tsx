@@ -95,20 +95,30 @@ export default function SubmitPage() {
   const [verifiedRevenue, setVerifiedRevenue] = useState<number | null>(null);
 
   const handleVerifyRevenue = async () => {
-    if (!form.apiKey) {
-      alert("Please enter your API key first");
+    if (form.apiProvider === "stripe" && !form.apiKey) {
+      alert("Please enter your Stripe Secret Key");
+      return;
+    }
+    if (form.apiProvider === "razorpay" && !form.apiKey.includes(":")) {
+      alert("Please enter Razorpay Key ID and Secret separated by a colon (ID:SECRET)");
       return;
     }
 
     setIsVerifying(true);
     try {
-      const res = await fetch("/api/verify/revenue", {
+      const payload: any = { provider: form.apiProvider };
+      if (form.apiProvider === "stripe") {
+        payload.apiKey = form.apiKey;
+      } else {
+        const [id, secret] = form.apiKey.split(":");
+        payload.keyId = id;
+        payload.keySecret = secret;
+      }
+
+      const res = await fetch("/api/verify/one-off", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: form.apiProvider,
-          apiKey: form.apiKey,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -345,7 +355,8 @@ export default function SubmitPage() {
         proof_url: proof_url,
         confidence_score: confidenceMap[form.verificationType] ?? 0,
         verified_revenue: verifiedRevenue || null,
-        verification_source: verifiedRevenue ? "razorpay" : null,
+        verification_source: verifiedRevenue ? form.apiProvider : null,
+        verified_api_key: verifiedRevenue ? form.apiKey : null,
       };
 
       console.log("FINAL PAYLOAD:", payload);

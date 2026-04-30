@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import Razorpay from "razorpay";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { supabaseServer } from "@/lib/supabase-server";
 import { encrypt } from "@/lib/encryption";
 
 export async function POST(req: Request) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   try {
     const { key_id, key_secret, startup_id } = await req.json();
 
@@ -27,7 +34,7 @@ export async function POST(req: Request) {
     }
 
     // Store connection in Database
-    const { error: dbError } = await supabaseAdmin.from("provider_connections").upsert({
+    const { error: dbError } = await supabaseServer.from("provider_connections").upsert({
       startup_id,
       provider: "razorpay",
       account_id: key_id,
@@ -46,7 +53,7 @@ export async function POST(req: Request) {
       const payments = await razorpay.payments.all({ count: 20 });
       for (const p of payments.items) {
         if (p.status !== "captured") continue;
-        await supabaseAdmin.from("revenue_transactions").upsert({
+        await supabaseServer.from("revenue_transactions").upsert({
           startup_id,
           provider: "razorpay",
           amount: p.amount,
@@ -61,11 +68,35 @@ export async function POST(req: Request) {
       const { getAggregatedRevenue } = await import("@/lib/revenue-aggregation");
       const { computeTrustScore } = await import("@/lib/scoring");
 
-      await getAggregatedRevenue(startup_id);
+      const aggregatedResult = await getAggregatedRevenue(startup_id);
+
+      // Persist snapshot for metrics engine (MRR history / growth tracking)
+      const snapshotRevenue = aggregatedResult?.totalRevenue ?? 0;
+
+      const { data: lastSnap } = await supabaseServer
+        .from("revenue_snapshots")
+        .select("*")
+        .eq("startup_id", startup_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (lastSnap && lastSnap[0]?.total_revenue === snapshotRevenue) {
+        console.log("[Razorpay] Skipping duplicate snapshot — revenue unchanged");
+      } else {
+        await supabaseServer.from("revenue_snapshots").insert({
+          startup_id: startup_id,
+          total_revenue: snapshotRevenue,
+          provider_breakdown: aggregatedResult?.breakdown || { razorpay: snapshotRevenue },
+          provider: "razorpay",
+          created_at: new Date().toISOString(),
+        });
+        console.log("[Razorpay] Snapshot persisted:", { startup_id, total_revenue: snapshotRevenue });
+      }
+
       await computeTrustScore(startup_id);
 
       // 3. Mark connected
-      await supabaseAdmin.from("startup_submissions").update({ 
+      await supabaseServer.from("startup_submissions").update({ 
         payment_connected: true
       }).eq("id", startup_id);
 

@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import { supabaseServer } from "@/lib/supabase-server";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   try {
     const { id } = await params;
     const startupId = id;
 
     // Fetch active connections
-    const { data: connections } = await supabaseAdmin
+    const { data: connections } = await supabaseServer
       .from("provider_connections")
       .select("provider, latest_revenue, last_synced_at")
       .eq("startup_id", startupId)

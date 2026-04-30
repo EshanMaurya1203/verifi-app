@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import { supabaseServer } from "@/lib/supabase-server";
 import { isAdmin } from "@/lib/isAdmin";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   try {
     const body = await req.json();
     const { id, action, rejection_reason, confidence_score } = body;
@@ -40,7 +47,7 @@ export async function POST(req: Request) {
       updateData.rejection_reason = rejection_reason || "Not valid";
     }
 
-    const { error } = await supabaseAdmin
+    const { error } = await supabaseServer
       .from("startup_submissions")
       .update(updateData)
       .eq("id", id);

@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import { supabaseServer } from "@/lib/supabase-server";
 import { decrypt } from "@/lib/encryption";
 import Razorpay from "razorpay";
 import { computeTrustScore } from "@/lib/scoring";
 import { calculateConsistency } from "@/lib/revenue-consistency";
-import { detectFraud } from "@/lib/fraud-detection";
+
 
 export async function POST(req: Request) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   try {
     const { startup_id } = await req.json();
 
@@ -15,7 +22,7 @@ export async function POST(req: Request) {
     }
 
     // 1. Fetch connection details (Service Role only)
-    const { data: connection, error: connError } = await supabaseAdmin
+    const { data: connection, error: connError } = await supabaseServer
       .from("provider_connections")
       .select("*")
       .eq("startup_id", startup_id)
@@ -48,7 +55,7 @@ export async function POST(req: Request) {
     const mrrAmount = totalPaise / 100;
 
     // 4. Store Snapshots (Aggregate for the period)
-    const { error: snapshotError } = await supabaseAdmin.from("revenue_transactions").insert({
+    const { error: snapshotError } = await supabaseServer.from("revenue_transactions").insert({
       startup_id,
       provider: "razorpay",
       amount: mrrAmount,
@@ -63,7 +70,7 @@ export async function POST(req: Request) {
     const aggregated = await getAggregatedRevenue(startup_id);
 
     // 5. Log Success
-    await supabaseAdmin.from("verification_logs").insert({
+    await supabaseServer.from("verification_logs").insert({
       startup_id,
       event: "razorpay_sync_success",
       metadata: { mrr: mrrAmount, count: payments.items.length }
@@ -73,7 +80,7 @@ export async function POST(req: Request) {
     const consistency = calculateConsistency(payments.items);
     
     // Fetch startup meta for scoring
-    const { data: startup } = await supabaseAdmin
+    const { data: startup } = await supabaseServer
       .from("startup_submissions")
       .select("website, founder_name, founder_twitter, founder_linkedin")
       .eq("id", startup_id)
@@ -94,7 +101,7 @@ export async function POST(req: Request) {
     // Log Failure
     const body = await req.clone().json();
     if (body.startup_id) {
-      await supabaseAdmin.from("verification_logs").insert({
+      await supabaseServer.from("verification_logs").insert({
         startup_id: body.startup_id,
         event: "razorpay_sync_failure",
         metadata: { error: err.message }

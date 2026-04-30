@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import { supabaseServer } from "@/lib/supabase-server";
 import { encrypt } from "@/lib/encryption";
 import { computeTrustScore } from "@/lib/scoring";
 import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
+import { detectFraud } from "@/lib/fraud";
 import Stripe from "stripe";
 
 /**
  * Stripe Verification API (/api/stripe/verify)
  */
 export async function POST(req: Request) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   try {
     const { apiKey, startupId, debug } = await req.json();
 
@@ -72,22 +80,43 @@ export async function POST(req: Request) {
       return sum + (p.amount || 0);
     }, 0) / 100;
     
-    console.log("MRR (last 30 days):", mrr);
-
-    const amounts = recentPayments.map(p => p.amount / 100);
-    const max = amounts.length > 0 ? Math.max(...amounts) : 0;
-    const avg = amounts.length > 0 ? (amounts.reduce((a, b) => a + b, 0) / amounts.length) : 0;
-
+    // --- FRAUD DETECTION ---
     let spikeDetected = false;
-    if (amounts.length > 0 && max > avg * 5) {
-      console.warn("⚠️ Revenue spike detected — possible manipulation");
-      spikeDetected = true;
-      if (startupId) {
-        await supabaseAdmin.from("fraud_signals").insert({
+    let rateLimitTriggered = false;
+    let isClean = false;
+
+    if (startupId) {
+      const { data: history } = await supabaseServer
+        .from("revenue_transactions")
+        .select("amount, created_at")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: false })
+        .limit(4);
+
+      const prevTxAmounts = (history ?? []).map(h => Number(h.amount));
+      const prevTimestamps = (history ?? []).map(h => new Date(h.created_at).getTime());
+
+      // Check for spikes using the highest individual transaction in this batch
+      const currentMaxTx = amounts.length > 0 ? Math.max(...amounts) : 0;
+
+      const fraud = detectFraud({
+        amount: currentMaxTx,
+        previousTransactions: prevTxAmounts,
+        timestamps: prevTimestamps,
+        now: Date.now()
+      });
+
+      spikeDetected = fraud.reason === "spike";
+      rateLimitTriggered = fraud.reason === "rate_limit";
+      isClean = !fraud.isFraud && mrr >= 100;
+
+      if (spikeDetected) {
+        console.warn("⚠️ Revenue spike detected — possible manipulation");
+        await supabaseServer.from("fraud_signals").insert({
           startup_id: startupId,
           signal_type: "REVENUE_SPIKE",
           severity: 3, 
-          description: "Revenue spike detected (max > 5x avg)"
+          description: "Revenue spike detected via API verification"
         });
       }
     }
@@ -108,7 +137,7 @@ export async function POST(req: Request) {
       const encryptedKey = encrypt(apiKey);
       
       // Use explicit select then insert/update to avoid common onConflict constraint mismatches
-      const { data: existingConn } = await supabaseAdmin
+      const { data: existingConn } = await supabaseServer
         .from("provider_connections")
         .select("id")
         .eq("startup_id", startupId)
@@ -117,7 +146,7 @@ export async function POST(req: Request) {
 
       let connError;
       if (existingConn) {
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseServer
           .from("provider_connections")
           .update({
             account_id: stripeAccountId,
@@ -129,7 +158,7 @@ export async function POST(req: Request) {
           .eq("id", existingConn.id);
         connError = error;
       } else {
-        const { error } = await supabaseAdmin
+        const { error } = await supabaseServer
           .from("provider_connections")
           .insert({
             startup_id: startupId,
@@ -145,7 +174,7 @@ export async function POST(req: Request) {
 
       if (connError) throw connError;
 
-      const { data: last } = await supabaseAdmin
+      const { data: last } = await supabaseServer
         .from("revenue_transactions")
         .select("*")
         .eq("startup_id", startupId)
@@ -155,7 +184,7 @@ export async function POST(req: Request) {
       if (last && last.length > 0 && last[0].amount === mrr) {
         console.log("No change in revenue — skipping duplicate insert");
       } else {
-        await supabaseAdmin.from("revenue_transactions").insert({
+        await supabaseServer.from("revenue_transactions").insert({
           startup_id: startupId,
           amount: mrr,
           provider: "stripe",
@@ -166,7 +195,30 @@ export async function POST(req: Request) {
 
       aggregatedResult = await getAggregatedRevenue(startupId);
 
-      const { error: updError } = await supabaseAdmin
+      // Persist snapshot for metrics engine (MRR history / growth tracking)
+      const snapshotRevenue = aggregatedResult?.totalRevenue ?? mrr;
+
+      const { data: lastSnap } = await supabaseServer
+        .from("revenue_snapshots")
+        .select("*")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (lastSnap && lastSnap[0]?.total_revenue === snapshotRevenue) {
+        console.log("[Stripe] Skipping duplicate snapshot — revenue unchanged");
+      } else {
+        await supabaseServer.from("revenue_snapshots").insert({
+          startup_id: startupId,
+          total_revenue: snapshotRevenue,
+          provider_breakdown: aggregatedResult?.breakdown || { stripe: snapshotRevenue },
+          provider: "stripe",
+          created_at: new Date().toISOString(),
+        });
+        console.log("[Stripe] Snapshot persisted:", { startupId, total_revenue: snapshotRevenue });
+      }
+
+      const { error: updError } = await supabaseServer
         .from("startup_submissions")
         .update({ 
           payment_connected: true,
@@ -181,7 +233,7 @@ export async function POST(req: Request) {
 
       if (updError) throw updError;
 
-      const { data: startupBefore } = await supabaseAdmin
+      const { data: startupBefore } = await supabaseServer
         .from("startup_submissions")
         .select("trust_score")
         .eq("id", startupId)

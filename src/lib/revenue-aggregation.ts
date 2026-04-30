@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { supabaseServer } from "@/lib/supabase-server";
 import { decrypt } from "@/lib/encryption";
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export async function getAggregatedRevenue(
   startupId: number
 ): Promise<AggregatedRevenue> {
   // ── 1. Fetch all connected providers ─────────────────────
-  const { data: connections, error } = await supabaseAdmin
+  const { data: connections, error } = await supabaseServer
     .from("provider_connections")
     .select("*")
     .eq("startup_id", startupId)
@@ -231,7 +231,7 @@ export async function getAggregatedRevenue(
     providerResults
       .filter((r) => r.success)
       .map((result) =>
-        supabaseAdmin
+        supabaseServer
           .from("provider_connections")
           .update({
             latest_revenue: result.revenue,
@@ -243,7 +243,7 @@ export async function getAggregatedRevenue(
   );
 
   // ── 5. Persist aggregated MRR to startup_submissions ─────
-  await supabaseAdmin
+  await supabaseServer
     .from("startup_submissions")
     .update({
       mrr: Math.round(totalRevenue),
@@ -252,7 +252,7 @@ export async function getAggregatedRevenue(
     .eq("id", startupId);
 
   // ── 6. Persist historical snapshot if changed ─────────────
-  const { data: lastSnapshot } = await supabaseAdmin
+  const { data: lastSnapshot } = await supabaseServer
     .from("revenue_snapshots")
     .select("total_revenue, provider_breakdown")
     .eq("startup_id", startupId)
@@ -266,11 +266,15 @@ export async function getAggregatedRevenue(
     JSON.stringify(lastSnapshot.provider_breakdown) !== JSON.stringify(breakdown);
 
   if (isChanged) {
-    await supabaseAdmin.from("revenue_snapshots").insert({
+    await supabaseServer.from("revenue_snapshots").insert({
       startup_id: startupId,
       total_revenue: roundedTotal,
-      provider_breakdown: breakdown
+      provider_breakdown: breakdown,
+      provider: "combined",
     });
+    console.log("[RevenueEngine] Snapshot persisted:", { startupId, total_revenue: roundedTotal });
+  } else {
+    console.log("[RevenueEngine] Skipping duplicate snapshot — revenue unchanged");
   }
 
   return { totalRevenue, breakdown, providers: providerResults };
@@ -281,7 +285,7 @@ export async function getAggregatedRevenue(
  * Useful for calculating MoM growth and drawing charts.
  */
 export async function getRevenueHistory(startupId: number) {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabaseServer
     .from("revenue_snapshots")
     .select("*")
     .eq("startup_id", startupId)
@@ -305,26 +309,75 @@ export async function getRevenueHistory(startupId: number) {
  * Returns MRR, ARR, and Month-over-Month (Snapshot-over-Snapshot) growth.
  */
 export async function getStartupMetrics(startupId: number) {
-  const DEBUG = true;
+  try {
+    console.log("[RevenueEngine] Fetching metrics for:", startupId);
 
-  console.log("[RevenueEngine] Fetching from revenue_snapshots for:", startupId);
+    const { data, error } = await supabaseServer
+      .from("revenue_snapshots")
+      .select("*")
+      .eq("startup_id", startupId)
+      .order("created_at", { ascending: false });
 
-  const { data, error } = await supabaseAdmin
-    .from("revenue_snapshots")
-    .select("*")
-    .eq("startup_id", startupId)
-    .order("created_at", { ascending: false });
+    // 🔴 REAL ERROR LOGGING
+    if (error) {
+      console.error("[RevenueEngine] SUPABASE ERROR:", error);
+      console.error("[RevenueEngine] ERROR STRING:", JSON.stringify(error, null, 2));
 
-  if (DEBUG) {
-    console.log("[RevenueEngine DEBUG]", { data, error });
-  }
+      return {
+        mrr: 0,
+        arr: 0,
+        growthPercentage: 0,
+      };
+    }
 
-  console.log("[RevenueEngine] Query result:", data);
+    console.log("[RevenueEngine] RAW DATA:", data);
 
-  if (error) {
-    console.error("[RevenueEngine] FULL ERROR OBJECT:", error);
-    console.error("[RevenueEngine] STRINGIFIED:", JSON.stringify(error, null, 2));
-    console.error("[RevenueEngine] STARTUP ID:", startupId);
+    // 🟡 EMPTY DATA CASE (MOST IMPORTANT FIX)
+    if (!data || data.length === 0) {
+      console.warn("[RevenueEngine] No revenue snapshots found for:", startupId);
+
+      return {
+        mrr: 0,
+        arr: 0,
+        growthPercentage: 0,
+      };
+    }
+
+    // ✅ SAFE ACCESS
+    const latest = data[0];
+    const previous = data.find(
+      (d) => new Date(d.created_at) < new Date(latest.created_at)
+    ) || null;
+
+    console.log("[Snapshots]", data);
+    console.log("[Latest vs Previous]", { latest, previous });
+
+    const mrr = latest?.total_revenue ?? 0;
+    const arr = mrr * 12;
+
+    let growthPercentage = 0;
+
+    if (previous && previous.total_revenue > 0) {
+      growthPercentage =
+        ((latest.total_revenue - previous.total_revenue) /
+          previous.total_revenue) *
+        100;
+    }
+
+    console.log("[RevenueEngine] FINAL METRICS:", {
+      startupId,
+      mrr,
+      arr,
+      growthPercentage,
+    });
+
+    return {
+      mrr,
+      arr,
+      growthPercentage,
+    };
+  } catch (err) {
+    console.error("[RevenueEngine] CRITICAL CRASH:", err);
 
     return {
       mrr: 0,
@@ -332,42 +385,4 @@ export async function getStartupMetrics(startupId: number) {
       growthPercentage: 0,
     };
   }
-
-  if (!data || data.length === 0) {
-    console.warn("[RevenueEngine] No snapshots found for:", startupId);
-
-    return {
-      mrr: 0,
-      arr: 0,
-      growthPercentage: 0,
-    };
-  }
-
-  const latest = data[0];
-  const previous = data[1];
-
-  const mrr = latest.total_revenue || 0;
-  const arr = mrr * 12;
-
-  let growth = 0;
-
-  if (previous && previous.total_revenue > 0) {
-    growth = ((latest.total_revenue - previous.total_revenue) / previous.total_revenue) * 100;
-  } else if (latest.total_revenue > 0 && (!previous || previous.total_revenue === 0)) {
-    growth = 100;
-  }
-
-  const finalGrowth = Math.round(growth * 100) / 100;
-
-  console.log("[RevenueEngine] FINAL METRICS:", {
-    mrr,
-    arr,
-    growth: finalGrowth,
-  });
-
-  return {
-    mrr,
-    arr,
-    growthPercentage: finalGrowth
-  };
 }

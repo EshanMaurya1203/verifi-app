@@ -4,6 +4,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowUpRight, BadgeCheck, BarChart3, Eye } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
+import { ConnectionStatus } from "@/components/startup/ConnectionStatus";
+import { RevenueChart } from "@/components/startup/RevenueChart";
 import { useEffect, useState } from "react";
 
 type StartupCard = {
@@ -95,6 +97,9 @@ export default function HomePage() {
   const [leaderboard, setLeaderboard] = useState(leaderboardPreview);
   const [recentlyListedData, setRecentlyListedData] = useState(recentlyListed);
 
+  const [connections, setConnections] = useState<any[] | null>(null);
+  const [revenue, setRevenue] = useState<any[]>([]);
+
   useEffect(() => {
     // 1. Fetch real counts
     fetch("/api/startup-submissions/count")
@@ -144,7 +149,27 @@ export default function HomePage() {
         }
       })
       .catch(console.error);
+
+    // 3. Fetch Overview (for ConnectionStatus & Chart)
+    fetch("/api/startup/1/overview")
+      .then((res) => res.json())
+      .then((data) => {
+        setConnections(data.connections || []);
+        setRevenue(data.revenue || []);
+        console.log("Revenue:", data.revenue);
+      })
+      .catch(console.error);
   }, []);
+
+  const refreshOverview = () => {
+    fetch("/api/startup/1/overview")
+      .then((res) => res.json())
+      .then((data) => {
+        setConnections(data.connections || []);
+        setRevenue(data.revenue || []);
+      })
+      .catch(console.error);
+  };
 
   const formatStatsRevenue = (val: number) => {
     if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`;
@@ -232,6 +257,22 @@ export default function HomePage() {
               </motion.div>
             </motion.div>
           </section>
+
+          <div className="p-6">
+            {!connections ? (
+              <div className="h-[200px] flex items-center justify-center rounded-xl border border-dashed border-border animate-pulse">
+                <p className="text-sm text-muted-foreground">Loading status...</p>
+              </div>
+            ) : (
+              <>
+                <ConnectionStatus connections={connections} />
+                <div className="mt-8">
+                  <h3 className="font-syne text-[18px] font-bold text-foreground mb-4">Revenue Timeline</h3>
+                  <RevenueChart data={revenue} />
+                </div>
+              </>
+            )}
+          </div>
 
           <section className="mt-16">
             <div className="rounded-xl border border-border bg-card">

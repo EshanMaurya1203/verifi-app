@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseServer } from "@/lib/supabase-server";
+import { updateRevenueAndSnapshot } from "@/lib/webhook-handler";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2026-03-25.dahlia" as any,
@@ -8,12 +10,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(req: Request) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 50);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   const body = await req.text();
   const signature = req.headers.get("stripe-signature")!;
 
@@ -22,47 +25,101 @@ export async function POST(req: Request) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err: any) {
-    console.error(`Webhook signature verification failed: ${err.message}`);
+    console.error("[Stripe Webhook] Signature verification failed:", err.message);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  // Handle the event
+  console.log("[Stripe Webhook] Event received:", event.type);
+
   try {
     switch (event.type) {
-      case "account.updated":
+      // ─── Real-time revenue tracking ──────────────────────────
+      case "payment_intent.succeeded": {
+        const payment = event.data.object as Stripe.PaymentIntent;
+        const amount = payment.amount / 100;
+        
+        if (amount < 100) {
+          console.log("Ignoring micro-payment completely:", amount);
+          return new Response("Ignored micro payment", { status: 200 });
+        }
+
+        // Try metadata first, then fall back to provider_connections lookup
+        let startupId = payment.metadata?.startup_id
+          ? Number(payment.metadata.startup_id)
+          : null;
+
+        if (!startupId) {
+          // Fall back: find startup via connected account
+          const connectedAccountId = (event as any).account;
+          if (connectedAccountId) {
+            const { data: connection } = await supabaseServer
+              .from("provider_connections")
+              .select("startup_id")
+              .eq("account_id", connectedAccountId)
+              .eq("provider", "stripe")
+              .single();
+
+            startupId = connection?.startup_id ?? null;
+          }
+        }
+
+        if (!startupId) {
+          console.warn("[Stripe Webhook] No startup_id found for payment:", payment.id);
+          return NextResponse.json({ received: true, skipped: "no_startup_id" });
+        }
+
+        // Also record the raw transaction
+        await supabaseServer.from("revenue_transactions").upsert({
+          startup_id: startupId,
+          provider: "stripe",
+          amount: payment.amount, // stored in smallest unit (cents/paise)
+          currency: (payment.currency || "usd").toUpperCase(),
+          status: payment.status,
+          external_id: payment.id,
+          created_at: new Date(payment.created * 1000).toISOString(),
+        }, { onConflict: "external_id" });
+
+        // 🔥 Real-time revenue + snapshot + trust update
+        await updateRevenueAndSnapshot(startupId, amount, "stripe", payment.id);
+        break;
+      }
+
+      // ─── Legacy: account onboarding ──────────────────────────
+      case "account.updated": {
         const account = event.data.object as Stripe.Account;
         const startupId = account.metadata?.startupId;
 
         if (startupId && account.details_submitted) {
-          // Update startup status to 'connected' or 'verified'
-          await supabaseAdmin
+          await supabaseServer
             .from("startup_submissions")
-            .update({ 
-               verification_status: "stripe_connected",
-               verification_label: "Stripe Verified"
+            .update({
+              verification_status: "stripe_connected",
+              verification_label: "Stripe Verified",
             })
             .eq("id", startupId);
-          
-          console.log(`Startup ${startupId} Stripe account ${account.id} is now fully onboarded.`);
+
+          console.log(`[Stripe Webhook] Startup ${startupId} onboarded via account ${account.id}`);
         }
         break;
+      }
 
-      case "charge.succeeded":
+      // ─── Legacy: charge tracking (backup) ────────────────────
+      case "charge.succeeded": {
         const charge = event.data.object as Stripe.Charge;
-        const connectedAccountId = event.account; // The ID of the connected account
-        
-        // Find the startup matching this connected account
-        const { data: connection } = await supabaseAdmin
+        const connectedAccountId = (event as any).account;
+
+        const { data: connection } = await supabaseServer
           .from("provider_connections")
           .select("startup_id")
           .eq("account_id", connectedAccountId)
+          .eq("provider", "stripe")
           .single();
 
         if (connection?.startup_id) {
-          await supabaseAdmin.from("revenue_transactions").upsert({
+          await supabaseServer.from("revenue_transactions").upsert({
             startup_id: connection.startup_id,
             provider: "stripe",
-            amount: charge.amount, // stored in cents
+            amount: charge.amount,
             currency: charge.currency.toUpperCase(),
             status: charge.status,
             external_id: charge.id,
@@ -70,15 +127,15 @@ export async function POST(req: Request) {
           }, { onConflict: "external_id" });
         }
         break;
+      }
 
       default:
-        console.log(`Unhandled event type ${event.type}`);
+        console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
   } catch (err: any) {
-    console.error("Webhook Error:", err);
+    console.error("[Stripe Webhook] Handler error:", err);
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 }
-

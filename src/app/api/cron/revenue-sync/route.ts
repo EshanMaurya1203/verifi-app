@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { supabaseServer } from "@/lib/supabase-server";
 import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
 
 /**
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
   try {
     // Fetch all unique startup IDs with active connections
-    const { data: connections, error } = await supabaseAdmin
+    const { data: connections, error } = await supabaseServer
       .from("provider_connections")
       .select("startup_id")
       .eq("status", "connected");
@@ -40,9 +40,7 @@ export async function GET(req: Request) {
       try {
         await getAggregatedRevenue(startupId);
 
-        // Trigger fraud detection
-        const { detectFraud } = await import("@/lib/fraud");
-        await detectFraud(startupId);
+
 
         results.successCount++;
       } catch (connErr: any) {

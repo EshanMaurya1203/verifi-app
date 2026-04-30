@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { calculateVerificationScore } from "@/lib/verification";
-import { enforceRateLimit } from "@/lib/rate-limit";
-import { supabaseAdmin } from "@/lib/supabase-admin";
-import { detectFraud, FraudAssessment } from "@/lib/fraud-detection";
+import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
+import { supabaseServer } from "@/lib/supabase-server";
+import { detectFraud } from "@/lib/fraud";
 
 type StartupSubmissionPayload = {
   name: string;
@@ -23,6 +23,7 @@ type StartupSubmissionPayload = {
   confidence_score?: number;
   verified_revenue?: number | null;
   verification_source?: string | null;
+  verified_api_key?: string | null;
 };
 
 const allowedVerificationTypes = new Set(["manual", "social", "proof", "api"]);
@@ -52,13 +53,7 @@ function isWithinMaxLength(value: string | undefined, maxLength: number): boolea
   return value.trim().length <= maxLength;
 }
 
-function getClientIp(req: Request): string {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
-  }
-  return req.headers.get("x-real-ip") || "unknown";
-}
+
 
 function validatePayload(payload: StartupSubmissionPayload): string | null {
   if (!isNonEmptyString(payload.name)) return "name is required";
@@ -96,15 +91,13 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
 
 export async function POST(req: Request) {
   try {
-    const clientIp = getClientIp(req);
-    const rate = enforceRateLimit(`startup-submissions:${clientIp}`, 5, 60_000);
-    if (!rate.allowed) {
+    const identifier = getClientIdentifier(req);
+    const { allowed } = checkRateLimit(identifier, 120000, 5);
+
+    if (!allowed) {
       return NextResponse.json(
-        { success: false, error: "Too many requests. Please try again shortly." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rate.retryAfterSeconds) },
-        }
+        { error: "Rate limit exceeded" },
+        { status: 429 }
       );
     }
 
@@ -154,16 +147,14 @@ export async function POST(req: Request) {
     }
 
     const fraudAssessment = detectFraud({
-      mrr: mrrValue,
-      arr: arrValue,
-      has_proof: !!data.proof_url,
-      has_api: !!data.verified_revenue,
-      has_website: !!data.website,
-      has_socials: !!(data.twitter || data.linkedin),
-    }) as FraudAssessment;
+      amount: mrrValue,
+      previousTransactions: [],
+      timestamps: [],
+      now: Date.now()
+    });
 
-    const fraud_score = fraudAssessment.score;
-    const risk_level = fraudAssessment.risk_level;
+    const risk_level = fraudAssessment.isFraud ? "high" : "low";
+    const fraud_score = fraudAssessment.isFraud ? 30 : 100;
 
     let trust_score = 0;
 
@@ -216,6 +207,12 @@ export async function POST(req: Request) {
       complete_profile: !!(data.startup_name && data.city),
     };
 
+    // Initialize mrr_breakdown
+    const mrr_breakdown: Record<string, number> = {};
+    if (data.verified_revenue && data.verification_source) {
+      mrr_breakdown[data.verification_source] = Number(data.verified_revenue);
+    }
+
     const trust_summary = [];
 
     if (data.verified_revenue) {
@@ -240,7 +237,7 @@ export async function POST(req: Request) {
       trust_summary.push("Potential risk signals detected");
     }
 
-    const { data: insertedData, error: insertError } = await supabaseAdmin
+    const { data: insertedData, error: insertError } = await supabaseServer
       .from("startup_submissions")
       .insert([
         {
@@ -270,6 +267,8 @@ export async function POST(req: Request) {
           risk_level,
           trust_breakdown,
           trust_summary,
+          mrr_breakdown: mrr_breakdown,
+          payment_connected: !!data.verified_revenue,
         },
       ])
       .select();
@@ -286,7 +285,28 @@ export async function POST(req: Request) {
       );
     }
 
-    const { count, error: countError } = await supabaseAdmin
+    const startupId = insertedData[0]?.id;
+
+    // Save provider connection if verified
+    if (startupId && data.verified_revenue && data.verification_source && data.verified_api_key) {
+      let keyId = data.verified_api_key;
+      let keySecret = null;
+      
+      if (data.verification_source === 'razorpay' && data.verified_api_key.includes(':')) {
+        [keyId, keySecret] = data.verified_api_key.split(':');
+      }
+
+      await supabaseServer.from('provider_connections').insert({
+        startup_id: startupId,
+        provider: data.verification_source,
+        key_id: keyId,
+        key_secret: keySecret,
+        last_mrr: Number(data.verified_revenue),
+        is_active: true
+      });
+    }
+
+    const { count, error: countError } = await supabaseServer
       .from("startup_submissions")
       .select("*", { count: "exact", head: true });
 
@@ -305,10 +325,15 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
   try {
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabaseServer
       .from("startup_submissions")
       .select("*")
       .order("trust_score", { ascending: false });

@@ -32,6 +32,13 @@ export default function AdminPage() {
       .from("startup_submissions")
       .update({ verification_status: status })
       .eq("id", id);
+
+    // Recalculate trust score immediately
+    await fetch("/api/trust/calculate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startup_id: id })
+    });
   };
 
   return (

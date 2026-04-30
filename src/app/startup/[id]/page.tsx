@@ -4,6 +4,7 @@ import { ShieldCheck, AlertTriangle, TrendingUp, Award, Globe, Info, CheckCircle
 import VerificationFlow from "@/components/startup/VerificationFlow";
 import { redirect } from "next/navigation";
 import { computeTrustScore } from "@/lib/scoring";
+import { StartupDashboard } from "@/components/startup/StartupDashboard";
 
 function SignalItem({ label, active, description }: { label: string, active: boolean, description: string }) {
   return (
@@ -86,28 +87,9 @@ export default async function Page({
           </div>
         </section>
 
-        {/* Audit Grid */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-neutral-900/40 border border-white/5 p-8 rounded-3xl h-full flex flex-col justify-between">
-            <div>
-              <p className="text-neutral-500 text-[10px] font-bold uppercase tracking-[0.2em] mb-4">Trust Infrastructure</p>
-              <div className="flex flex-col gap-1">
-                <p className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Trust Tier</p>
-                <p className={`text-2xl font-black uppercase tracking-tighter ${
-                  startup.trust_tier === 'verified' ? 'text-green-400' :
-                  startup.trust_tier === 'trusted' ? 'text-blue-400' :
-                  startup.trust_tier === 'emerging' ? 'text-yellow-500' :
-                  startup.trust_tier === 'flagged' ? 'text-red-500' : 'text-neutral-500'
-                }`}>
-                  {startup.trust_tier || 'unverified'}
-                </p>
-              </div>
-              <div className="mt-4 flex flex-col gap-1">
-                 <p className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Confidence Score</p>
-                 <p className="text-xl font-bold tracking-tight text-white/90">{startup.trust_score || 0}<span className="text-neutral-700">/100</span></p>
-              </div>
-            </div>
-          </div>
+        {/* Live Infrastructure Dashboard */}
+        <section className="mb-12">
+          <StartupDashboard id={startup.id} />
         </section>
 
         {/* Verification Signals Panel */}
