@@ -24,28 +24,44 @@ interface StartupOverview {
 export const StartupDashboard = ({ id }: { id: string }) => {
   const [data, setData] = useState<StartupOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        const res = await fetch(`/api/startup/${id}/overview`);
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || "Failed to fetch audit data");
-        }
-        const json = await res.json();
-        setData(json);
-      } catch (err: any) {
-        console.error("[Dashboard] Fetch error:", err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/startup/${id}/overview`);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to fetch audit data");
       }
+      const json = await res.json();
+      setData(json);
+    } catch (err: any) {
+      console.error("[Dashboard] Fetch error:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchData();
   }, [id]);
+
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      const res = await fetch(`/api/startup/${id}/sync`, { method: "POST" });
+      if (!res.ok) throw new Error("Sync failed");
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      alert("Manual sync failed. Please try again.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -97,12 +113,22 @@ export const StartupDashboard = ({ id }: { id: string }) => {
               </div>
               <h3 className="text-xs font-black uppercase tracking-[0.3em] text-neutral-400">Infrastructure</h3>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/80">Live Sync</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/80">Live Sync</span>
+              </div>
+              <button 
+                onClick={handleSync}
+                disabled={syncing}
+                className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-400 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                {syncing ? "Syncing..." : "Sync Now"}
+              </button>
             </div>
           </div>
 

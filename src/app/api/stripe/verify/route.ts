@@ -96,6 +96,8 @@ export async function POST(req: Request) {
       const prevTxAmounts = (history ?? []).map(h => Number(h.amount));
       const prevTimestamps = (history ?? []).map(h => new Date(h.created_at).getTime());
 
+      const amounts = recentPayments.map(p => p.amount / 100);
+
       // Check for spikes using the highest individual transaction in this batch
       const currentMaxTx = amounts.length > 0 ? Math.max(...amounts) : 0;
 
