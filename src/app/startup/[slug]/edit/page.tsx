@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { EditFounderForm } from "./EditFounderForm";
 import { AlertTriangle } from "lucide-react";
@@ -7,7 +7,7 @@ export default async function EditStartupProfile({ params }: { params: Promise<{
   const resolvedParams = await params;
   const slug = decodeURIComponent(resolvedParams.slug);
 
-  let query = supabaseAdmin.from("startup_submissions").select("*");
+  let query = supabaseServer.from("startup_submissions").select("*");
   if (!isNaN(Number(slug))) {
     query = query.eq("id", Number(slug));
   } else {

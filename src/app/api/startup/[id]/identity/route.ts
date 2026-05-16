@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 
 export async function PUT(
   request: Request,
@@ -11,7 +11,7 @@ export async function PUT(
     
     const { founder_name, founder_avatar, startup_logo, founder_bio } = body;
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabaseServer
       .from("startup_submissions")
       .update({
         founder_name,

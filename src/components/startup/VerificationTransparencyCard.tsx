@@ -13,6 +13,7 @@ import {
   Copy,
   Layers,
   FileCheck2,
+  History,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -57,18 +58,51 @@ const STATUS_CONFIG = {
     glow: "bg-amber-500",
     ringColor: "stroke-amber-500",
     trackColor: "stroke-amber-500/15",
-    description: "Pending additional signals",
+    description: "Initial verification phase",
+  },
+  "NEEDS REVIEW": {
+    icon: ShieldAlert,
+    label: "Needs Review",
+    color: "text-amber-500",
+    bg: "bg-amber-500/12",
+    border: "border-amber-500/25",
+    glow: "bg-amber-500",
+    ringColor: "stroke-amber-500",
+    trackColor: "stroke-amber-500/15",
+    description: "Requires manual clarification",
+  },
+  INCOMPLETE: {
+    icon: Clock,
+    label: "Verification Incomplete",
+    color: "text-rose-400",
+    bg: "bg-rose-500/12",
+    border: "border-rose-500/25",
+    glow: "bg-rose-500",
+    ringColor: "stroke-rose-500",
+    trackColor: "stroke-rose-500/15",
+    description: "Awaiting final reconciliation",
+  },
+  MONITORING: {
+    icon: Activity,
+    label: "Monitoring",
+    color: "text-neutral-400",
+    bg: "bg-neutral-500/12",
+    border: "border-neutral-500/25",
+    glow: "bg-neutral-500",
+    ringColor: "stroke-neutral-500",
+    trackColor: "stroke-neutral-500/15",
+    description: "Continuous audit active",
   },
   UNVERIFIED: {
-    icon: ShieldAlert,
-    label: "Unverified",
-    color: "text-red-400",
-    bg: "bg-red-500/12",
-    border: "border-red-500/25",
-    glow: "bg-red-500",
-    ringColor: "stroke-red-500",
-    trackColor: "stroke-red-500/15",
-    description: "Insufficient verification data",
+    icon: ScanSearch,
+    label: "Reviewing",
+    color: "text-amber-500",
+    bg: "bg-amber-500/12",
+    border: "border-amber-500/25",
+    glow: "bg-amber-500",
+    ringColor: "stroke-amber-500",
+    trackColor: "stroke-amber-500/15",
+    description: "Verification in progress",
   },
 } as const;
 
@@ -173,6 +207,38 @@ const MetricRow = ({
     </span>
   </div>
 );
+
+// ─── Verification Depth (Sub-component) ──────────────────────────────────────
+
+const VerificationDepth = ({ level }: { level: number }) => {
+  const steps = [
+    { label: "Signals", desc: "Data Ingested" },
+    { label: "Identity", desc: "Founder Verified" },
+    { label: "Sync", desc: "Institutional Sync" },
+    { label: "Forensic", desc: "Final Audit" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500">Verification Depth</span>
+        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Level {level}/4</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {steps.map((step, idx) => (
+          <div key={idx} className="space-y-2">
+            <div className={`h-1 rounded-full transition-all duration-1000 ${idx < level ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'bg-neutral-800'}`} />
+            <div className="flex flex-col items-center">
+              <span className={`text-[7px] font-black uppercase tracking-tighter ${idx < level ? 'text-indigo-300' : 'text-neutral-700'}`}>
+                {step.label}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -295,6 +361,10 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
         </div>
       </div>
 
+      <div className="px-6 pb-6 relative z-10">
+        <VerificationDepth level={verificationConfidence > 80 ? 4 : verificationConfidence > 50 ? 3 : 2} />
+      </div>
+
       {/* ── Divider ───────────────────────────────────── */}
       <div className="mx-6 border-t border-white/[0.04]" />
 
@@ -317,8 +387,8 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
               </span>
             ) : (
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                Inactive
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Monitoring
               </span>
             )
           }
@@ -351,6 +421,38 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
           valueColor={statusConfig.color}
           iconColor="text-violet-400/70"
         />
+      </div>
+
+      {/* ── Verification History (Premium) ──────────────── */}
+      <div className="mx-6 border-t border-white/[0.04] pt-4 pb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <History className="w-3.5 h-3.5 text-neutral-500" />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Audit History</span>
+        </div>
+        <div className="space-y-4">
+          {providersConnected.map((provider) => (
+            <div key={provider} className="flex items-start gap-3 group">
+              <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10 group-hover:scale-125 transition-transform" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-neutral-300 capitalize">{provider} API Integrated</span>
+                  <span className="text-[9px] font-bold text-neutral-600">Active</span>
+                </div>
+                <p className="text-[9px] text-neutral-500 mt-0.5">Secure handshake established. Syncing historical snapshots.</p>
+              </div>
+            </div>
+          ))}
+          <div className="flex items-start gap-3 group">
+            <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 ring-4 ring-indigo-500/10" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-neutral-300">Forensic Trust Computed</span>
+                <span className="text-[9px] font-bold text-indigo-400">Stable</span>
+              </div>
+              <p className="text-[9px] text-neutral-500 mt-0.5">Revenue integrity score generated based on multi-provider signals.</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

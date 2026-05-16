@@ -15,13 +15,14 @@ import {
   Activity
 } from "lucide-react";
 
-type VerificationStep = "connect" | "syncing" | "analyzing" | "summary" | "failed";
+type VerificationStep = "connect" | "syncing" | "analyzing" | "summary" | "incomplete";
 
 interface FounderVerificationFlowProps {
   startupId: string;
+  slug: string;
 }
 
-export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = ({ startupId }) => {
+export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = ({ startupId, slug }) => {
   const router = useRouter();
   
   const [currentStep, setCurrentStep] = useState<VerificationStep>("connect");
@@ -47,7 +48,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
   ];
 
   const getStepIndex = (step: VerificationStep) => {
-    if (step === "failed") return 1;
+    if (step === "incomplete") return 1;
     return STEPS.findIndex(s => s.id === step);
   };
 
@@ -124,12 +125,12 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
       if (friendlyError.includes("401")) friendlyError = "Invalid API Key: Please verify your credentials and try again.";
       
       setErrorMsg(friendlyError);
-      setCurrentStep("failed");
+      setCurrentStep("incomplete");
     }
   };
 
   const handlePublish = () => {
-    router.push(`/startup/${startupId}`);
+    router.push(`/startup/${slug}`);
   };
 
   return (
@@ -140,7 +141,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
           {STEPS.map((step, idx) => {
             const isActive = getStepIndex(currentStep) === idx;
             const isCompleted = getStepIndex(currentStep) > idx || currentStep === "summary";
-            const isFailed = currentStep === "failed" && idx === 1;
+            const isFailed = currentStep === "incomplete" && idx === 1;
 
             return (
               <div key={step.id} className="flex flex-col items-center gap-3 w-1/4">
@@ -168,7 +169,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
         <div className="absolute top-4 left-0 right-0 h-[2px] bg-white/5 -z-0 rounded-full" />
         <div 
           className="absolute top-4 left-0 h-[2px] bg-indigo-500 -z-0 transition-all duration-700 ease-in-out"
-          style={{ width: `${(getStepIndex(currentStep === "failed" ? "syncing" : currentStep) / (STEPS.length - 1)) * 100}%` }}
+          style={{ width: `${(getStepIndex(currentStep === "incomplete" ? "syncing" : currentStep) / (STEPS.length - 1)) * 100}%` }}
         />
       </div>
 
@@ -176,7 +177,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
       <div className="bg-neutral-900/40 border border-white/5 rounded-[2rem] p-8 min-h-[400px] flex flex-col relative overflow-hidden">
         
         {/* 1. Connect Provider */}
-        {(currentStep === "connect" || currentStep === "failed") && (
+        {(currentStep === "connect" || currentStep === "incomplete") && (
           <div className="flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Connect Provider</h2>
@@ -337,7 +338,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
               <div className="bg-black/50 border border-white/5 p-5 rounded-2xl flex flex-col items-center text-center">
                 <Fingerprint className={`w-5 h-5 mb-3 ${
                   overviewData.authenticity?.level === "Organic" ? "text-emerald-400" :
-                  overviewData.authenticity?.level === "Moderate" ? "text-amber-400" : "text-red-400"
+                  overviewData.authenticity?.level === "Moderate" ? "text-amber-400" : "text-orange-400"
                 }`} />
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Authenticity</span>
                 <span className="text-xl font-black uppercase tracking-tight text-white">{overviewData.authenticity?.level || "N/A"}</span>

@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     // Test API call to verify keys
     try {
       await razorpay.payments.all({ count: 1 });
-    } catch (apiErr: any) {
+    } catch (apiErr: unknown) {
       return NextResponse.json({ 
         success: false, 
         error: "Invalid Razorpay API keys. Please check your Key ID and Secret." 
@@ -110,11 +110,12 @@ export async function POST(req: Request) {
       message: "Razorpay connected and initial sync complete"
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Connection failed";
     console.error("Razorpay verification error:", err);
     return NextResponse.json({
       success: false,
-      error: err.message || "Connection failed"
+      error: errorMsg
     }, { status: 400 });
   }
 }

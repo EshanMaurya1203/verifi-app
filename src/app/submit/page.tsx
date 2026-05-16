@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/url";
 
 type PaymentMethod = {
   id: string;
@@ -148,7 +149,7 @@ export default function SubmitPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/submit`,
+        redirectTo: `${getBaseUrl()}/submit`,
       },
     });
   };
@@ -192,7 +193,6 @@ export default function SubmitPage() {
   useEffect(() => {
     const getUser = async () => {
       const { data } = await supabase.auth.getUser();
-      console.log("User:", data.user);
       setUser(data.user);
     };
 
@@ -327,7 +327,7 @@ export default function SubmitPage() {
 
         proof_url = data.publicUrl;
 
-        console.log("UPLOAD SUCCESS:", proof_url);
+
       }
 
       const confidenceMap: Record<string, number> = {
@@ -359,7 +359,7 @@ export default function SubmitPage() {
         verified_api_key: verifiedRevenue ? form.apiKey : null,
       };
 
-      console.log("FINAL PAYLOAD:", payload);
+
 
       const res = await fetch("/api/startup-submissions", {
         method: "POST",
@@ -371,7 +371,7 @@ export default function SubmitPage() {
 
       const result = await res.json();
 
-      console.log("API RESPONSE:", result);
+
 
       if (!res.ok || !result.success) {
         alert(result.error || "Submission failed");

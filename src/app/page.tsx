@@ -142,7 +142,7 @@ export default function HomePage() {
             description: s.notes || "No description provided.",
             mrr: s.mrr ? `₹${(s.mrr / 100000).toFixed(1)}L` : "₹0",
             growth: "+0%",
-            badge: s.verification_label || "Unverified",
+            badge: s.verification_label || "Reviewing",
             trust_score: s.trust_score || 0,
           }));
           setRecentlyListedData(recent);
@@ -156,7 +156,6 @@ export default function HomePage() {
       .then((data) => {
         setConnections(data.connections || []);
         setRevenue(data.revenue || []);
-        console.log("Revenue:", data.revenue);
       })
       .catch(console.error);
   }, []);

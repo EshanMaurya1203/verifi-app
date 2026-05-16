@@ -24,8 +24,9 @@ export async function POST(req: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err: any) {
-    console.error("[Stripe Webhook] Signature verification failed:", err.message);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error("[Stripe Webhook] Signature verification failed:", errorMsg);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
 
         if (!startupId) {
           // Fall back: find startup via connected account
-          const connectedAccountId = (event as any).account;
+          const connectedAccountId = (event as Stripe.Event & { account?: string }).account;
           if (connectedAccountId) {
             const { data: connection } = await supabaseServer
               .from("provider_connections")
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
       // ─── Legacy: charge tracking (backup) ────────────────────
       case "charge.succeeded": {
         const charge = event.data.object as Stripe.Charge;
-        const connectedAccountId = (event as any).account;
+        const connectedAccountId = (event as Stripe.Event & { account?: string }).account;
 
         const { data: connection } = await supabaseServer
           .from("provider_connections")
@@ -134,8 +135,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Webhook handler failed";
     console.error("[Stripe Webhook] Handler error:", err);
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }

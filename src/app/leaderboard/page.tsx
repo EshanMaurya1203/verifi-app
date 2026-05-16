@@ -1,6 +1,6 @@
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
-import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award } from "lucide-react";
+import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award, Clock } from "lucide-react";
 import Link from "next/link";
 import { getStartupMetrics } from "@/lib/revenue-aggregation";
 
@@ -27,13 +27,13 @@ function TierBadge({ tier, status }: { tier: string, status: string }) {
       icon: TrendingUp 
     },
     unverified: { 
-      label: "Unverified", 
+      label: "Reviewing", 
       color: "bg-neutral-800/50 text-neutral-500 border-neutral-700/50", 
-      icon: Info 
+      icon: Clock 
     },
     flagged: { 
-      label: "Flagged", 
-      color: "bg-red-500/10 text-red-500 border-red-500/20", 
+      label: "Needs Review", 
+      color: "bg-amber-500/10 text-amber-500 border-amber-500/20", 
       icon: AlertTriangle 
     },
   };
@@ -121,7 +121,7 @@ export default async function LeaderboardPage() {
               
               return (
                 <Link 
-                  href={`/startup/${row.id}`} 
+                  href={`/startup/${row.slug}`} 
                   key={row.id}
                   className={`grid grid-cols-12 px-10 py-8 items-center hover:bg-white/[0.02] transition-all group ${isFlagged ? 'opacity-50 grayscale' : ''} ${isVerified ? 'bg-green-500/[0.01]' : ''}`}
                 >

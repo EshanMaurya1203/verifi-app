@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 import { computeTrustScore } from "@/lib/scoring";
 import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
 import { detectFraud } from "@/lib/fraud";
@@ -21,9 +21,6 @@ export async function runProviderSync(
   // Filter successful payments
   const recentPayments = allPayments.filter(p => p.status === "successful");
 
-  console.log(`Total payments fetched for ${providerName}:`, allPayments.length);
-  console.log(`Successful payments:`, recentPayments.length);
-
   // 2. Calculate REAL MRR based on sum of the last 30 days
   const mrr = recentPayments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -32,7 +29,7 @@ export async function runProviderSync(
   let rateLimitTriggered = false;
   let isClean = false;
 
-  const { data: history } = await supabaseAdmin
+  const { data: history } = await supabaseServer
     .from("revenue_transactions")
     .select("amount, created_at")
     .eq("startup_id", startupId)
@@ -58,7 +55,7 @@ export async function runProviderSync(
 
   if (spikeDetected) {
     console.warn(`⚠️ Revenue spike detected — possible manipulation via ${providerName}`);
-    await supabaseAdmin.from("fraud_signals").insert({
+    await supabaseServer.from("fraud_signals").insert({
       startup_id: startupId,
       signal_type: "REVENUE_SPIKE",
       severity: 3, 
@@ -86,7 +83,7 @@ export async function runProviderSync(
   }
 
   // Save connection
-  const { data: existingConn } = await supabaseAdmin
+  const { data: existingConn } = await supabaseServer
     .from("provider_connections")
     .select("id")
     .eq("startup_id", startupId)
@@ -94,7 +91,7 @@ export async function runProviderSync(
     .single();
 
   if (existingConn) {
-    await supabaseAdmin
+    await supabaseServer
       .from("provider_connections")
       .update({
         account_id: accountId,
@@ -105,7 +102,7 @@ export async function runProviderSync(
       })
       .eq("id", existingConn.id);
   } else {
-    await supabaseAdmin
+    await supabaseServer
       .from("provider_connections")
       .insert({
         startup_id: startupId,
@@ -119,7 +116,7 @@ export async function runProviderSync(
   }
 
   // Insert latest transaction record to trigger webhooks/updates if needed
-  const { data: lastTx } = await supabaseAdmin
+  const { data: lastTx } = await supabaseServer
     .from("revenue_transactions")
     .select("*")
     .eq("startup_id", startupId)
@@ -127,7 +124,7 @@ export async function runProviderSync(
     .limit(1);
 
   if (!lastTx || lastTx.length === 0 || lastTx[0].amount !== mrr) {
-    await supabaseAdmin.from("revenue_transactions").insert({
+    await supabaseServer.from("revenue_transactions").insert({
       startup_id: startupId,
       amount: mrr,
       provider: providerName,
@@ -142,7 +139,7 @@ export async function runProviderSync(
   const aggregatedResult = await getAggregatedRevenue(Number(startupId));
   const snapshotRevenue = aggregatedResult?.totalRevenue ?? mrr;
 
-  const { data: lastSnap } = await supabaseAdmin
+  const { data: lastSnap } = await supabaseServer
     .from("revenue_snapshots")
     .select("*")
     .eq("startup_id", startupId)
@@ -150,7 +147,7 @@ export async function runProviderSync(
     .limit(1);
 
   if (!lastSnap || lastSnap[0]?.total_revenue !== snapshotRevenue) {
-    await supabaseAdmin.from("revenue_snapshots").insert({
+    await supabaseServer.from("revenue_snapshots").insert({
       startup_id: startupId,
       total_revenue: snapshotRevenue,
       provider_breakdown: aggregatedResult?.breakdown || { [providerName]: snapshotRevenue },
@@ -160,7 +157,7 @@ export async function runProviderSync(
   }
 
   // 5. Update startup
-  await supabaseAdmin
+  await supabaseServer
     .from("startup_submissions")
     .update({ 
       payment_connected: true,

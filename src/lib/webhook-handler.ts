@@ -24,13 +24,6 @@ export async function updateRevenueAndSnapshot(
   provider: string,
   paymentId: string
 ) {
-  console.log("🔥 STEP 0: FUNCTION STARTED", {
-    startupId,
-    amount,
-    provider,
-    paymentId
-  });
-
   // ─── STEP 1: IDEMPOTENCY CHECK ────────────────────────────────────────────
   const { data: existingTx, error: existingError } = await supabaseServer
     .from("revenue_transactions")
@@ -44,7 +37,6 @@ export async function updateRevenueAndSnapshot(
   }
 
   if (existingTx && existingTx.length > 0) {
-    console.log("🟡 Duplicate payment ignored:", paymentId);
     return;
   }
 
@@ -55,7 +47,7 @@ export async function updateRevenueAndSnapshot(
     .eq("id", startupId)
     .single();
 
-  console.log("STEP 2 RESULT:", { currentStartup, fetchError });
+
 
   if (fetchError || !currentStartup) {
     console.error("❌ Fetch failed:", fetchError);
@@ -91,16 +83,9 @@ export async function updateRevenueAndSnapshot(
   if (fraud.isFraud) {
     newPenaltyCount += 1;
     lastPenaltyAt = new Date().toISOString();
-    console.warn(`Abuse detected (${fraud.reason}), penalty applied. Count: ${newPenaltyCount}`);
-  } else if (isClean) {
-    console.log(`Clean event incremented → ${newCleanEvents}`);
-  } else {
-    console.log("🟡 Non-fraud micro-payment or ignore.");
   }
 
-  if (!isClean && !fraud.isFraud) {
-    console.log("⚠️ Clean events RESET to 0 (non-clean activity)");
-  }
+
 
   // ─── STEP 5: INSERT TRANSACTION ──────────────────────────────────────────
   const { error: txError } = await supabaseServer
@@ -114,27 +99,26 @@ export async function updateRevenueAndSnapshot(
 
   if (txError) {
     if (txError.message?.toLowerCase().includes("duplicate")) {
-      console.log("🟡 Race-condition duplicate, aborting:", paymentId);
       return;
     }
     console.error("Transaction insert failed:", txError);
     throw txError;
   }
 
-  console.log(`✅ Processed payment ${paymentId} → startup ${startupId}: +₹${amount}`);
+
 
   // ─── STEP 6: MRR CALCULATION ─────────────────────────────────────────────
-  let mrr_breakdown = (currentStartup?.mrr_breakdown as any) || {};
+  const mrr_breakdown: Record<string, number> = (currentStartup?.mrr_breakdown as Record<string, number>) || {};
   mrr_breakdown[provider] = (mrr_breakdown[provider] || 0) + Number(amount);
   if (mrr_breakdown[provider] < 0) mrr_breakdown[provider] = 0;
 
-  let totalMrr = Object.values(mrr_breakdown).reduce((a: number, b: any) => a + Number(b), 0);
+  let totalMrr = Object.values(mrr_breakdown).reduce((a: number, b: number) => a + Number(b), 0);
   if (totalMrr < 0) totalMrr = 0;
 
   // ─── STEP 7: TRUST SCORE ─────────────────────────────────────────────────
-  let scoreResultUpdateData: any = {};
+  let scoreResultUpdateData: Record<string, unknown> = {};
   if (amount >= 100) {
-    console.log("Recomputing trust score for startup:", startupId);
+
 
     const projectedStartup = {
       ...currentStartup,
@@ -151,7 +135,6 @@ export async function updateRevenueAndSnapshot(
     });
     scoreResultUpdateData = scoreResult.updateData || {};
   } else {
-    console.log("Ignoring micro-payment for trust:", amount);
   }
 
   // ─── STEP 8: SNAPSHOT (no early-return, just skip insert if duplicate) ───
@@ -177,7 +160,7 @@ export async function updateRevenueAndSnapshot(
       throw snapshotError;
     }
   } else {
-    console.log("Skipping duplicate snapshot");
+
   }
 
   // ─── STEP 9: SINGLE ATOMIC UPDATE ────────────────────────────────────────
@@ -191,7 +174,7 @@ export async function updateRevenueAndSnapshot(
                                // trust_breakdown, penalty_count, last_penalty_at
   };
 
-  console.log("FINAL UPDATE PAYLOAD:", updatePayload);
+
 
   const { error: finalUpdateError } = await supabaseServer
     .from("startup_submissions")
@@ -203,14 +186,5 @@ export async function updateRevenueAndSnapshot(
     throw finalUpdateError;
   }
 
-  // ─── VALIDATION LOG ───────────────────────────────────────────────────────
-  const { data: postUpdateRow } = await supabaseServer
-    .from("startup_submissions")
-    .select("clean_events")
-    .eq("id", startupId)
-    .single();
 
-  console.log("POST-UPDATE CLEAN EVENTS:", postUpdateRow);
-
-  console.log("✅ FUNCTION SUCCESS");
 }

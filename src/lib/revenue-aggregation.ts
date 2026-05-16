@@ -51,10 +51,10 @@ export async function getStripeRevenue(apiKey: string): Promise<ProviderRevenue>
 
     const data = await res.json();
     const charges = (data.data || []).filter(
-      (t: any) => t.type === "charge" || t.type === "payment"
+      (t: { type: string }) => t.type === "charge" || t.type === "payment"
     );
     const totalCents = charges.reduce(
-      (sum: number, t: any) => sum + (t.amount || 0),
+      (sum: number, t: { amount?: number }) => sum + (t.amount || 0),
       0
     );
 
@@ -65,14 +65,15 @@ export async function getStripeRevenue(apiKey: string): Promise<ProviderRevenue>
       transactionCount: charges.length,
       success: true,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
     return {
       provider: "stripe",
       revenue: 0,
       currency: "INR",
       transactionCount: 0,
       success: false,
-      error: err.message,
+      error: errorMsg,
     };
   }
 }
@@ -112,10 +113,10 @@ export async function getRazorpayRevenue(
 
     const data = await res.json();
     const captured = (data.items || []).filter(
-      (p: any) => p.status === "captured"
+      (p: { status: string }) => p.status === "captured"
     );
     const totalPaise = captured.reduce(
-      (sum: number, p: any) => sum + (p.amount || 0),
+      (sum: number, p: { amount?: number }) => sum + (p.amount || 0),
       0
     );
 
@@ -126,14 +127,15 @@ export async function getRazorpayRevenue(
       transactionCount: captured.length,
       success: true,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
     return {
       provider: "razorpay",
       revenue: 0,
       currency: "INR",
       transactionCount: 0,
       success: false,
-      error: err.message,
+      error: errorMsg,
     };
   }
 }
@@ -208,20 +210,31 @@ export async function getAggregatedRevenue(
   const breakdown: Record<string, number> = {};
 
   for (const result of providerResults) {
+    const cached = connections.find((c) => c.provider === result.provider);
+    const cachedRevenue = cached?.latest_revenue ? Number(cached.latest_revenue) : 0;
+
     if (result.success) {
-      totalRevenue += result.revenue;
-      breakdown[result.provider] = result.revenue;
+      // 🛡️ Suspicious Zero Detection: 
+      // If live returns 0, but cache was significantly higher, AND we have 0 transactions,
+      // it might be a temporary sync issue or API state. 
+      // We use the cache as a safety fallback unless confirmed.
+      if (result.revenue === 0 && result.transactionCount === 0 && cachedRevenue > 0) {
+        console.warn(`[RevenueEngine] Suspicious zero for ${result.provider}. Falling back to cache.`);
+        totalRevenue += cachedRevenue;
+        breakdown[result.provider] = cachedRevenue;
+      } else {
+        totalRevenue += result.revenue;
+        breakdown[result.provider] = result.revenue;
+      }
     } else {
       // Fallback to cached latest_revenue when a live call fails
       console.warn(
         `[RevenueEngine] ${result.provider} live fetch failed, using cache:`,
         result.error
       );
-      const cached = connections.find((c) => c.provider === result.provider);
-      if (cached?.latest_revenue) {
-        const fallback = Number(cached.latest_revenue);
-        totalRevenue += fallback;
-        breakdown[result.provider] = fallback;
+      if (cachedRevenue > 0) {
+        totalRevenue += cachedRevenue;
+        breakdown[result.provider] = cachedRevenue;
       }
     }
   }
@@ -261,11 +274,17 @@ export async function getAggregatedRevenue(
     .maybeSingle();
 
   const roundedTotal = Math.round(totalRevenue);
+  
+  // 🛡️ Snapshot Consistency Guard:
+  // Prevent combined snapshots from collapsing to zero if we have active connections
+  // and previous revenue. A total collapse to 0 is highly suspicious in a production app.
+  const isSuspiciousCollapse = roundedTotal === 0 && lastSnapshot && Number(lastSnapshot.total_revenue) > 0;
+
   const isChanged = !lastSnapshot || 
     Number(lastSnapshot.total_revenue) !== roundedTotal ||
     JSON.stringify(lastSnapshot.provider_breakdown) !== JSON.stringify(breakdown);
 
-  if (isChanged) {
+  if (isChanged && !isSuspiciousCollapse) {
     await supabaseServer.from("revenue_snapshots").insert({
       startup_id: startupId,
       total_revenue: roundedTotal,
@@ -273,8 +292,8 @@ export async function getAggregatedRevenue(
       provider: "combined",
     });
     console.log("[RevenueEngine] Snapshot persisted:", { startupId, total_revenue: roundedTotal });
-  } else {
-    console.log("[RevenueEngine] Skipping duplicate snapshot — revenue unchanged");
+  } else if (isSuspiciousCollapse) {
+    console.warn("[RevenueEngine] Prevented suspicious zero-value snapshot for:", startupId);
   }
 
   return { totalRevenue, breakdown, providers: providerResults };
@@ -310,7 +329,6 @@ export async function getRevenueHistory(startupId: number) {
  */
 export async function getStartupMetrics(startupId: number) {
   try {
-    console.log("[RevenueEngine] Fetching metrics for:", startupId);
 
     const { data, error } = await supabaseServer
       .from("revenue_snapshots")
@@ -330,7 +348,7 @@ export async function getStartupMetrics(startupId: number) {
       };
     }
 
-    console.log("[RevenueEngine] RAW DATA:", data);
+
 
     // 🟡 EMPTY DATA CASE (MOST IMPORTANT FIX)
     if (!data || data.length === 0) {
@@ -349,27 +367,31 @@ export async function getStartupMetrics(startupId: number) {
       (d) => new Date(d.created_at) < new Date(latest.created_at)
     ) || null;
 
-    console.log("[Snapshots]", data);
-    console.log("[Latest vs Previous]", { latest, previous });
+
 
     const mrr = latest?.total_revenue ?? 0;
     const arr = mrr * 12;
 
     let growthPercentage = 0;
 
-    if (previous && previous.total_revenue > 0) {
+    // 🛡️ Reliable Growth Metric:
+    // Look for a baseline from at least 24h ago to avoid 0% growth from frequent syncs.
+    // Also skip zero-revenue snapshots to avoid false -100% growth.
+    const baselineThreshold = new Date(latest.created_at).getTime() - (24 * 60 * 60 * 1000);
+    const stablePrevious = data.find(
+      (d) => new Date(d.created_at).getTime() < baselineThreshold && Number(d.total_revenue) > 0
+    ) || data.find(
+      (d) => new Date(d.created_at) < new Date(latest.created_at) && Number(d.total_revenue) > 0
+    ) || previous;
+
+    if (stablePrevious && stablePrevious.total_revenue > 0) {
       growthPercentage =
-        ((latest.total_revenue - previous.total_revenue) /
-          previous.total_revenue) *
+        ((latest.total_revenue - stablePrevious.total_revenue) /
+          stablePrevious.total_revenue) *
         100;
     }
 
-    console.log("[RevenueEngine] FINAL METRICS:", {
-      startupId,
-      mrr,
-      arr,
-      growthPercentage,
-    });
+
 
     return {
       mrr,

@@ -44,7 +44,7 @@ export interface RevenueEvent {
   timestamp: number;
 }
 
-export type AuthenticityLevel = "Suspicious" | "Moderate" | "Organic";
+export type AuthenticityLevel = "Needs Review" | "Moderate" | "Organic";
 
 export interface AuthenticityResult {
   authenticity_score: number;
@@ -157,10 +157,10 @@ export function analyzeRevenueAuthenticity(events: RevenueEvent[]): Authenticity
     // 2a. Fixed-interval penalty (robotic timing)
     if (gapCV < CLUSTER_GAP_CV_THRESHOLD) {
       score -= 20;
-      flags.push("Transaction timestamps are suspiciously uniform");
+      flags.push("Transaction timestamps are highly uniform");
     } else if (gapCV < 0.3) {
       score -= 10;
-      flags.push("Low variation in payment timing detected");
+      flags.push("Stable variation in payment timing");
     }
 
     // 2b. Burst detection (many events in a short window)
@@ -237,7 +237,7 @@ export function analyzeRevenueAuthenticity(events: RevenueEvent[]): Authenticity
 }
 
 function getAuthenticityLevel(score: number): AuthenticityLevel {
-  if (score < 30) return "Suspicious";
+  if (score < 30) return "Needs Review";
   if (score < 60) return "Moderate";
   return "Organic";
 }

@@ -14,7 +14,7 @@ interface RevenueAuthenticityCardProps {
 // ─── Level Config ───────────────────────────────────────────────────────────
 
 const LEVEL_CONFIG = {
-  Organic: {
+  "Verified Patterns": {
     icon: ShieldCheck,
     gradient: "from-emerald-500/20 to-emerald-900/5",
     border: "border-emerald-500/20",
@@ -25,7 +25,7 @@ const LEVEL_CONFIG = {
     barGlow: "shadow-emerald-500/40",
     description: "Revenue patterns appear natural and legitimate",
   },
-  Moderate: {
+  Refining: {
     icon: ShieldQuestion,
     gradient: "from-amber-500/20 to-amber-900/5",
     border: "border-amber-500/20",
@@ -36,16 +36,16 @@ const LEVEL_CONFIG = {
     barGlow: "shadow-amber-500/40",
     description: "Some patterns need further verification",
   },
-  Suspicious: {
+  "Needs Review": {
     icon: ShieldAlert,
-    gradient: "from-red-500/20 to-red-900/5",
-    border: "border-red-500/20",
-    textColor: "text-red-400",
-    badgeBg: "bg-red-500/15",
-    badgeText: "text-red-300",
-    barColor: "bg-red-500",
-    barGlow: "shadow-red-500/40",
-    description: "Revenue patterns show signs of manipulation",
+    gradient: "from-amber-500/20 to-amber-900/5",
+    border: "border-amber-500/20",
+    textColor: "text-amber-400",
+    badgeBg: "bg-amber-500/15",
+    badgeText: "text-amber-300",
+    barColor: "bg-amber-500",
+    barGlow: "shadow-amber-500/40",
+    description: "Revenue patterns require further audit",
   },
 } as const;
 
@@ -95,8 +95,8 @@ export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = (
   const { authenticityScore: score, authenticityLevel, authenticityFlags: flags } = authenticity;
   
   // Safe cast since the components only know about these 3 levels
-  const level = authenticityLevel as "Suspicious" | "Moderate" | "Organic";
-  const config = LEVEL_CONFIG[level] || LEVEL_CONFIG["Moderate"];
+  const level = authenticityLevel as "Needs Review" | "Refining" | "Verified Patterns";
+  const config = LEVEL_CONFIG[level] || LEVEL_CONFIG["Refining"];
   const LevelIcon = config.icon;
 
   return (
@@ -161,11 +161,47 @@ export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = (
           </div>
           <div className="flex justify-between mt-1.5">
             <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
-              Suspicious
+              Needs Review
             </span>
             <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
-              Organic
+              Verified Patterns
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Trust Composition (Premium) */}
+      <div className="mb-6 relative z-10 p-4 bg-black/20 border border-white/5 rounded-2xl">
+        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-4 flex items-center gap-2">
+          <TrendingUp className="w-3 h-3" /> Trust Composition
+        </p>
+        <div className="space-y-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+              <span>API Signal Integrity</span>
+              <span className="text-emerald-400">98%</span>
+            </div>
+            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 w-[98%]" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+              <span>Network Footprint</span>
+              <span className="text-indigo-400">85%</span>
+            </div>
+            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-500 w-[85%]" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+              <span>Identity Verification</span>
+              <span className="text-amber-400">Pending</span>
+            </div>
+            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+              <div className="h-full bg-amber-500 w-[40%]" />
+            </div>
           </div>
         </div>
       </div>

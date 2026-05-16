@@ -1,6 +1,6 @@
 import { FounderVerificationFlow } from "@/components/startup/FounderVerificationFlow";
 import { Navbar } from "@/components/layout/Navbar";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 
 export default async function VerifyPage({
   params,
@@ -8,12 +8,10 @@ export default async function VerifyPage({
   params: Promise<{ slug: string }>;
 }) {
   const resolvedParams = await params;
-  const rawId = resolvedParams.slug;
-
-  const { data: startup } = await supabaseAdmin
+  const { data: startup } = await supabaseServer
     .from("startup_submissions")
-    .select("startup_name")
-    .eq("id", rawId)
+    .select("id, startup_name")
+    .eq("slug", resolvedParams.slug)
     .single();
 
   return (
@@ -28,7 +26,7 @@ export default async function VerifyPage({
           </h1>
         </div>
 
-        <FounderVerificationFlow startupId={rawId} />
+        <FounderVerificationFlow startupId={startup?.id || ""} slug={resolvedParams.slug} />
       </main>
     </div>
   );

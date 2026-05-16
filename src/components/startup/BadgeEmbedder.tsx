@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Copy, Check, Code, Image as ImageIcon } from "lucide-react";
+import { getBaseUrl } from "@/lib/url";
 
 interface BadgeEmbedderProps {
   startupName: string;
@@ -11,11 +12,7 @@ interface BadgeEmbedderProps {
 export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [copied, setCopied] = useState(false);
-  const [baseUrl, setBaseUrl] = useState("");
-
-  useEffect(() => {
-    setBaseUrl(window.location.origin);
-  }, []);
+  const [baseUrl] = useState(() => typeof window !== "undefined" ? getBaseUrl() : "");
 
   const badgeUrl = `${baseUrl}/api/badge/${slug}?theme=${theme}`;
   const profileUrl = `${baseUrl}/startup/${slug}`;

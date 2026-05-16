@@ -1,188 +1,236 @@
-import { ImageResponse } from 'next/og';
-import { supabaseAdmin } from '@/lib/supabase-server';
-import { computeVerificationState } from '@/lib/verification-state';
+import { ImageResponse } from "next/og";
+import { supabaseServer } from "@/lib/supabase-server";
+import { computeVerificationState } from "@/lib/verification-state";
+
+export const runtime = "edge";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = await params;
-    
-    // 1. Resolve Startup
-    let query = supabaseAdmin.from("startup_submissions").select("*");
-    if (!isNaN(Number(slug))) {
-      query = query.eq("id", Number(slug));
-    } else {
-      query = query.ilike("startup_name", slug);
-    }
-    
-    const { data: startup, error } = await query.maybeSingle();
+    const resolvedParams = await params;
+    const { slug } = resolvedParams;
 
-    if (error || !startup) {
-      return new ImageResponse(
-        (
-          <div style={{ display: 'flex', width: '100%', height: '100%', backgroundColor: '#0a0a0a', color: 'white', justifyContent: 'center', alignItems: 'center' }}>
-            <h1>Startup Not Found</h1>
-          </div>
-        ),
-        { width: 1200, height: 630 }
-      );
+    // 1. Fetch startup basic info
+    const { data: startup, error: startupError } = await supabaseServer
+      .from("startup_submissions")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (startupError || !startup) {
+      return new Response("Startup not found", { status: 404 });
     }
 
     const startupId = startup.id;
 
-    // 2. Fetch all verification data
+    // 2. Fetch related data for verification state
     const [revenueRes, fraudRes, providerRes] = await Promise.all([
-      supabaseAdmin
+      supabaseServer
         .from("revenue_transactions")
-        .select("amount, created_at")
-        .eq("startup_id", startupId)
-        .order("created_at", { ascending: true })
-        .limit(100),
-      supabaseAdmin
+        .select("amount, created_at, provider")
+        .eq("startup_id", startupId),
+      supabaseServer
         .from("fraud_signals")
         .select("signal_type")
         .eq("startup_id", startupId),
-      supabaseAdmin
+      supabaseServer
         .from("provider_connections")
-        .select("provider, status, last_synced_at")
+        .select("provider, status, last_synced_at, last_mrr")
         .eq("startup_id", startupId)
-        .eq("status", "connected")
     ]);
 
-    const rawRevenue = revenueRes.data || [];
-    const revenue = rawRevenue.map(event => ({
-      timestamp: new Date(event.created_at).getTime(),
-      amount: Number(event.amount) || 0
-    }));
-
-    // 3. Compute Engines
-    const verificationState = computeVerificationState({
-      revenueTransactions: revenue,
+    // 3. Compute the full verification state
+    const state = computeVerificationState({
+      revenueTransactions: (revenueRes.data || []).map(t => ({
+        amount: t.amount,
+        timestamp: new Date(t.created_at).getTime(),
+      })),
       providerConnections: providerRes.data || [],
       fraudSignals: fraudRes.data || [],
-      penaltyCount: Number(startup.penalty_count) || 0
+      penaltyCount: 0, // Fallback
     });
 
-    const formatInr = (value: number) => 
-      new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
+    const mrr = Math.round(state.providerBreakdown.reduce((acc, p) => acc + p.amount, 0) || startup.mrr || 0);
+    const trustScore = Math.round(state.trustScore);
+    
+    let trustTier = "Active Audit";
+    let tierColor = "#94a3b8"; // slate-400
+    if (trustScore > 85) {
+      trustTier = "Forensic Grade";
+      tierColor = "#10b981"; // emerald-500
+    } else if (trustScore > 65) {
+      trustTier = "High Integrity";
+      tierColor = "#6366f1"; // indigo-500
+    }
 
-    // Helpers to get styles for Authenticity Level
-    let authColor = '#f59e0b'; // Amber-500
-    if (verificationState.authenticityLevel === 'Organic') authColor = '#10b981'; // Emerald-500
-    if (verificationState.authenticityLevel === 'Suspicious') authColor = '#ef4444'; // Red-500
+    const verificationLabel = state.verificationStatus.replace("_", " ");
 
-    let trustColor = '#f59e0b';
-    let trustLabel = 'Active Audit';
-    if (verificationState.trustScore > 85) { trustColor = '#10b981'; trustLabel = 'Forensic Grade'; }
-    else if (verificationState.trustScore > 65) { trustColor = '#6366f1'; trustLabel = 'High Integrity'; }
-
-    // Start OG Image UI construction
     return new ImageResponse(
       (
         <div
           style={{
-            height: '100%',
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            backgroundColor: '#0a0a0a',
-            padding: '80px',
-            fontFamily: 'sans-serif',
+            height: "100%",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#0a0a0a",
+            backgroundImage: "radial-gradient(circle at 50% 50%, #171717 0%, #0a0a0a 100%)",
+            padding: "80px",
+            fontFamily: "Inter, sans-serif",
           }}
         >
-          {/* Top Row: Branding */}
-          <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {/* Verifi Logo placeholder shape */}
-              <div style={{ display: 'flex', width: '40px', height: '40px', backgroundColor: '#6366f1', borderRadius: '12px', justifyContent: 'center', alignItems: 'center' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
-                  <path d="m9 12 2 2 4-4" />
-                </svg>
-              </div>
-              <span style={{ fontSize: '32px', fontWeight: 900, color: 'white', letterSpacing: '-0.02em' }}>
-                VERIFI
-              </span>
-            </div>
-            
-            <div style={{ display: 'flex', fontSize: '20px', fontWeight: 700, color: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '12px 24px', borderRadius: '100px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-              Independent Revenue Audit
-            </div>
-          </div>
+          {/* Border Glow */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: "4px",
+              background: `linear-gradient(90deg, transparent, ${tierColor}, transparent)`,
+            }}
+          />
 
-          {/* Middle Content */}
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '24px' }}>
-              <h1 style={{ fontSize: '96px', fontWeight: 900, color: 'white', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              backgroundColor: "rgba(255, 255, 255, 0.02)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "40px",
+              padding: "60px",
+              width: "100%",
+              height: "100%",
+              position: "relative",
+            }}
+          >
+            {/* Verifi Logo Top Right */}
+            <div
+              style={{
+                position: "absolute",
+                top: "40px",
+                right: "40px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <div style={{ width: "24px", height: "24px", borderRadius: "6px", backgroundColor: "#6366f1", display: "flex" }} />
+              <span style={{ fontSize: "20px", fontWeight: "bold", color: "#fff", letterSpacing: "-0.5px" }}>Verifi</span>
+            </div>
+
+            {/* Content */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "24px", flex: 1, justifyContent: "center" }}>
+              {/* Startup Logo Placeholder */}
+              <div
+                style={{
+                  width: "100px",
+                  height: "100px",
+                  borderRadius: "24px",
+                  backgroundColor: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "40px",
+                  color: "#fff",
+                  fontWeight: "bold",
+                }}
+              >
+                {startup.startup_name?.[0] || "S"}
+              </div>
+
+              <h1
+                style={{
+                  fontSize: "64px",
+                  fontWeight: "900",
+                  color: "#fff",
+                  margin: 0,
+                  letterSpacing: "-2px",
+                }}
+              >
                 {startup.startup_name}
               </h1>
-              {verificationState.trustScore > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', padding: '12px 24px', borderRadius: '100px', backgroundColor: `${trustColor}20`, border: `2px solid ${trustColor}40`, color: trustColor, fontSize: '24px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  {trustLabel}
+
+              <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                <div
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "16px",
+                    padding: "10px 20px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: tierColor }} />
+                  <span style={{ color: "#fff", fontSize: "16px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "1px" }}>
+                    {trustTier}
+                  </span>
                 </div>
-              )}
+                
+                <div
+                  style={{
+                    backgroundColor: state.verificationStatus === "VERIFIED" ? "rgba(16, 185, 129, 0.05)" : "rgba(245, 158, 11, 0.05)",
+                    border: state.verificationStatus === "VERIFIED" ? "1px solid rgba(16, 185, 129, 0.1)" : "1px solid rgba(245, 158, 11, 0.1)",
+                    borderRadius: "16px",
+                    padding: "10px 20px",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  <span style={{ color: state.verificationStatus === "VERIFIED" ? "#10b981" : "#f59e0b", fontSize: "16px", fontWeight: "bold", textTransform: "uppercase" }}>
+                    {verificationLabel}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px' }}>
-              <span style={{ fontSize: '32px', fontWeight: 800, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.2em' }}>
-                Verified MRR
-              </span>
-              <span style={{ fontSize: '80px', fontWeight: 900, color: 'white' }}>
-                {formatInr(startup.mrr || 0)}
-              </span>
-            </div>
-          </div>
-
-          {/* Bottom Row: Metrics & Providers */}
-          <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', gap: '48px' }}>
-              
-              {/* Authenticity Block */}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-                  Revenue Authenticity
+            {/* Stats Footer */}
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-end",
+                marginTop: "auto",
+                borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                paddingTop: "30px",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <span style={{ color: "#525252", fontSize: "14px", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "2px" }}>
+                  Verified Monthly Revenue
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '48px', fontWeight: 900, color: 'white' }}>{verificationState.authenticityScore}</span>
-                  <div style={{ display: 'flex', fontSize: '20px', fontWeight: 800, color: authColor, backgroundColor: `${authColor}20`, padding: '8px 16px', borderRadius: '100px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {verificationState.authenticityLevel}
+                <span style={{ color: "#fff", fontSize: "48px", fontWeight: "900", letterSpacing: "-1px" }}>
+                  ${mrr.toLocaleString()}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                {state.providersConnected.map((pm: string) => (
+                  <div
+                    key={pm}
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.03)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "10px",
+                      padding: "6px 14px",
+                      color: "#737373",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {pm}
                   </div>
-                </div>
-              </div>
-
-              {/* Connected Providers Block */}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-                  Verified Connections
-                </span>
-                <div style={{ display: 'flex', gap: '16px', paddingTop: '8px' }}>
-                  {verificationState.providersConnected.length > 0 ? (
-                    verificationState.providersConnected.map(provider => (
-                      <div key={provider} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 24px', backgroundColor: '#171717', borderRadius: '16px', border: '1px solid #262626' }}>
-                        <div style={{ width: '12px', height: '12px', borderRadius: '6px', backgroundColor: '#10b981' }} />
-                        <span style={{ fontSize: '20px', fontWeight: 800, color: '#d4d4d4', textTransform: 'capitalize' }}>{provider}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ display: 'flex', fontSize: '20px', fontWeight: 800, color: '#ef4444' }}>
-                      Unverified
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* CTA */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-              <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                Verify your startup on Verifi
-              </span>
-              <div style={{ display: 'flex', fontSize: '24px', fontWeight: 800, color: '#a3a3a3' }}>
-                verifi.com
+                ))}
               </div>
             </div>
           </div>
@@ -193,9 +241,9 @@ export async function GET(
         height: 630,
       }
     );
-  } catch (e: unknown) {
-    console.log(`Failed to generate image`, e);
-    return new Response(`Failed to generate image`, {
+  } catch (e) {
+    console.error("OG Generation Error:", e);
+    return new Response(`Failed to generate the image`, {
       status: 500,
     });
   }

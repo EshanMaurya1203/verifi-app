@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import Stripe from "stripe";
-const Razorpay = require("razorpay");
+import Razorpay from "razorpay";
 
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);

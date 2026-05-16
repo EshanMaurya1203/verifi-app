@@ -2,11 +2,11 @@ import { computeVerificationConfidence } from "./verification-confidence";
 import { analyzeRevenueAuthenticity } from "./revenue-authenticity";
 import { calculateTrustScore } from "./scoring";
 
-export type UnifiedVerificationStatus = "VERIFIED" | "PARTIALLY VERIFIED" | "REVIEWING" | "UNVERIFIED";
+export type UnifiedVerificationStatus = "VERIFIED" | "PARTIALLY VERIFIED" | "REVIEWING" | "NEEDS REVIEW" | "INCOMPLETE" | "MONITORING" | "UNVERIFIED";
 
 export interface VerificationStateInput {
   revenueTransactions: { amount: number; timestamp: number }[];
-  providerConnections: { provider: string; status: string; last_synced_at: string | null }[];
+  providerConnections: { provider: string; status: string; last_synced_at: string | null; last_mrr?: number }[];
   fraudSignals: { signal_type: string }[];
   penaltyCount: number;
 }
@@ -24,6 +24,8 @@ export interface VerificationStateResult {
   lastSyncAt: string | null;
   transactionCount: number;
   hasConnectedProviders: boolean;
+  providerBreakdown: { provider: string; amount: number; percentage: number }[];
+  verificationDepth: number;
 }
 
 export function computeVerificationState(input: VerificationStateInput): VerificationStateResult {
@@ -61,18 +63,18 @@ export function computeVerificationState(input: VerificationStateInput): Verific
 
   const fraudChecksPassed = fraudFlagCount === 0 && input.revenueTransactions.length > 0;
 
-  let verificationStatus: UnifiedVerificationStatus = "UNVERIFIED";
+  let verificationStatus: UnifiedVerificationStatus = "REVIEWING";
   if (activeProviders.length === 0) {
-    verificationStatus = "UNVERIFIED";
+    verificationStatus = "REVIEWING";
   } else if (confResult.verification_confidence >= 80) {
     verificationStatus = "VERIFIED";
   } else if (confResult.verification_confidence >= 50) {
     verificationStatus = "PARTIALLY VERIFIED";
   } else {
-    verificationStatus = "REVIEWING";
+    verificationStatus = "NEEDS REVIEW";
   }
 
-  return {
+  const result: VerificationStateResult = {
     verificationStatus,
     providersConnected: activeProviders,
     duplicateProtectionActive: deduplicationActive,
@@ -81,9 +83,30 @@ export function computeVerificationState(input: VerificationStateInput): Verific
     authenticityLevel: authResult.authenticity_level,
     authenticityScore: authResult.authenticity_score,
     authenticityFlags: authResult.authenticity_flags,
-    trustScore: trustResult.score,
+    trustScore: trustResult,
     lastSyncAt: latestSync,
     transactionCount: input.revenueTransactions.length,
     hasConnectedProviders: activeProviders.length > 0,
+    providerBreakdown: input.providerConnections
+      .filter(p => p.status === "connected")
+      .map(p => ({
+        provider: p.provider,
+        amount: p.last_mrr || 0,
+        percentage: 0 // Will calculate below
+      })),
+    verificationDepth: activeProviders.length > 0 
+      ? (confResult.verification_confidence > 90 ? 4 : confResult.verification_confidence > 70 ? 3 : 2)
+      : 1
   };
+
+  // Calculate percentages
+  const totalMrr = result.providerBreakdown.reduce((acc, p) => acc + p.amount, 0);
+  if (totalMrr > 0) {
+    result.providerBreakdown = result.providerBreakdown.map(p => ({
+      ...p,
+      percentage: Math.round((p.amount / totalMrr) * 100)
+    }));
+  }
+
+  return result;
 }

@@ -113,22 +113,29 @@ export const StartupDashboard = ({ id }: { id: string }) => {
               </div>
               <h3 className="text-xs font-black uppercase tracking-[0.3em] text-neutral-400">Infrastructure</h3>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/80">Live Sync</span>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/80">Live Sync</span>
+                </div>
+                <button 
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-400 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </button>
               </div>
-              <button 
-                onClick={handleSync}
-                disabled={syncing}
-                className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-400 transition-all flex items-center gap-2 disabled:opacity-50"
-              >
-                {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                {syncing ? "Syncing..." : "Sync Now"}
-              </button>
+              {data.connections.length > 0 && (
+                <p className="text-[8px] font-bold text-neutral-600 uppercase tracking-widest">
+                  Last Update: {data.connections.map(c => c.last_sync).filter(Boolean).sort().pop() ? new Date(data.connections.map(c => c.last_sync).filter(Boolean).sort().pop()!).toLocaleString() : 'Never'}
+                </p>
+              )}
             </div>
           </div>
 

@@ -9,7 +9,7 @@ export type RevenueResult = {
   success: boolean;
   totalAmount: number; // in base currency (e.g. INR/USD)
   currency: string;
-  items?: any[]; // Raw transaction items
+  items?: unknown[]; // Raw transaction items
   error?: string;
 };
 
@@ -34,7 +34,7 @@ export async function verifyRazorpayRevenue(keyId: string, keySecret: string): P
     }
 
     const data = await response.json();
-    const total = data.items.reduce((acc: number, item: any) => {
+    const total = data.items.reduce((acc: number, item: { status: string; amount: number }) => {
       // Sum captured payments
       if (item.status === 'captured') {
         return acc + item.amount;
@@ -42,7 +42,7 @@ export async function verifyRazorpayRevenue(keyId: string, keySecret: string): P
       return acc;
     }, 0);
 
-    const filteredItems = data.items.filter((i: any) => i.status === 'captured');
+    const filteredItems = data.items.filter((i: { status: string }) => i.status === 'captured');
 
     return {
       success: true,
@@ -50,8 +50,9 @@ export async function verifyRazorpayRevenue(keyId: string, keySecret: string): P
       currency: data.items[0]?.currency || 'INR',
       items: filteredItems,
     };
-  } catch (error: any) {
-    return { success: false, totalAmount: 0, currency: 'INR', items: [], error: error.message };
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, totalAmount: 0, currency: 'INR', items: [], error: errorMsg };
   }
 }
 
@@ -75,7 +76,7 @@ export async function verifyStripeRevenue(apiKey: string): Promise<RevenueResult
     }
 
     const data = await response.json();
-    const total = data.data.reduce((acc: number, item: any) => {
+    const total = data.data.reduce((acc: number, item: { type: string; amount: number }) => {
       // Net amount includes fees, 'amount' is gross. User usually wants MRR (gross).
       if (item.type === 'charge' || item.type === 'payment') {
         return acc + item.amount;
@@ -87,10 +88,11 @@ export async function verifyStripeRevenue(apiKey: string): Promise<RevenueResult
       success: true,
       totalAmount: total / 100, // Stripe amount is in cents
       currency: data.data[0]?.currency.toUpperCase() || 'USD',
-      items: data.data.filter((i: any) => i.type === 'charge' || i.type === 'payment'),
+      items: data.data.filter((i: { type: string }) => i.type === 'charge' || i.type === 'payment'),
     };
-  } catch (error: any) {
-    return { success: false, totalAmount: 0, currency: 'USD', error: error.message };
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, totalAmount: 0, currency: 'USD', error: errorMsg };
   }
 }
 

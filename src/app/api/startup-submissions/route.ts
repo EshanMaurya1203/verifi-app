@@ -26,6 +26,16 @@ type StartupSubmissionPayload = {
   verified_api_key?: string | null;
 };
 
+function slugify(text: string) {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')     // Replace spaces with -
+    .replace(/[^\w-]+/g, '')  // Remove all non-word chars
+    .replace(/--+/g, '-');    // Replace multiple - with single -
+}
+
 const allowedVerificationTypes = new Set(["manual", "social", "proof", "api"]);
 
 const allowedPaymentMethods = new Set([
@@ -102,7 +112,6 @@ export async function POST(req: Request) {
     }
 
     const data = (await req.json()) as StartupSubmissionPayload;
-    console.log("Incoming body:", data);
     const validationError = validatePayload(data);
     if (validationError) {
       return NextResponse.json(
@@ -111,11 +120,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Avoid logging full payload to protect user PII.
-    console.log("startup submission accepted", {
-      startup_name: data.startup_name,
-      payment_methods_count: data.payment_methods.length,
-    });
+
 
     const mrrValue = typeof data.mrr === "number" ? data.mrr : Number(data.mrr.trim());
     const arrValue = typeof data.arr === "number" ? data.arr : Number(data.arr.trim());
@@ -130,7 +135,7 @@ export async function POST(req: Request) {
 
     const confidenceScore = calculateVerificationScore(data);
 
-    let verification_status = "unverified";
+    let verification_status = "reviewing";
 
     if (data.verified_revenue) {
       verification_status = "api_verified";
@@ -138,7 +143,7 @@ export async function POST(req: Request) {
       verification_status = "proof_submitted";
     }
 
-    let verification_label = "Unverified";
+    let verification_label = "Reviewing";
 
     if (data.verified_revenue) {
       verification_label = "API Verified";
@@ -183,10 +188,6 @@ export async function POST(req: Request) {
     // Fraud adjustment
     if (risk_level === "low") {
       trust_score += 10;
-    }
-
-    if (risk_level === "medium") {
-      trust_score -= 15;
     }
 
     if (risk_level === "high") {
@@ -265,10 +266,10 @@ export async function POST(req: Request) {
           final_score,
           fraud_score,
           risk_level,
-          trust_breakdown,
           trust_summary,
           mrr_breakdown: mrr_breakdown,
           payment_connected: !!data.verified_revenue,
+          slug: `${slugify(data.startup_name.trim())}-${Math.floor(Math.random() * 1000)}`,
         },
       ])
       .select();
@@ -286,6 +287,15 @@ export async function POST(req: Request) {
     }
 
     const startupId = insertedData[0]?.id;
+
+    // Log Listing Created
+    if (startupId) {
+      await supabaseServer.from("verification_logs").insert({
+        startup_id: startupId,
+        event: "listing_created",
+        metadata: { name: data.startup_name }
+      });
+    }
 
     // Save provider connection if verified
     if (startupId && data.verified_revenue && data.verification_source && data.verified_api_key) {

@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 import { computeVerificationState } from "@/lib/verification-state";
 
 export async function GET(
@@ -11,7 +10,7 @@ export async function GET(
   const theme = searchParams.get("theme") || "dark";
 
   // 1. Resolve Startup
-  let query = supabaseAdmin.from("startup_submissions").select("*");
+  let query = supabaseServer.from("startup_submissions").select("*");
   if (!isNaN(Number(slug))) {
     query = query.eq("id", Number(slug));
   } else {
@@ -26,18 +25,18 @@ export async function GET(
 
   // 2. Fetch verification data to get current status
   const [revenueRes, fraudRes, providerRes] = await Promise.all([
-    supabaseAdmin
+    supabaseServer
       .from("revenue_transactions")
       .select("amount, created_at")
       .eq("startup_id", startup.id)
       .limit(100),
-    supabaseAdmin
+    supabaseServer
       .from("fraud_signals")
       .select("signal_type")
       .eq("startup_id", startup.id),
-    supabaseAdmin
+    supabaseServer
       .from("provider_connections")
-      .select("provider, status")
+      .select("provider, status, last_synced_at")
       .eq("startup_id", startup.id)
       .eq("status", "connected")
   ]);
@@ -70,8 +69,8 @@ export async function GET(
     tierLabel = "High Integrity";
     tierColor = "#6366f1"; // Indigo
   } else if (verificationState.verificationStatus === "UNVERIFIED") {
-    tierLabel = "Unverified";
-    tierColor = "#ef4444"; // Red
+    tierLabel = "Reviewing";
+    tierColor = "#737373"; // Neutral-500
   }
 
   // 4. Generate SVG

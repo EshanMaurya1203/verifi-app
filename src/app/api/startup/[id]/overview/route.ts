@@ -38,15 +38,15 @@ export async function GET(
         .eq("id", startupId)
         .single(),
       supabaseServer
-        .from("payment_connections")
-        .select("provider, is_active")
+        .from("provider_connections")
+        .select("provider, status, last_synced_at, latest_revenue")
         .eq("startup_id", startupId),
       supabaseServer
-        .from("revenue_events")
-        .select("amount, timestamp")
+        .from("revenue_snapshots")
+        .select("total_revenue, created_at")
         .eq("startup_id", startupId)
-        .order("timestamp", { ascending: true })
-        .limit(100),
+        .order("created_at", { ascending: true })
+        .limit(30),
       supabaseServer
         .from("fraud_signals")
         .select("signal_type")
@@ -66,16 +66,15 @@ export async function GET(
         name: startupRes.data.startup_name,
         trust_score: startupRes.data.trust_score
       },
-      // Using row.is_active as requested
       connections: (connectionsRes.data || []).map(row => ({
         provider: row.provider,
-        connected: row.is_active,
-        last_sync: null, // As requested
-        mrr: 0 // As requested
+        connected: row.status === 'connected',
+        last_sync: row.last_synced_at ? new Date(row.last_synced_at).getTime() : null,
+        mrr: Number(row.latest_revenue) || 0
       })),
-      revenue: (revenueRes.data || []).map(event => ({
-        timestamp: Number(event.timestamp),
-        amount: Number(event.amount) || 0
+      revenue: (revenueRes.data || []).map(snap => ({
+        timestamp: new Date(snap.created_at).getTime(),
+        amount: Number(snap.total_revenue) || 0
       }))
     };
 

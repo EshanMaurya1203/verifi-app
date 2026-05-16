@@ -48,9 +48,14 @@ export async function POST(req: Request) {
       count: 100 
     });
 
-    const totalPaise = payments.items
-      .filter((p: any) => p.status === "captured")
-      .reduce((sum: number, p: any) => sum + p.amount, 0);
+    interface SyncPayment {
+      status: string;
+      amount: string | number;
+    }
+
+    const totalPaise = (payments.items as SyncPayment[])
+      .filter((p: SyncPayment) => p.status === "captured")
+      .reduce((sum: number, p: SyncPayment) => sum + Number(p.amount), 0);
 
     const mrrAmount = totalPaise / 100;
 
@@ -95,7 +100,8 @@ export async function POST(req: Request) {
       breakdown: aggregated.breakdown
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Failed to sync revenue";
     console.error("Razorpay Sync Error:", err);
     
     // Log Failure
@@ -104,13 +110,13 @@ export async function POST(req: Request) {
       await supabaseServer.from("verification_logs").insert({
         startup_id: body.startup_id,
         event: "razorpay_sync_failure",
-        metadata: { error: err.message }
+        metadata: { error: errorMsg }
       });
     }
 
     return NextResponse.json({ 
       success: false, 
-      error: err.message || "Failed to sync revenue" 
+      error: errorMsg 
     }, { status: 500 });
   }
 }

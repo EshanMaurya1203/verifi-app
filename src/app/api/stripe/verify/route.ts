@@ -3,7 +3,7 @@ import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { supabaseServer } from "@/lib/supabase-server";
 import { encrypt } from "@/lib/encryption";
 import { computeTrustScore } from "@/lib/scoring";
-import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
+import { getAggregatedRevenue, AggregatedRevenue } from "@/lib/revenue-aggregation";
 import { detectFraud } from "@/lib/fraud";
 import Stripe from "stripe";
 
@@ -18,17 +18,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { apiKey, startupId, debug } = await req.json();
+    const { apiKey, startupId } = await req.json();
 
     if (!apiKey) {
       return NextResponse.json({ error: "API Key is required" }, { status: 400 });
     }
 
-    console.log("Stripe verify started");
-    console.log("Using API key prefix:", apiKey.slice(0, 10));
+
 
     // 1. Initialize Stripe
     const stripe = new Stripe(apiKey, { 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       apiVersion: "2024-04-10" as any,
     });
 
@@ -54,12 +54,13 @@ export async function POST(req: Request) {
           break;
         }
       }
-    } catch (err: any) {
-      console.error("Stripe error:", err.message);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Stripe failed";
+      console.error("Stripe error:", errorMsg);
       return NextResponse.json({ error: "Stripe failed" }, { status: 500 });
     }
 
-    console.log("Total payments fetched:", allPayments.length);
+
 
     const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
     const now = Date.now();
@@ -72,8 +73,7 @@ export async function POST(req: Request) {
       );
     });
 
-    console.log("Recent payments:", recentPayments.length);
-    console.log("Raw amounts:", recentPayments.map(p => p.amount));
+
 
     // 4. Calculate REAL MRR based on sum of the last 30 days
     const mrr = recentPayments.reduce((sum, p) => {
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
     }
 
     // 5. Persistence
-    let aggregatedResult: any = null;
+    let aggregatedResult: AggregatedRevenue | null = null;
     if (startupId) {
       const account = await (stripe.accounts as any).retrieve().catch(() => ({ id: "sk_manual" }));
       const stripeAccountId = account.id;
@@ -183,9 +183,7 @@ export async function POST(req: Request) {
         .order("created_at", { ascending: false })
         .limit(1);
 
-      if (last && last.length > 0 && last[0].amount === mrr) {
-        console.log("No change in revenue — skipping duplicate insert");
-      } else {
+
         await supabaseServer.from("revenue_transactions").insert({
           startup_id: startupId,
           amount: mrr,
@@ -193,7 +191,6 @@ export async function POST(req: Request) {
           source: "stripe",
           currency: currency
         });
-      }
 
       aggregatedResult = await getAggregatedRevenue(startupId);
 
@@ -208,7 +205,7 @@ export async function POST(req: Request) {
         .limit(1);
 
       if (lastSnap && lastSnap[0]?.total_revenue === snapshotRevenue) {
-        console.log("[Stripe] Skipping duplicate snapshot — revenue unchanged");
+        // Skip duplicate snapshot
       } else {
         await supabaseServer.from("revenue_snapshots").insert({
           startup_id: startupId,
@@ -217,7 +214,7 @@ export async function POST(req: Request) {
           provider: "stripe",
           created_at: new Date().toISOString(),
         });
-        console.log("[Stripe] Snapshot persisted:", { startupId, total_revenue: snapshotRevenue });
+        // Snapshot persisted
       }
 
       const { error: updError } = await supabaseServer
@@ -235,38 +232,23 @@ export async function POST(req: Request) {
 
       if (updError) throw updError;
 
-      const { data: startupBefore } = await supabaseServer
-        .from("startup_submissions")
-        .select("trust_score")
-        .eq("id", startupId)
-        .single();
-        
-      console.log("Trust score BEFORE:", startupBefore?.trust_score || 0);
+      await computeTrustScore(startupId);
 
-      const scoreResult = await computeTrustScore(startupId);
-
-      console.log("Trust score AFTER:", scoreResult.score);
-
-      console.log("DB updated:", {
+      // Log Stripe Sync Success
+      await supabaseServer.from("verification_logs").insert({
         startup_id: startupId,
-        revenue: mrr,
-        trust_score: scoreResult.score
+        event: "stripe_sync_success",
+        metadata: { mrr, count: total_transactions }
       });
     }
 
-    if (debug) {
-      return NextResponse.json({
-        revenue: mrr,
-        payments_count: allPayments.length,
-        successful_count: recentPayments.length,
-        raw_amounts: recentPayments.map(p => p.amount)
-      });
-    }
+
 
     return NextResponse.json({ revenue: aggregatedResult?.totalRevenue ?? mrr, breakdown: aggregatedResult?.breakdown, currency, total_transactions });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Internal server error";
     console.error("CRITICAL VERIFICATION ERROR:", err);
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }

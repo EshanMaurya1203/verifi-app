@@ -106,8 +106,8 @@ export function calculateTrustScore(
   const totalFraudPenalty = spikePenalty + rateLimitPenalty + repeatPenalty;
 
   // 7. Base Score & Final Calculation
-  let baseScore = average / 100;
-  let score = baseScore + consistencyAdjustment + growthAdjustment - patternPenalty - totalFraudPenalty;
+  const baseScore = average / 100;
+  const score = baseScore + consistencyAdjustment + growthAdjustment - patternPenalty - totalFraudPenalty;
 
   // 8. Clamp & Return Integer
   return Math.round(Math.max(0, Math.min(100, score)));
@@ -135,7 +135,7 @@ function getTrustTier(score: number): ScoringResult["tier"] {
 export async function computeTrustScore(
   startup_id: number,
   options: { startup?: any; persist?: boolean } = { persist: true }
-): Promise<ScoringResult & { updateData?: any }> {
+): Promise<ScoringResult & { updateData?: Record<string, unknown> }> {
   const supabase = getSupabaseServer();
   let score = 0;
   const breakdown: Record<string, number> = {
@@ -170,8 +170,9 @@ export async function computeTrustScore(
     .from("revenue_snapshots")
     .select("total_revenue")
     .eq("startup_id", startup_id)
+    .gt("total_revenue", 0)
     .order("created_at", { ascending: false })
-    .range(1, 4); 
+    .limit(4); // Use the last 4 valid snapshots
 
   const latestMrr = Number(startup.mrr) || 0;
   let avgHistoricalRevenue = latestMrr;
@@ -195,7 +196,7 @@ export async function computeTrustScore(
 
   // 3. Consistent Payments Check (+10)
   let hasConsistentPayments = false;
-  if (startup.raw_metrics && startup.raw_metrics.payment_count >= 3) {
+  if (startup.raw_metrics && (startup.raw_metrics as any).payment_count >= 3) {
     hasConsistentPayments = true;
   } else {
     const { count: snapshotCount } = await supabase
@@ -259,7 +260,7 @@ export async function computeTrustScore(
   // Penalty Persistence, Decay & Clean Events Logic
   const lastPenaltyAt = startup.last_penalty_at ? new Date(startup.last_penalty_at) : null;
   let penaltyCount = Number(startup.penalty_count) || 0;
-  let cleanEvents = Number(startup.clean_events) || 0;
+  const cleanEvents = Number(startup.clean_events) || 0;
   let isRecovering = false;
 
   const isAnyNewPenalty = isRateLimited || isSpikeDetected;
@@ -273,7 +274,6 @@ export async function computeTrustScore(
     const minsSince = (Date.now() - lastPenaltyAt.getTime()) / (1000 * 60);
     const decay = Math.floor(minsSince / 15);
     if (decay > 0) {
-      console.log("Gradual recovery applied");
       penaltyCount = Math.max(0, penaltyCount - 1); // Only 1 per cycle
       isRecovering = true;
     }
@@ -300,7 +300,6 @@ export async function computeTrustScore(
 
   // Apply Stability Penalty with Severity Scaling
   if (isSpikeDetected) {
-    console.warn("Spike detected, applying penalty");
     const baseSeverity = 0.2;
     const scaledSeverity = Math.min(0.5, baseSeverity + (penaltyCount * 0.05));
     const penalty = score * scaledSeverity;
@@ -310,7 +309,6 @@ export async function computeTrustScore(
 
   // Apply Rate Penalty with Severity Scaling (10%, 20%, 30%+)
   if (isRateLimited) {
-    console.warn("Rate limit penalty applied");
     const severity = Math.min(0.5, 0.1 * penaltyCount); 
     const penalty = score * severity;
     score -= penalty;
@@ -320,7 +318,6 @@ export async function computeTrustScore(
   // Trust Inertia: If a penalty happened recently (< 10 mins), apply a dampening factor
   const isInertiaActive = lastPenaltyAt && (Date.now() - lastPenaltyAt.getTime()) < 10 * 60 * 1000;
   if (isInertiaActive && !isAnyNewPenalty) {
-    console.log("Applying trust inertia penalty");
     const inertiaPenalty = score * 0.15; // 15% dampening of trust
     score -= inertiaPenalty;
     breakdown.inertia_penalty = -Math.round(inertiaPenalty);
@@ -348,7 +345,7 @@ export async function computeTrustScore(
   else if (score >= 31) status = "pending";
 
   // Persist back to DB with penalty state
-  const updateData: any = {
+  const updateData: Record<string, unknown> = {
     trust_score: score,
     trust_tier: tier,
     verification_status: status,

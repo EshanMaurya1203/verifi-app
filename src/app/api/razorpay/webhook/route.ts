@@ -44,9 +44,27 @@ export async function POST(req: Request) {
 
   console.log("✅ Signature verified");
 
-  let payload: any;
+interface RazorpayPaymentEntity {
+  id: string;
+  amount: number;
+  currency?: string;
+  status?: string;
+  notes?: Record<string, string | undefined>;
+  created_at?: number;
+}
+
+interface RazorpayWebhookPayload {
+  event: string;
+  payload?: {
+    payment?: {
+      entity?: RazorpayPaymentEntity;
+    };
+  };
+}
+
+  let payload: RazorpayWebhookPayload;
   try {
-    payload = JSON.parse(rawBody);
+    payload = JSON.parse(rawBody) as RazorpayWebhookPayload;
   } catch {
     console.error("❌ Failed to parse webhook JSON");
     return new Response("Invalid JSON", { status: 400 });
@@ -54,7 +72,10 @@ export async function POST(req: Request) {
 
   const event = payload.event;
   if (event === "payment.refunded") {
-    const payment = payload.payload.payment.entity;
+    const payment = payload.payload?.payment?.entity;
+    if (!payment) {
+      return new Response("No payment entity in refund", { status: 400 });
+    }
     const startupId = Number(payment.notes?.startup_id);
     const amount = payment.amount / 100;
     const paymentId = payment.id;
@@ -91,7 +112,7 @@ export async function POST(req: Request) {
       .eq("id", startupId)
       .single();
 
-    let mrr_breakdown = (startup?.mrr_breakdown as any) || {};
+    const mrr_breakdown: Record<string, number> = (startup?.mrr_breakdown as Record<string, number>) || {};
 
     // 4. Update breakdown
     mrr_breakdown["razorpay"] = (mrr_breakdown["razorpay"] || 0) - amount;
@@ -100,7 +121,7 @@ export async function POST(req: Request) {
     }
 
     // 5. Recalculate total
-    const totalMrr = Object.values(mrr_breakdown).reduce((a: number, b: any) => a + Number(b), 0);
+    const totalMrr = Object.values(mrr_breakdown).reduce((a: number, b: number) => a + Number(b), 0);
 
     // 6. Update DB
     await supabaseServer.from("startup_submissions").update({
@@ -198,8 +219,9 @@ export async function POST(req: Request) {
     await updateRevenueAndSnapshot(startupId, amount, "razorpay", payment.id);
 
     return NextResponse.json({ received: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[Razorpay Webhook] Handler error:", err);
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

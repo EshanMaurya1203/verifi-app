@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { Navbar } from "@/components/layout/Navbar";
 
@@ -8,21 +8,20 @@ export default function AdminPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = useCallback(async () => {
     const { data } = await supabase
       .from("startup_submissions")
       .select("*")
-      .in("verification_status", ["pending", "unverified", "proof_submitted", "api_verified"])
+      .in("verification_status", ["pending", "unverified", "reviewing", "proof_submitted", "api_verified"])
       .order("created_at", { ascending: false });
 
     setData(data || []);
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const updateStatus = async (id: number, status: string) => {
     // Optimistic UI update
@@ -72,7 +71,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-3 mb-1">
                         <h3 className="font-syne text-[22px] font-bold">{item.startup_name}</h3>
                         <span className="text-xs bg-[#1A1A1C] border border-border text-muted-foreground px-2 py-1 rounded-md uppercase tracking-wider">
-                          {item.verification_status}
+                          {item.verification_status === "unverified" || item.verification_status === "reviewing" ? "Reviewing" : item.verification_status}
                         </span>
                       </div>
                       <a href={item.website} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
