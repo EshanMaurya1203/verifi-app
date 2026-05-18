@@ -92,7 +92,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ connections 
                 </h3>
               </div>
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status.color}`}>
-                <Icon size={12} className={status.label === "Syncing" ? "animate-spin" : ""} />
+                <Icon className={`w-3.5 h-3.5 translate-y-[-0.5px] ${status.label === "Syncing" ? "animate-spin" : ""}`} />
                 {status.label}
               </div>
             </div>

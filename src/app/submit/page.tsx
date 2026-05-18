@@ -160,9 +160,9 @@ export default function SubmitPage() {
   const inputClass =
     "h-11 w-full rounded-lg border border-border bg-[#161616] px-4 text-[14px] text-foreground placeholder:text-muted-foreground outline-none transition-colors duration-150 focus:border-border";
   const labelClass =
-    "mb-1.5 block text-[11px] font-medium uppercase tracking-[0.8px] text-muted-foreground";
+    "mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground";
   const sectionTitleClass =
-    "mb-4 border-b border-border pb-2 text-[11px] uppercase tracking-[1.5px] text-muted-foreground";
+    "mb-4 border-b border-border pb-2 text-sm font-extrabold text-white uppercase tracking-wider";
 
   const twitterShareUrl = useMemo(() => {
     const text =
@@ -424,7 +424,7 @@ export default function SubmitPage() {
           <div className="absolute w-24 h-24 rounded-full bg-primary/20 blur-2xl animate-pulse" />
           <div className="h-10 w-10 animate-spin rounded-full border-t-2 border-primary border-r-2 border-r-transparent" />
         </div>
-        <p className="mt-4 font-syne text-[10px] font-black uppercase tracking-[0.25em] text-neutral-500 animate-pulse">
+        <p className="mt-4 font-syne text-[10px] font-bold uppercase tracking-wider text-neutral-500 animate-pulse">
           Hydrating secure session...
         </p>
       </div>
@@ -441,16 +441,16 @@ export default function SubmitPage() {
             <h2 className="font-syne text-2xl font-black tracking-[-1px] text-white mb-2">
               Authentication Required
             </h2>
-            <p className="text-[12px] font-medium text-neutral-500 tracking-[0.05em] leading-relaxed mb-6">
+            <p className="text-xs font-semibold text-neutral-500 leading-relaxed mb-6">
               Listing your startup on Verifi requires a verified Google account.
             </p>
 
             {authError && (
               <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-left">
-                <p className="text-[10px] font-black uppercase tracking-widest text-rose-400">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
                   Google Auth Error
                 </p>
-                <p className="text-[11px] font-bold text-neutral-400 mt-1 leading-relaxed">
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
                   {authError === "unsupported_provider" || authError.toLowerCase().includes("not enabled") 
                     ? "Google OAuth provider is not enabled in your Supabase Auth settings. Please enable the Google provider in your Supabase Dashboard."
                     : authError}
@@ -460,7 +460,7 @@ export default function SubmitPage() {
 
             <button
               onClick={handleGoogleLogin}
-              className="w-full h-12 rounded-xl bg-white text-black hover:bg-neutral-200 transition-colors text-[13px] font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.98] transition-transform duration-100"
+              className="w-full h-12 rounded-xl bg-white text-black hover:bg-neutral-200 transition-colors text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.98] transition-transform duration-100"
             >
               Continue with Google
             </button>
@@ -479,10 +479,10 @@ export default function SubmitPage() {
       <Navbar />
 
       <header className="mx-auto max-w-[640px] px-6 pt-12 text-center">
-        <h1 className="font-syne text-[44px] font-extrabold tracking-[-1.5px] text-foreground">
+        <h1 className="font-syne text-3xl md:text-4xl font-extrabold tracking-tight text-foreground">
           List your startup on Verifi — <span className="text-primary">free</span>
         </h1>
-        <p className="mt-3 text-[16px] font-light text-muted-foreground">
+        <p className="mt-3 text-base font-normal text-muted-foreground">
           Get verified and join the most transparent startup revenue database.
         </p>
       </header>

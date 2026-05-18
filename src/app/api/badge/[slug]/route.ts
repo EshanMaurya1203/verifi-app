@@ -91,12 +91,12 @@ export async function GET(
       <path d="M28 40 L34 46 L45 32" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       
       <!-- Content -->
-      <text x="72" y="34" font-family="Inter, sans-serif" font-size="${nameFontSize}" font-weight="900" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startupName}</text>
-      <text x="72" y="50" font-family="Inter, sans-serif" font-size="9" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.1em;">Verified on Verifi</text>
+      <text x="72" y="34" font-family="Inter, sans-serif" font-size="${nameFontSize}" font-weight="800" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startupName}</text>
+      <text x="72" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">Verified on Verifi</text>
       
       <!-- Tier Badge (perfectly aligned with no text overflow) -->
-      <rect x="184" y="30" width="100" height="20" rx="10" fill="${tierColor}15"/>
-      <text x="234" y="42.5" font-family="Inter, sans-serif" font-size="7.5" font-weight="900" fill="${tierColor}" text-anchor="middle" style="text-transform: uppercase; letter-spacing: 0.05em;">${tierLabel}</text>
+      <rect x="174" y="30" width="110" height="20" rx="10" fill="${tierColor}15"/>
+      <text x="229" y="43.5" font-family="Inter, sans-serif" font-size="10" font-weight="800" fill="${tierColor}" text-anchor="middle" style="text-transform: uppercase; letter-spacing: 0.05em;">${tierLabel}</text>
     </svg>
   `.trim();
 

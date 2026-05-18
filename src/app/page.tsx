@@ -149,7 +149,7 @@ export default function HomePage() {
               className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/5 border border-emerald-500/10 rounded-full mb-6"
             >
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">
                 Public Financial Proof
               </span>
             </motion.div>
@@ -168,7 +168,7 @@ export default function HomePage() {
             {/* Subheadline */}
             <motion.p
               variants={fadeUpItem}
-              className="mt-6 max-w-[580px] text-[14px] md:text-[16px] font-light leading-[1.6] text-neutral-400"
+              className="mt-6 max-w-[580px] text-sm md:text-base font-normal leading-relaxed text-neutral-400"
             >
               Verifi connects securely to Stripe and Razorpay to verify your actual revenue. No self-reported charts. Just real, verified financial data.
             </motion.p>
@@ -181,13 +181,13 @@ export default function HomePage() {
               <Link
                 href="/submit"
                 onClick={handleVerifyClick}
-                className="inline-flex h-11 w-full sm:w-auto items-center justify-center rounded-xl bg-primary px-7 text-[13px] font-black uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(185,255,75,0.15)]"
+                className="inline-flex h-11 w-full sm:w-auto items-center justify-center rounded-xl bg-primary px-7 text-xs font-bold uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(185,255,75,0.15)]"
               >
                 Verify your revenue
               </Link>
               <Link
                 href="/leaderboard"
-                className="inline-flex h-11 w-full sm:w-auto items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] px-7 text-[13px] font-black uppercase tracking-wider text-neutral-300 transition-all duration-200 hover:bg-white/[0.05] hover:border-white/20 active:scale-[0.98]"
+                className="inline-flex h-11 w-full sm:w-auto items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] px-7 text-xs font-bold uppercase tracking-wider text-neutral-300 transition-all duration-200 hover:bg-white/[0.05] hover:border-white/20 active:scale-[0.98]"
               >
                 Explore Leaderboard
               </Link>
@@ -200,19 +200,19 @@ export default function HomePage() {
             >
               <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-6 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.01] to-transparent pointer-events-none" />
-                <div className="font-syne text-[28px] md:text-[34px] font-black text-white leading-none tracking-tight">
+                <div className="font-syne text-3xl md:text-4xl font-extrabold text-white leading-none tracking-tight">
                   {stats.count}
                 </div>
-                <div className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em] mt-2.5">
+                <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
                   Verified Startups
                 </div>
               </div>
               <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-6 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
                 <div className="absolute inset-0 bg-gradient-to-b from-[#b9ff4b]/[0.02] to-transparent pointer-events-none" />
-                <div className="font-syne text-[28px] md:text-[34px] font-black bg-gradient-to-r from-indigo-400 to-[#b9ff4b] bg-clip-text text-transparent leading-none tracking-tight">
+                <div className="font-syne text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-indigo-400 to-[#b9ff4b] bg-clip-text text-transparent leading-none tracking-tight">
                   {formatStatsRevenue(stats.totalRevenue)}
                 </div>
-                <div className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em] mt-2.5">
+                <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
                   Verified Combined MRR
                 </div>
               </div>
@@ -230,11 +230,11 @@ export default function HomePage() {
                 <h3 className="font-syne text-lg font-black text-white uppercase tracking-tight">
                   Leaderboard Preview
                 </h3>
-                <p className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.2em] mt-1">Top performing internet startups</p>
+                <p className="text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1.5">Top performing internet startups</p>
               </div>
               <Link
                 href="/leaderboard"
-                className="text-[11px] font-black text-primary hover:text-indigo-300 uppercase tracking-wider transition-colors"
+                className="text-xs font-bold text-primary hover:text-indigo-300 uppercase tracking-wider transition-colors"
               >
                 View full list →
               </Link>
@@ -247,26 +247,26 @@ export default function HomePage() {
                   className="flex items-center justify-between px-8 py-5 transition-colors hover:bg-white/[0.015]"
                 >
                   <div className="flex min-w-0 items-center gap-5">
-                    <div className="w-6 font-syne text-[13px] font-black text-neutral-600 text-center">
+                    <div className="w-6 font-syne text-sm font-bold text-neutral-600 text-center">
                       #{startup.rank}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-[13px] font-black text-white uppercase tracking-[0.1em] leading-none">
+                      <p className="truncate text-sm font-bold text-white tracking-wide leading-none">
                         {startup.name}
                       </p>
-                      <p className="truncate text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1.5">
+                      <p className="truncate text-xs text-neutral-500 font-medium mt-1">
                         by {startup.founder}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="flex flex-col items-end">
-                      <span className="font-syne text-[14px] font-black text-white tracking-tight tabular-nums">{startup.mrr}</span>
-                      <span className="text-[9px] text-neutral-600 uppercase font-black tracking-widest leading-none mt-1">MRR</span>
+                      <span className="font-syne text-sm font-black text-white tracking-tight tabular-nums">{startup.mrr}</span>
+                      <span className="text-[10px] text-neutral-600 uppercase font-bold tracking-widest leading-none mt-1">MRR</span>
                     </div>
                     <div className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5">
                       <BadgeCheck className="w-3.5 h-3.5 text-indigo-400" />
-                      <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest leading-none">
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider leading-none">
                         Verified
                       </span>
                     </div>
@@ -274,7 +274,7 @@ export default function HomePage() {
                 </div>
               ))}
               {leaderboard.length === 0 && (
-                <div className="px-8 py-14 text-center text-[10px] text-neutral-500 uppercase font-black tracking-widest bg-black/10">
+                <div className="px-8 py-14 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10">
                   No startups verified yet. Be the first to join the leaderboard!
                 </div>
               )}
@@ -289,11 +289,11 @@ export default function HomePage() {
               <h3 className="font-syne text-lg font-black text-white uppercase tracking-tight">
                 Recently verified
               </h3>
-              <p className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.2em] mt-1">Latest verified startups in ecosystem</p>
+              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mt-1.5">Latest verified startups in ecosystem</p>
             </div>
             <Link
               href="/leaderboard"
-              className="text-[11px] font-black text-neutral-500 hover:text-white uppercase tracking-wider transition-colors"
+              className="text-xs font-bold text-neutral-500 hover:text-white uppercase tracking-wider transition-colors"
             >
               View all →
             </Link>
@@ -307,23 +307,23 @@ export default function HomePage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-[11px] font-black text-white shadow-inner">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-xs font-bold text-white shadow-inner">
                       {s.initials}
                     </div>
-                    <div className="text-[13px] font-black text-white uppercase tracking-wider">
+                    <div className="text-sm font-bold text-white tracking-wide">
                       {s.name}
                     </div>
                   </div>
-                  <div className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-emerald-400">
+                  <div className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                     ✓ {s.badge}
                   </div>
                 </div>
 
-                <div className="mt-3 text-[8px] font-black text-neutral-500 uppercase tracking-widest">
+                <div className="mt-3 text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
                   {s.category}
                 </div>
                 <div
-                  className="mt-3 text-[11px] font-semibold leading-[1.6] text-[#8f8f97]"
+                  className="mt-3 text-xs font-medium leading-relaxed text-[#8f8f97]"
                   style={{
                     display: "-webkit-box",
                     WebkitBoxOrient: "vertical",
@@ -340,9 +340,9 @@ export default function HomePage() {
                       <div className="font-syne text-[15px] font-black text-white leading-none tracking-tight">
                         {s.mrr}
                       </div>
-                      <div className="text-[9px] font-black text-neutral-600 uppercase tracking-widest mt-1">MRR</div>
+                      <div className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mt-1">MRR</div>
                     </div>
-                    <div className="text-[11px] font-black text-emerald-400">
+                    <div className="text-xs font-bold text-emerald-400">
                       ↑ {s.growth}
                     </div>
                   </div>
@@ -355,23 +355,21 @@ export default function HomePage() {
               <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4 border border-white/10">
                 <BarChart3 className="w-5 h-5 text-neutral-500" />
               </div>
-              <h4 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">
+              <h4 className="text-sm font-bold uppercase tracking-[0.15em] text-white">
                 Ecosystem is initializing
               </h4>
-              <p className="mt-2 text-[11px] leading-[1.6] text-neutral-400 font-medium max-w-sm mx-auto">
+              <p className="mt-2 text-xs leading-relaxed text-neutral-400 font-medium max-w-sm mx-auto">
                 No startups have completed the public verification process yet. Be the first to showcase transparent traction to investors and peers.
               </p>
               <Link
                 href="/submit"
-                className="mt-6 inline-flex h-9 items-center justify-center rounded-lg bg-white/10 border border-white/10 px-6 text-[10px] font-black uppercase tracking-wider text-white transition-all hover:bg-white/20 hover:scale-[1.02]"
+                className="mt-6 inline-flex h-9 items-center justify-center rounded-lg bg-white/10 border border-white/10 px-6 text-xs font-bold uppercase tracking-wider text-white transition-all hover:bg-white/20 hover:scale-[1.02]"
               >
                 Start Verification
               </Link>
             </div>
           )}
         </section>
-
-
 
         {/* Feature Grid */}
         <section className="mt-24">
@@ -380,10 +378,10 @@ export default function HomePage() {
               <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-5 transition-transform duration-300 group-hover:scale-105">
                 <Eye className="h-4 w-4 text-indigo-400" />
               </div>
-              <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-white">
+              <h3 className="text-xs font-extrabold uppercase tracking-[0.15em] text-white">
                 Transparent Revenue
               </h3>
-              <p className="mt-3 text-[11px] leading-[1.6] text-[#8f8f97] font-medium">
+              <p className="mt-3 text-xs leading-relaxed text-[#8f8f97] font-medium">
                 Public, verifiable revenue records so founders and investors can trust the signal.
               </p>
             </div>
@@ -392,10 +390,10 @@ export default function HomePage() {
               <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-5 transition-transform duration-300 group-hover:scale-105">
                 <BarChart3 className="h-4 w-4 text-indigo-400" />
               </div>
-              <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-white">
+              <h3 className="text-xs font-extrabold uppercase tracking-[0.15em] text-white">
                 High-Trust Leaderboard
               </h3>
-              <p className="mt-3 text-[11px] leading-[1.6] text-[#8f8f97] font-medium">
+              <p className="mt-3 text-xs leading-relaxed text-[#8f8f97] font-medium">
                 Discover top-performing internet startups ranked by real MRR and verified growth patterns.
               </p>
             </div>
@@ -404,10 +402,10 @@ export default function HomePage() {
               <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-5 transition-transform duration-300 group-hover:scale-105">
                 <BadgeCheck className="h-4 w-4 text-indigo-400" />
               </div>
-              <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-white">
+              <h3 className="text-xs font-extrabold uppercase tracking-[0.15em] text-white">
                 Payment-Backed Proof
               </h3>
-              <p className="mt-3 text-[11px] leading-[1.6] text-[#8f8f97] font-medium">
+              <p className="mt-3 text-xs leading-relaxed text-[#8f8f97] font-medium">
                 Every profile is connected to API payment streams for authentic, high-confidence verification.
               </p>
             </div>
@@ -421,13 +419,13 @@ export default function HomePage() {
             <h2 className="font-syne text-[28px] md:text-[36px] font-black leading-tight text-white uppercase tracking-tight">
               Ready to verify your revenue?
             </h2>
-            <p className="mx-auto mt-4 max-w-[500px] text-[12px] md:text-[13px] leading-[1.6] text-[#8f8f97] font-medium">
+            <p className="mx-auto mt-4 max-w-[500px] text-xs md:text-sm leading-relaxed text-[#8f8f97] font-medium">
               Join Verifi today and build public trust in minutes with real-time, payment-backed verification streams.
             </p>
             <Link
               href="/submit"
               onClick={handleVerifyClick}
-              className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-8 text-[13px] font-black uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(99,102,241,0.2)]"
+              className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-8 text-xs font-bold uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(99,102,241,0.2)]"
             >
               Verify your startup
             </Link>
@@ -437,8 +435,8 @@ export default function HomePage() {
         {/* Footer */}
         <footer className="mt-20 border-t border-white/[0.05] pt-6 pb-2">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-[11px] font-black uppercase tracking-widest text-neutral-500">© 2026 Verifi</div>
-            <div className="text-[11px] font-black uppercase tracking-widest text-neutral-500">
+            <div className="text-xs font-bold uppercase tracking-widest text-neutral-500">© 2026 Verifi</div>
+            <div className="text-xs font-bold uppercase tracking-widest text-neutral-500">
               Built for founders worldwide
             </div>
           </div>

@@ -145,7 +145,7 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
 
         {/* Level Badge */}
         <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${config.badgeBg}`}>
-          <LevelIcon className={`w-3 h-3 ${config.badgeText}`} />
+          <LevelIcon className={`w-3.5 h-3.5 ${config.badgeText} translate-y-[-0.5px]`} />
           <span className={`text-[8px] font-black uppercase tracking-[0.15em] ${config.badgeText}`}>
             {level}
           </span>

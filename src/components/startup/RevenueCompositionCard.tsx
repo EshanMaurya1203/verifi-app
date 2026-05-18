@@ -137,7 +137,7 @@ const ProviderDonut = ({ breakdown }: { breakdown: ProviderBreakdown[] }) => {
       </ResponsiveContainer>
       {/* Center label */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Sources</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-600">Sources</span>
         <span className="text-lg font-black text-white font-syne">{breakdown.length}</span>
       </div>
     </div>
@@ -172,14 +172,14 @@ const GrowthSparkline = ({ snapshots }: { snapshots: RevenueSnapshot[] }) => {
             dataKey="date"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: "#525252", fontSize: 8, fontWeight: 800 }}
+            tick={{ fill: "#6b7280", fontSize: 10, fontWeight: 600 }}
             dy={8}
             interval="preserveStartEnd"
           />
           <YAxis
             axisLine={false}
             tickLine={false}
-            tick={{ fill: "#404040", fontSize: 8, fontWeight: 800 }}
+            tick={{ fill: "#6b7280", fontSize: 10, fontWeight: 600 }}
             tickFormatter={(v) => compactCurrency(v)}
           />
           <Tooltip
@@ -190,11 +190,11 @@ const GrowthSparkline = ({ snapshots }: { snapshots: RevenueSnapshot[] }) => {
               padding: "10px 14px",
               boxShadow: "0 20px 50px -12px rgba(0,0,0,0.6)",
             }}
-            itemStyle={{ color: "#fff", fontSize: "11px", fontWeight: "900" }}
+            itemStyle={{ color: "#fff", fontSize: "12px", fontWeight: "600" }}
             labelStyle={{
               color: "#525252",
-              fontSize: "9px",
-              fontWeight: "900",
+              fontSize: "10px",
+              fontWeight: "600",
               textTransform: "uppercase" as const,
               letterSpacing: "0.1em",
               marginBottom: "4px",
@@ -260,14 +260,14 @@ const ProviderTrend = ({ snapshots }: { snapshots: RevenueSnapshot[] }) => {
             dataKey="date"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: "#525252", fontSize: 8, fontWeight: 800 }}
+            tick={{ fill: "#6b7280", fontSize: 10, fontWeight: 600 }}
             dy={8}
             interval="preserveStartEnd"
           />
           <YAxis
             axisLine={false}
             tickLine={false}
-            tick={{ fill: "#404040", fontSize: 8, fontWeight: 800 }}
+            tick={{ fill: "#6b7280", fontSize: 10, fontWeight: 600 }}
             tickFormatter={(v) => compactCurrency(v)}
           />
           <Tooltip
@@ -278,11 +278,11 @@ const ProviderTrend = ({ snapshots }: { snapshots: RevenueSnapshot[] }) => {
               padding: "10px 14px",
               boxShadow: "0 20px 50px -12px rgba(0,0,0,0.6)",
             }}
-            itemStyle={{ fontSize: "10px", fontWeight: "900" }}
+            itemStyle={{ fontSize: "11px", fontWeight: "600" }}
             labelStyle={{
               color: "#525252",
-              fontSize: "9px",
-              fontWeight: "900",
+              fontSize: "10px",
+              fontWeight: "600",
               textTransform: "uppercase" as const,
               letterSpacing: "0.1em",
             }}
@@ -335,10 +335,10 @@ export const RevenueCompositionCard = ({
           <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4">
             <PieChart className="w-5 h-5 text-neutral-500" />
           </div>
-          <h4 className="text-xs font-black uppercase tracking-widest text-neutral-300">
+          <h4 className="text-xs font-bold uppercase tracking-widest text-neutral-300">
             No Revenue Data Available
           </h4>
-          <p className="text-[10px] text-neutral-500 mt-2.5 max-w-sm mx-auto font-bold uppercase tracking-[0.12em] leading-relaxed">
+          <p className="text-xs text-neutral-500 mt-2.5 max-w-sm mx-auto font-medium leading-relaxed">
             Revenue composition is currently empty. Connect your payment provider to verify your revenue and build trust.
           </p>
         </div>
@@ -357,7 +357,7 @@ export const RevenueCompositionCard = ({
           <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white flex items-center gap-3">
             <PieChart className="w-5 h-5 text-indigo-400" /> Revenue Breakdown
           </h3>
-          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1">
+          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mt-1">
             Verified Sources
           </p>
         </div>
@@ -374,13 +374,13 @@ export const RevenueCompositionCard = ({
             <button
               key={tab.key}
               onClick={() => setView(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${
                 view === tab.key
                   ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/20"
                   : "text-neutral-600 hover:text-neutral-400"
               }`}
             >
-              <tab.icon className="w-3 h-3" />
+              <tab.icon className="w-3.5 h-3.5 translate-y-[-0.5px]" />
               {tab.label}
             </button>
           ))}
@@ -440,12 +440,12 @@ export const RevenueCompositionCard = ({
                           />
                         </div>
                         <div>
-                          <h4 className="text-[12px] font-black uppercase tracking-widest text-white">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-white">
                             {style.label}
                           </h4>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                            <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 translate-y-[-0.5px]" />
+                            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
                               {item.transactionCount} verified txns
                             </span>
                           </div>
@@ -453,10 +453,10 @@ export const RevenueCompositionCard = ({
                       </div>
 
                       <div className="text-right">
-                        <div className="text-[14px] font-black text-white tabular-nums">
+                        <div className="text-sm font-bold text-white tabular-nums">
                           {formatCurrency(item.amount, item.currency)}
                         </div>
-                        <div className="text-[10px] font-black text-neutral-500 uppercase tracking-widest mt-0.5">
+                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mt-0.5">
                           {item.percentage}% share
                         </div>
                       </div>
@@ -561,10 +561,10 @@ export const RevenueCompositionCard = ({
       {/* ─── Summary Footer ──────────────────────────────────────────────── */}
       <div className="mt-10 pt-8 border-t border-white/[0.03] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
         <div>
-          <p className="text-[9px] font-black text-neutral-600 uppercase tracking-widest mb-1">
+          <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider mb-1">
             Total Verified MRR
           </p>
-          <p className="text-3xl font-black font-syne text-white tracking-tighter tabular-nums">
+          <p className="text-3xl font-extrabold font-syne text-white tracking-tighter tabular-nums">
             {formatCurrency(totalMrr)}
           </p>
         </div>
@@ -572,24 +572,24 @@ export const RevenueCompositionCard = ({
         <div className="flex items-center gap-4">
           {/* Growth badge */}
           <div
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-widest ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider ${
               growth >= 0
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                 : "bg-rose-500/10 border-rose-500/20 text-rose-400"
             }`}
           >
             {growth >= 0 ? (
-              <ArrowUpRight className="w-3 h-3" />
+              <ArrowUpRight className="w-3.5 h-3.5 translate-y-[-0.5px]" />
             ) : (
-              <ArrowDownRight className="w-3 h-3" />
+              <ArrowDownRight className="w-3.5 h-3.5 translate-y-[-0.5px]" />
             )}
             {Math.abs(growth).toFixed(1)}% Momentum
           </div>
 
           {/* Live indicator */}
           <div className="bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">
+            <Zap className="w-3.5 h-3.5 text-indigo-400 translate-y-[-0.5px]" />
+            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
               Live
             </span>
           </div>

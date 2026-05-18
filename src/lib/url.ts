@@ -20,10 +20,29 @@
  *    for local runs (npm run dev) without any manual local setup files.
  */
 export function getBaseUrl() {
+  // 1. Prioritize configured canonical production URL
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return process.env.NEXT_PUBLIC_APP_URL;
   }
 
+  // 2. Prioritize Vercel system-defined environment variables for ephemeral previews and production fallbacks
+  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  // 3. Prevent localhost fallback in actual production environments
+  if (process.env.NODE_ENV === "production") {
+    // If running on the client side, fallback gracefully to the active browser origin
+    if (typeof window !== "undefined" && window?.location?.origin) {
+      return window.location.origin;
+    }
+  }
+
+  // 4. Default to local developer workspace
   return "http://localhost:3000";
 }
 

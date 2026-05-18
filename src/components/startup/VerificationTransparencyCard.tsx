@@ -154,7 +154,7 @@ const ConfidenceRing = ({
       {/* Center text */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-xl font-black text-white tabular-nums">{value}</span>
-        <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-500">conf.</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">conf.</span>
       </div>
     </div>
   );
@@ -178,11 +178,11 @@ const MetricRow = ({
   <div className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-b-0 group">
     <div className="flex items-center gap-2.5">
       <Icon className={`w-3.5 h-3.5 ${iconColor} transition-transform duration-200 group-hover:scale-110`} />
-      <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-500">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
         {label}
       </span>
     </div>
-    <span className={`text-xs font-black ${valueColor}`}>
+    <span className={`text-xs font-bold ${valueColor}`}>
       {value}
     </span>
   </div>
@@ -201,15 +201,15 @@ const VerificationDepth = ({ level }: { level: number }) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500">Verification Depth</span>
-        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Level {level}/4</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Verification Depth</span>
+        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Level {level}/4</span>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
         {steps.map((step, idx) => (
           <div key={idx} className="space-y-2">
             <div className={`h-1 rounded-full transition-all duration-1000 ${idx < level ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'bg-neutral-800'}`} />
             <div className="flex flex-col items-center">
-              <span className={`text-[7px] font-black uppercase tracking-tighter ${idx < level ? 'text-indigo-300' : 'text-neutral-700'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${idx < level ? 'text-indigo-300' : 'text-neutral-700'}`}>
                 {step.label}
               </span>
             </div>
@@ -249,7 +249,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
           <ShieldAlert className="w-5 h-5 text-neutral-600" />
         </div>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-600">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-600">
             Unverified Profile
           </p>
           <p className="text-sm text-neutral-500 mt-0.5">No verification data available yet.</p>
@@ -295,10 +295,10 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
               <ScanSearch className={`w-4 h-4 ${statusConfig.color}`} />
             </div>
             <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                 Verification Details
               </p>
-              <p className={`text-[10px] font-medium ${statusConfig.color} opacity-70 mt-0.5`}>
+              <p className={`text-[10px] font-semibold ${statusConfig.color} opacity-70 mt-0.5`}>
                 {statusConfig.description}
               </p>
             </div>
@@ -306,8 +306,8 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
 
           {/* Status Badge */}
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full ${statusConfig.bg}`}>
-            <StatusIcon className={`w-3 h-3 ${statusConfig.color}`} />
-            <span className={`text-[8px] font-black uppercase tracking-[0.15em] ${statusConfig.color}`}>
+            <StatusIcon className={`w-3.5 h-3.5 ${statusConfig.color} translate-y-[-0.5px]`} />
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${statusConfig.color}`}>
               {statusConfig.label}
             </span>
           </div>
@@ -338,10 +338,10 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.06]"
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
                     {getProviderDisplayName(provider)}
                   </span>
-                  <span className="text-[8px] font-bold text-neutral-600">
+                  <span className="text-[10px] font-bold text-neutral-600">
                     Verified
                   </span>
                 </div>
@@ -349,7 +349,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
               {!hasConnectedProviders && (
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/5 border border-amber-500/10">
                   <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-[9px] font-black uppercase tracking-widest text-amber-500">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">
                     Awaiting API Sync
                   </span>
                 </div>
@@ -358,8 +358,8 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
 
             {/* Last sync */}
             <div className="flex items-center gap-2">
-              <Clock className="w-3 h-3 text-neutral-600" />
-              <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-600">
+              <Clock className="w-3.5 h-3.5 text-neutral-600 translate-y-[-0.5px]" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-600">
                 Last sync: {formatSyncTime(lastSyncAt)}
               </span>
             </div>
@@ -409,7 +409,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
               label="Fraud Checks"
               value={
                 <span className={`flex items-center gap-1.5 ${fraudConfig.color}`}>
-                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${fraudConfig.bg}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${fraudConfig.bg}`}>
                     {fraudConfig.label}
                   </span>
                 </span>
@@ -435,8 +435,8 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
           {/* ── Verification History (Premium) ──────────────── */}
           <div className="mx-6 border-t border-white/[0.04] pt-4 pb-6">
             <div className="flex items-center gap-2 mb-4">
-              <History className="w-3.5 h-3.5 text-neutral-500" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Audit History</span>
+              <History className="w-3.5 h-3.5 text-neutral-500 translate-y-[-0.5px]" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Audit History</span>
             </div>
             <div className="space-y-4">
               {providersConnected.map((provider) => (
@@ -445,9 +445,9 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-neutral-300 capitalize">{provider} API Integrated</span>
-                      <span className="text-[9px] font-bold text-neutral-600">Active</span>
+                      <span className="text-[10px] font-bold text-neutral-600">Active</span>
                     </div>
-                    <p className="text-[9px] text-neutral-500 mt-0.5">Connection verified. Syncing your past revenue data.</p>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">Connection verified. Syncing your past revenue data.</p>
                   </div>
                 </div>
               ))}
@@ -456,9 +456,9 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-neutral-300">Verification Recalculated</span>
-                    <span className="text-[9px] font-bold text-indigo-400">Stable</span>
+                    <span className="text-[10px] font-bold text-indigo-400">Stable</span>
                   </div>
-                  <p className="text-[9px] text-neutral-500 mt-0.5">Verification recalculated from connected activity.</p>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">Verification recalculated from connected activity.</p>
                 </div>
               </div>
             </div>
@@ -474,8 +474,8 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
             <div className="flex items-start gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-400 mt-0.5 shrink-0" />
               <div>
-                <h4 className="text-xs font-black uppercase tracking-wider text-white">Direct Ledger Sync</h4>
-                <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-white">Direct Ledger Sync</h4>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
                   Financial figures are automatically reconciled and synchronized directly from verified API channels.
                 </p>
               </div>

@@ -172,7 +172,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
         ].map((stat, i) => (
           <div key={i} className="p-4 bg-neutral-900/20 border border-white/5 rounded-2xl flex items-center gap-4">
             <div className={`p-2 bg-neutral-900 rounded-xl ${stat.color}`}>
-              <stat.icon size={14} />
+              <stat.icon className="w-3.5 h-3.5" />
             </div>
             <div>
               <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{stat.label}</p>
