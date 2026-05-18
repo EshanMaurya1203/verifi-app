@@ -5,15 +5,15 @@
  * the revenue verification data is for a given startup.
  *
  * This module is INDEPENDENT of:
- *   - Trust scoring (scoring.ts)      → holistic startup credibility
- *   - Authenticity (revenue-authenticity.ts) → pattern analysis on events
+ *   - Verification Score (scoring.ts)      → holistic startup credibility
+ *   - Consistency (revenue-consistency.ts) → pattern analysis on events
  *
  * Verification confidence = "How much can we trust the data pipeline itself?"
  *   - Are there enough transactions?
  *   - Is deduplication active?
  *   - Is the provider reliable?
  *   - Are there fraud flags?
- *   - How authentic do the events look?
+ *   - How consistent do the events look?
  */
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@
 const WEIGHTS = {
   transactionVolume: 0.25,
   providerReliability: 0.20,
-  authenticitySignal: 0.25,
+  consistencySignal: 0.25,
   fraudClearance: 0.20,
   deduplication: 0.10,
 } as const;
@@ -46,15 +46,15 @@ const DEFAULT_PROVIDER_RELIABILITY = 70;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type VerificationStatus = "VERIFIED" | "REVIEWING" | "LOW CONFIDENCE";
+export type VerificationStatus = "VERIFIED" | "SYNCING" | "LOW CONFIDENCE";
 
 export interface VerificationConfidenceInput {
   /** Total number of verified revenue events */
   transactionCount: number;
   /** Connected provider names (e.g. ["stripe", "razorpay"]) */
   providers: string[];
-  /** Authenticity score from the Revenue Authenticity Engine (0–100) */
-  authenticityScore: number;
+  /** Consistency score from the Revenue Consistency Engine (0–100) */
+  consistencyScore: number;
   /** Number of fraud signals flagged in the last 30 days */
   fraudFlagCount: number;
   /** Whether the system has deduplication active (stripe_payment_id unique index, etc.) */
@@ -90,7 +90,7 @@ export interface VerificationConfidenceResult {
  * Scoring model (weighted average):
  *   1. Transaction volume (25%) — more events = higher confidence
  *   2. Provider reliability (20%) — Stripe/Razorpay track records
- *   3. Authenticity signal  (25%) — passthrough from authenticity engine
+ *   3. Consistency signal   (25%) — passthrough from consistency engine
  *   4. Fraud clearance     (20%) — fewer fraud flags = higher confidence
  *   5. Deduplication       (10%) — is the pipeline protected from duplicates?
  */
@@ -100,7 +100,7 @@ export function computeVerificationConfidence(
   const {
     transactionCount,
     providers,
-    authenticityScore,
+    consistencyScore,
     fraudFlagCount,
     deduplicationActive,
     lastSyncAt,
@@ -124,8 +124,8 @@ export function computeVerificationConfidence(
     providerScore = scores.reduce((s, v) => s + v, 0) / scores.length;
   }
 
-  // ── 3. Authenticity Signal (passthrough, not duplicated) ──
-  const authenticitySignal = Math.max(0, Math.min(100, authenticityScore));
+  // ── 3. Consistency Signal (passthrough, not duplicated) ──
+  const consistencySignal = Math.max(0, Math.min(100, consistencyScore));
 
   // ── 4. Fraud Clearance Score ──────────────────────────────
   let fraudScore: number;
@@ -146,7 +146,7 @@ export function computeVerificationConfidence(
   const raw =
     volumeScore * WEIGHTS.transactionVolume +
     providerScore * WEIGHTS.providerReliability +
-    authenticitySignal * WEIGHTS.authenticitySignal +
+    consistencySignal * WEIGHTS.consistencySignal +
     fraudScore * WEIGHTS.fraudClearance +
     dedupScore * WEIGHTS.deduplication;
 
@@ -184,6 +184,6 @@ export function computeVerificationConfidence(
 
 function getVerificationStatus(confidence: number): VerificationStatus {
   if (confidence >= 70) return "VERIFIED";
-  if (confidence >= 40) return "REVIEWING";
+  if (confidence >= 40) return "SYNCING";
   return "LOW CONFIDENCE";
 }

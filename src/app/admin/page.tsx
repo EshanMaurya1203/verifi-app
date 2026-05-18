@@ -12,7 +12,7 @@ export default function AdminPage() {
     const { data } = await supabase
       .from("startup_submissions")
       .select("*")
-      .in("verification_status", ["pending", "unverified", "reviewing", "proof_submitted", "api_verified"])
+      .in("verification_status", ["pending", "syncing", "unverified", "reviewing", "proof_submitted", "api_verified", "SELF_REPORTED", "PAYMENT_CONNECTED", "REVENUE_VERIFIED", "HIGH_CONFIDENCE"])
       .order("created_at", { ascending: false });
 
     setData(data || []);
@@ -47,7 +47,7 @@ export default function AdminPage() {
       <main className="pt-24 pb-12 px-6">
         <div className="mx-auto max-w-[1000px]">
           <h1 className="font-syne text-[40px] font-extrabold tracking-[-1.5px] mb-8">
-            Admin Moderation Queue
+            Verification Integration Control
           </h1>
 
           {loading ? (
@@ -59,8 +59,8 @@ export default function AdminPage() {
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
                 <span className="text-2xl">🎉</span>
               </div>
-              <h2 className="text-xl font-syne font-bold mb-2">Inbox Zero!</h2>
-              <p className="text-muted-foreground text-center">There are no pending startups requiring manual review at this time.</p>
+              <h2 className="text-xl font-syne font-bold mb-2">Sync Active</h2>
+              <p className="text-muted-foreground text-center">All startup integrations are successfully verified and syncing in real-time.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -71,7 +71,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-3 mb-1">
                         <h3 className="font-syne text-[22px] font-bold">{item.startup_name}</h3>
                         <span className="text-xs bg-[#1A1A1C] border border-border text-muted-foreground px-2 py-1 rounded-md uppercase tracking-wider">
-                          {item.verification_status === "unverified" || item.verification_status === "reviewing" ? "Reviewing" : item.verification_status}
+                          {item.verification_status?.replace(/_/g, " ") || "Syncing"}
                         </span>
                       </div>
                       <a href={item.website} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
@@ -111,13 +111,13 @@ export default function AdminPage() {
                         onClick={() => updateStatus(item.id, "rejected")}
                         className="px-5 py-2 rounded-lg border border-[#ff4b4b]/30 bg-[#ff4b4b]/10 text-[#ff4b4b] text-sm font-semibold transition-colors hover:bg-[#ff4b4b] hover:text-white"
                       >
-                        Reject
+                        Revoke
                       </button>
                       <button 
                         onClick={() => updateStatus(item.id, "verified")}
                         className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-bold transition-all hover:shadow-[0_0_20px_rgba(185,255,75,0.4)]"
                       >
-                        Approve
+                        Validate
                       </button>
                     </div>
                   </div>

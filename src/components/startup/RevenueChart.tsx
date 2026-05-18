@@ -48,7 +48,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
           <TrendingUp className="w-8 h-8 text-neutral-600" />
         </div>
         <p className="text-neutral-500 text-[10px] font-black uppercase tracking-widest text-center max-w-[200px] leading-relaxed">
-          Insufficient snapshots for velocity projection
+          Insufficient data for trend analysis
         </p>
       </div>
     );
@@ -82,7 +82,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
             }}
             itemStyle={{ color: "#fff", fontSize: "11px", fontWeight: "900" }}
             labelStyle={{ color: "#525252", fontSize: "9px", fontWeight: "900", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "6px" }}
-            formatter={(value: any) => [`₹${Number(value).toLocaleString()}`, "NET REVENUE"]}
+            formatter={(value: any) => [`₹${Number(value).toLocaleString()}`, "VERIFIED REVENUE"]}
             cursor={{ stroke: "rgba(99, 102, 241, 0.2)", strokeWidth: 2 }}
           />
           <Line

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   Link, 
   Award, 
@@ -10,12 +10,19 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { supabase } from "@/lib/supabase";
+import { isAdmin } from "@/lib/isAdmin";
 
 export interface VerificationLog {
   id: string;
   event: string;
   metadata: Record<string, unknown>;
   created_at: string;
+}
+
+interface VerificationTimelineProps {
+  logs: VerificationLog[];
+  ownerId?: string;
 }
 
 const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string; description: (meta: Record<string, any>) => string }> = {
@@ -25,52 +32,102 @@ const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; col
     color: "text-emerald-400 bg-emerald-500/10",
     description: (meta) => `Successfully reconciled ₹${meta.mrr?.toLocaleString() || '0'} across ${meta.count || 0} API records.`
   },
+  razorpay_sync_success_public: {
+    label: "Revenue Reconciliation",
+    icon: RefreshCcw,
+    color: "text-emerald-400 bg-emerald-500/10",
+    description: () => `Successfully reconciled and synced India (Razorpay) ledger connection.`
+  },
   stripe_sync_success: {
     label: "Revenue Reconciliation",
     icon: RefreshCcw,
     color: "text-emerald-400 bg-emerald-500/10",
     description: (meta) => `Successfully reconciled $${meta.mrr?.toLocaleString() || '0'} across ${meta.count || 0} API records.`
   },
+  stripe_sync_success_public: {
+    label: "Revenue Reconciliation",
+    icon: RefreshCcw,
+    color: "text-emerald-400 bg-emerald-500/10",
+    description: () => `Successfully reconciled and synced Stripe ledger connection.`
+  },
   provider_connected: {
     label: "Source Integrated",
     icon: Link,
     color: "text-indigo-400 bg-indigo-500/10",
-    description: (meta) => `New institutional data source (${meta.provider || 'API'}) established with secure handshake.`
+    description: (meta) => `Successfully connected to ${meta.provider || 'payment provider'}.`
   },
   trust_score_updated: {
-    label: "Trust Protocol Refined",
+    label: "Verification Updated",
     icon: ShieldCheck,
-    color: "text-violet-400 bg-violet-500/10",
-    description: (meta) => `Multi-factor audit completed. Integrity confidence refined to ${meta.score || 0}/100.`
+    color: "text-[#b9ff4b] bg-[#b9ff4b]/10",
+    description: (meta) => `System verification completed. Verification score refined to ${meta.score || 0}/100.`
+  },
+  trust_score_updated_public: {
+    label: "Verification Updated",
+    icon: ShieldCheck,
+    color: "text-[#b9ff4b] bg-[#b9ff4b]/10",
+    description: () => `System verification completed. Verification parameters and patterns validated.`
   },
   tier_upgraded: {
-    label: "Trust Tier Upgrade",
+    label: "Verification Tier Upgrade",
     icon: Award,
     color: "text-amber-400 bg-amber-500/10 shadow-[0_0_15px_rgba(251,191,36,0.1)]",
-    description: (meta) => `Startup attained ${meta.tier || 'New'} Trust Tier based on sustained forensic integrity.`
+    description: (meta) => `Startup attained ${meta.tier || 'New'} Verification Tier based on sustained revenue consistency.`
   },
   fraud_check_passed: {
-    label: "Integrity Validation",
+    label: "Revenue Consistency Check",
     icon: ShieldCheck,
     color: "text-emerald-400 bg-emerald-500/10",
-    description: () => "Pattern analysis completed. No synthetic revenue or manipulation detected."
+    description: () => "Revenue patterns analyzed. Data verified as consistent and authentic."
   },
   listing_created: {
-    label: "Institutional Listing",
+    label: "Platform Listing",
     icon: ShieldCheck,
     color: "text-indigo-400 bg-indigo-500/10",
-    description: () => "Startup entered the Verifi ecosystem. Initial audit protocols initialized."
+    description: () => "Startup entered the Verifi ecosystem. Verification protocols initialized."
   }
 };
 
-export const VerificationTimeline = ({ logs }: { logs: VerificationLog[] }) => {
+export const VerificationTimeline = ({ logs, ownerId }: VerificationTimelineProps) => {
+  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkOwner = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        const isOwner = data.user.id === ownerId;
+        const admin = isAdmin(data.user.email);
+        setIsOwnerOrAdmin(!!(isOwner || admin));
+      }
+    };
+    if (ownerId) {
+      checkOwner();
+    }
+  }, [ownerId]);
+
+  const sanitizedLogs = useMemo(() => {
+    if (isOwnerOrAdmin) return logs;
+    return logs.map((log) => {
+      if (log.event === "trust_score_updated") {
+        return { ...log, event: "trust_score_updated_public" };
+      }
+      if (log.event === "razorpay_sync_success") {
+        return { ...log, event: "razorpay_sync_success_public" };
+      }
+      if (log.event === "stripe_sync_success") {
+        return { ...log, event: "stripe_sync_success_public" };
+      }
+      return log;
+    });
+  }, [logs, isOwnerOrAdmin]);
+
   if (!logs || logs.length === 0) {
     return (
       <div className="bg-neutral-900/30 border border-white/[0.05] rounded-[2.5rem] p-10 text-center">
         <Clock className="w-10 h-10 text-neutral-700 mx-auto mb-4" />
-        <h4 className="text-sm font-black uppercase tracking-widest text-neutral-500">Awaiting Historical Data</h4>
+        <h4 className="text-sm font-black uppercase tracking-widest text-neutral-500">Connect to Start Verification</h4>
         <p className="text-[10px] text-neutral-600 mt-2 max-w-[200px] mx-auto font-bold uppercase tracking-widest leading-relaxed">
-          Reconciliation events will appear here as they occur in real-time.
+          Verification events will appear here once you connect a payment provider.
         </p>
       </div>
     );
@@ -84,8 +141,8 @@ export const VerificationTimeline = ({ logs }: { logs: VerificationLog[] }) => {
 
       <div className="flex items-center justify-between mb-10">
         <div>
-          <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white">Audit Timeline</h3>
-          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1">Immutable Verification Ledger</p>
+          <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white">Verification Timeline</h3>
+          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1">Verified Activity Log</p>
         </div>
         <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
           <Clock className="w-5 h-5 text-indigo-400" />
@@ -96,9 +153,9 @@ export const VerificationTimeline = ({ logs }: { logs: VerificationLog[] }) => {
         {/* The connecting line */}
         <div className="absolute left-[19px] top-2 bottom-2 w-px bg-white/[0.05]" />
 
-        {logs.map((log, idx) => {
+        {sanitizedLogs.map((log, idx) => {
           const config = EVENT_CONFIG[log.event] || {
-            label: "Audit Event",
+            label: "Verification Event",
             icon: ShieldCheck,
             color: "text-neutral-400 bg-neutral-500/10",
             description: () => "Verified system interaction completed successfully."
@@ -128,7 +185,7 @@ export const VerificationTimeline = ({ logs }: { logs: VerificationLog[] }) => {
                 {idx === 0 && (
                   <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/5 border border-emerald-500/10 rounded-full">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Forensic Baseline Stable</span>
+                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Revenue verified</span>
                   </div>
                 )}
               </div>

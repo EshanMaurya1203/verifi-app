@@ -43,8 +43,8 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
   const STEPS = [
     { id: "connect", label: "Connect Provider" },
     { id: "syncing", label: "Sync Revenue" },
-    { id: "analyzing", label: "Analyze Authenticity" },
-    { id: "summary", label: "Trust Profile" }
+    { id: "analyzing", label: "Check Consistency" },
+    { id: "summary", label: "Verification Result" }
   ];
 
   const getStepIndex = (step: VerificationStep) => {
@@ -104,11 +104,11 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
       // Sync successful, move to analysis
       setCurrentStep("analyzing");
 
-      // Fetch overview data for authenticity and trust score
+      // Fetch overview data for consistency and verification score
       const overviewRes = await fetch(`/api/startup/${startupId}/overview`);
       const overview = await overviewRes.json();
       
-      if (!overviewRes.ok) throw new Error("Failed to generate trust profile");
+      if (!overviewRes.ok) throw new Error("Failed to generate verification profile");
 
       setOverviewData(overview);
       
@@ -147,12 +147,12 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
               <div key={step.id} className="flex flex-col items-center gap-3 w-1/4">
                 <div className={`
                   w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-500
-                  ${isCompleted ? "bg-indigo-500 border-indigo-500 text-white" : 
-                    isActive ? "bg-neutral-900 border-indigo-500 text-indigo-400 shadow-[0_0_15px_rgba(99,91,255,0.4)]" : 
+                  ${isCompleted ? "bg-[#b9ff4b] border-[#b9ff4b] text-[#080808]" : 
+                    isActive ? "bg-neutral-900 border-[#b9ff4b] text-[#b9ff4b] shadow-[0_0_15px_rgba(185,255,75,0.3)]" : 
                     isFailed ? "bg-red-500/10 border-red-500 text-red-500" :
                     "bg-neutral-900 border-white/10 text-neutral-600"}
                 `}>
-                  {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : 
+                  {isCompleted ? <CheckCircle2 className="w-4 h-4 text-[#080808]" /> : 
                    isFailed ? <AlertTriangle className="w-4 h-4" /> :
                    <span className="text-xs font-black">{idx + 1}</span>}
                 </div>
@@ -168,7 +168,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
         {/* Track Line */}
         <div className="absolute top-4 left-0 right-0 h-[2px] bg-white/5 -z-0 rounded-full" />
         <div 
-          className="absolute top-4 left-0 h-[2px] bg-indigo-500 -z-0 transition-all duration-700 ease-in-out"
+          className="absolute top-4 left-0 h-[2px] bg-[#b9ff4b] -z-0 transition-all duration-700 ease-in-out"
           style={{ width: `${(getStepIndex(currentStep === "incomplete" ? "syncing" : currentStep) / (STEPS.length - 1)) * 100}%` }}
         />
       </div>
@@ -275,7 +275,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
                   type="submit"
                   className="w-full bg-white text-black py-4 rounded-xl font-black uppercase tracking-[0.15em] text-[11px] hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2"
                 >
-                  Start Verification Pipeline <ArrowRight className="w-4 h-4" />
+                  Start Verification Process <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
             )}
@@ -286,28 +286,28 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
         {(currentStep === "syncing" || currentStep === "analyzing") && (
           <div className="flex-1 flex flex-col items-center justify-center text-center animate-in zoom-in-95 duration-500">
             <div className="relative mb-8">
-              <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse" />
-              <div className="w-20 h-20 bg-neutral-900 border border-white/10 rounded-full flex items-center justify-center relative z-10">
+              <div className="absolute inset-0 bg-[#b9ff4b]/15 rounded-full blur-xl animate-pulse" />
+              <div className="w-20 h-20 bg-[#0f0f0f] border border-white/10 rounded-full flex items-center justify-center relative z-10">
                 {currentStep === "syncing" ? (
-                  <Activity className="w-8 h-8 text-indigo-400 animate-pulse" />
+                  <Activity className="w-8 h-8 text-[#b9ff4b] animate-pulse" />
                 ) : (
-                  <ScanSearch className="w-8 h-8 text-violet-400 animate-spin-slow" />
+                  <ScanSearch className="w-8 h-8 text-[#b9ff4b] animate-spin-slow" />
                 )}
               </div>
-              <div className="absolute top-0 left-0 w-full h-full border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+              <div className="absolute top-0 left-0 w-full h-full border-2 border-[#b9ff4b]/20 border-t-[#b9ff4b] rounded-full animate-spin" />
             </div>
             
             <h3 className="text-xl font-black uppercase tracking-widest mb-3">
-              {currentStep === "syncing" ? "Syncing Revenue History" : "Running Authenticity Engine"}
+              {currentStep === "syncing" ? "Syncing Revenue History" : "Verifying Revenue Data"}
             </h3>
             <p className="text-sm text-neutral-500 font-medium max-w-xs mx-auto mb-6">
               {currentStep === "syncing" 
-                ? "Connecting to gateway and downloading transaction ledgers for the last 30 days..." 
-                : "Analyzing event spacing, volume diversity, and checking for synthetic patterns..."}
+                ? "Connecting to payment provider and syncing recent transactions..." 
+                : "Analyzing transaction patterns and checking for provider consistency..."}
             </p>
 
             <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/5">
-              <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />
+              <Loader2 className="w-3 h-3 text-[#b9ff4b] animate-spin" />
               <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
                 Estimated time remaining: {timeLeft}s
               </span>
@@ -322,25 +322,25 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
               <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full mb-4 ring-1 ring-emerald-500/20">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h2 className="text-3xl font-black uppercase tracking-tighter text-white mb-2">Audit Complete</h2>
-              <p className="text-neutral-500 font-medium">Your trust profile has been successfully generated.</p>
+              <h2 className="text-3xl font-black uppercase tracking-tighter text-white mb-2">Verification Complete</h2>
+              <p className="text-neutral-500 font-medium">Your verification profile has been successfully generated.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              {/* Trust Score */}
+              {/* Verification Score */}
               <div className="bg-black/50 border border-white/5 p-5 rounded-2xl flex flex-col items-center text-center">
                 <ShieldCheck className="w-5 h-5 text-indigo-400 mb-3" />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Trust Score</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Verification Score</span>
                 <span className="text-3xl font-black tabular-nums text-white">{overviewData.startup.trust_score}<span className="text-sm text-neutral-600">/100</span></span>
               </div>
 
-              {/* Authenticity */}
+              {/* Consistency */}
               <div className="bg-black/50 border border-white/5 p-5 rounded-2xl flex flex-col items-center text-center">
                 <Fingerprint className={`w-5 h-5 mb-3 ${
                   overviewData.authenticity?.level === "Organic" ? "text-emerald-400" :
                   overviewData.authenticity?.level === "Moderate" ? "text-amber-400" : "text-orange-400"
                 }`} />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Authenticity</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Consistency</span>
                 <span className="text-xl font-black uppercase tracking-tight text-white">{overviewData.authenticity?.level || "N/A"}</span>
               </div>
 

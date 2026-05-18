@@ -2,13 +2,16 @@
 
 import React from "react";
 import { Fingerprint, ShieldCheck, ShieldAlert, ShieldQuestion, TrendingUp, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { isAdmin } from "@/lib/isAdmin";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 import { VerificationStateResult } from "@/lib/verification-state";
 
-interface RevenueAuthenticityCardProps {
-  authenticity: VerificationStateResult | null | undefined;
+interface RevenueConsistencyCardProps {
+  consistency: VerificationStateResult | null | undefined;
+  ownerId?: string;
 }
 
 // ─── Level Config ───────────────────────────────────────────────────────────
@@ -23,7 +26,7 @@ const LEVEL_CONFIG = {
     badgeText: "text-emerald-300",
     barColor: "bg-emerald-500",
     barGlow: "shadow-emerald-500/40",
-    description: "Revenue patterns appear natural and legitimate",
+    description: "Revenue patterns appear consistent and verified",
   },
   Refining: {
     icon: ShieldQuestion,
@@ -34,18 +37,7 @@ const LEVEL_CONFIG = {
     badgeText: "text-amber-300",
     barColor: "bg-amber-500",
     barGlow: "shadow-amber-500/40",
-    description: "Some patterns need further verification",
-  },
-  "Needs Review": {
-    icon: ShieldAlert,
-    gradient: "from-amber-500/20 to-amber-900/5",
-    border: "border-amber-500/20",
-    textColor: "text-amber-400",
-    badgeBg: "bg-amber-500/15",
-    badgeText: "text-amber-300",
-    barColor: "bg-amber-500",
-    barGlow: "shadow-amber-500/40",
-    description: "Revenue patterns require further audit",
+    description: "Revenue patterns building confidence",
   },
 } as const;
 
@@ -75,8 +67,24 @@ const FLAG_COLORS = {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = ({ authenticity }) => {
-  if (!authenticity) {
+export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ consistency, ownerId }) => {
+  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkOwner = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        const isOwner = data.user.id === ownerId;
+        const admin = isAdmin(data.user.email);
+        setIsOwnerOrAdmin(!!(isOwner || admin));
+      }
+    };
+    if (ownerId) {
+      checkOwner();
+    }
+  }, [ownerId]);
+
+  if (!consistency) {
     return (
       <div className="p-6 bg-neutral-900/20 border border-white/5 rounded-[2rem] flex items-center gap-4">
         <div className="p-3 bg-neutral-800/50 rounded-2xl">
@@ -84,7 +92,7 @@ export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = (
         </div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-600">
-            Revenue Authenticity
+            Revenue Consistency
           </p>
           <p className="text-sm text-neutral-500 mt-0.5">Awaiting event data…</p>
         </div>
@@ -92,10 +100,12 @@ export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = (
     );
   }
 
-  const { authenticityScore: score, authenticityLevel, authenticityFlags: flags } = authenticity;
+  const { consistencyScore: score, consistencyLevel, consistencyFlags: flags } = consistency;
   
-  // Safe cast since the components only know about these 3 levels
-  const level = authenticityLevel as "Needs Review" | "Refining" | "Verified Patterns";
+  const level = (
+    consistencyLevel === "Consistent" ? "Verified Patterns" : "Refining"
+  ) as "Refining" | "Verified Patterns";
+  
   const config = LEVEL_CONFIG[level] || LEVEL_CONFIG["Refining"];
   const LevelIcon = config.icon;
 
@@ -125,7 +135,7 @@ export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = (
           </div>
           <div>
             <p className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">
-              Revenue Authenticity
+              Revenue Consistency
             </p>
             <p className={`text-[10px] font-medium ${config.textColor} opacity-70 mt-0.5`}>
               {config.description}
@@ -142,72 +152,50 @@ export const RevenueAuthenticityCard: React.FC<RevenueAuthenticityCardProps> = (
         </div>
       </div>
 
-      {/* Score Display */}
-      <div className="flex items-end gap-4 mb-5 relative z-10">
-        <div className="flex items-baseline gap-1">
-          <span className="text-4xl font-black text-white tabular-nums tracking-tight">
-            {score}
-          </span>
-          <span className="text-sm font-bold text-neutral-500">/100</span>
-        </div>
-
-        {/* Score bar */}
-        <div className="flex-1 mb-2">
-          <div className="h-1.5 bg-neutral-800/80 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full ${config.barColor} shadow-lg ${config.barGlow} transition-all duration-1000 ease-out`}
-              style={{ width: `${score}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-1.5">
-            <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
-              Needs Review
+      {/* Score Display (Owner-only) */}
+      {isOwnerOrAdmin ? (
+        <div className="flex items-end gap-4 mb-5 relative z-10">
+          <div className="flex items-baseline gap-1">
+            <span className="text-4xl font-black text-white tabular-nums tracking-tight">
+              {score}
             </span>
-            <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
-              Verified Patterns
-            </span>
+            <span className="text-sm font-bold text-neutral-500">/100</span>
           </div>
-        </div>
-      </div>
 
-      {/* Trust Composition (Premium) */}
-      <div className="mb-6 relative z-10 p-4 bg-black/20 border border-white/5 rounded-2xl">
-        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-4 flex items-center gap-2">
-          <TrendingUp className="w-3 h-3" /> Trust Composition
-        </p>
-        <div className="space-y-3">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-              <span>API Signal Integrity</span>
-              <span className="text-emerald-400">98%</span>
+          {/* Score bar */}
+          <div className="flex-1 mb-2">
+            <div className="h-1.5 bg-neutral-800/80 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${config.barColor} shadow-lg ${config.barGlow} transition-all duration-1000 ease-out`}
+                style={{ width: `${score}%` }}
+              />
             </div>
-            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 w-[98%]" />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-              <span>Network Footprint</span>
-              <span className="text-indigo-400">85%</span>
-            </div>
-            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-500 w-[85%]" />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-              <span>Identity Verification</span>
-              <span className="text-amber-400">Pending</span>
-            </div>
-            <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-              <div className="h-full bg-amber-500 w-[40%]" />
+            <div className="flex justify-between mt-1.5">
+              <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
+                Refining
+              </span>
+              <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
+                Verified Patterns
+              </span>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="mt-2 mb-5 p-4 bg-white/[0.02] border border-white/[0.04] rounded-2xl relative z-10">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-white">Consistent Billing History</h4>
+              <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
+                Verification algorithms analyze transaction diversity, pattern spacing, and recurring intervals to confirm organic, non-synthetic revenue.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Flags */}
-      {flags.length > 0 && (
+      {/* Flags (Owner-only) */}
+      {isOwnerOrAdmin && flags.length > 0 && (
         <div className="space-y-2 relative z-10">
           <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-3">
             Analysis Signals

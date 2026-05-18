@@ -77,9 +77,10 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
   const progress = startup?.trust_score !== undefined ? startup.trust_score : 0;
 
   const getStrengthLevel = (score: number) => {
-    if (score <= 30) return { label: "Weak", color: "text-red-400", bg: "bg-red-400/10", msg: "Your profile lacks key verification signals" };
-    if (score <= 70) return { label: "Moderate", color: "text-amber-400", bg: "bg-amber-400/10", msg: "You're halfway there — improve visibility" };
-    return { label: "Strong", color: "text-green-400", bg: "bg-green-400/10", msg: "High trust profile — ranks higher" };
+    if (score <= 30) return { label: "Self Reported", color: "text-neutral-400", bg: "bg-neutral-400/10", msg: "Connect a payment provider to increase verification confidence" };
+    if (score <= 70) return { label: "Payment Connected", color: "text-amber-400", bg: "bg-amber-400/10", msg: "Building transaction history to verify revenue" };
+    if (score <= 85) return { label: "Revenue Verified", color: "text-blue-400", bg: "bg-blue-400/10", msg: "Consistent revenue data confirmed by provider" };
+    return { label: "High Confidence", color: "text-green-400", bg: "bg-green-400/10", msg: "Multi-signal verification complete — highest trust tier" };
   };
   const strength = getStrengthLevel(progress);
 
@@ -212,7 +213,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
       {pointsGained && (
         <div className="fixed top-32 left-1/2 -translate-x-1/2 z-[110] bg-white text-black px-6 py-4 rounded-3xl font-black shadow-2xl flex items-center gap-3 animate-bounce">
           <div className="bg-green-500 p-1 rounded-full"><ShieldCheck className="w-5 h-5 text-white" /></div>
-          <span className="uppercase tracking-tighter">+{pointsGained} Trust Gained</span>
+          <span className="uppercase tracking-tighter">+{pointsGained} Score Gained</span>
           <Sparkles className="w-5 h-5 text-amber-500" />
         </div>
       )}
@@ -230,12 +231,12 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-2xl font-black">{progress}%</span>
-            <span className="text-[10px] uppercase font-bold text-neutral-500">Strength</span>
+            <span className="text-[10px] uppercase font-bold text-neutral-500">Score</span>
           </div>
         </div>
         <div className="flex-1 space-y-4 text-center md:text-left">
           <div className="flex items-center justify-center md:justify-start gap-2">
-            <h2 className="text-xl font-bold">Profile Strength</h2>
+            <h2 className="text-xl font-bold">Verification Score</h2>
             <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-tighter ${strength.color} ${strength.bg}`}>{strength.label}</span>
           </div>
           <p className="text-sm text-neutral-400 font-medium">{strength.msg}</p>
@@ -262,7 +263,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
         <div className="flex items-center justify-between pb-4 border-b border-white/5">
           <div className="space-y-1">
             <h3 className="text-xl font-bold">Connect your revenue sources</h3>
-            <p className="text-sm text-neutral-500 font-medium tracking-tight">Link multiple providers. Trust score increments dynamically per provider.</p>
+            <p className="text-sm text-neutral-500 font-medium tracking-tight">Link multiple providers. Verification score increments dynamically per provider.</p>
           </div>
           <div className="text-right">
             <span className="text-[10px] uppercase font-bold text-neutral-500 tracking-widest block">Aggregated Total MRR</span>

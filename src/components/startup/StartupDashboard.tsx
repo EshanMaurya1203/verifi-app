@@ -168,7 +168,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
       <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Active Gateways", val: data.connections.filter(c => c.connected).length, icon: Zap, color: "text-amber-400" },
-          { label: "Trust Integrity", val: `${data.startup.trust_score}%`, icon: Shield, color: "text-indigo-400" },
+          { label: "Verification Score", val: `${data.startup.trust_score}%`, icon: Shield, color: "text-indigo-400" },
         ].map((stat, i) => (
           <div key={i} className="p-4 bg-neutral-900/20 border border-white/5 rounded-2xl flex items-center gap-4">
             <div className={`p-2 bg-neutral-900 rounded-xl ${stat.color}`}>

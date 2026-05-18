@@ -135,7 +135,7 @@ export async function POST(req: Request) {
 
     const confidenceScore = calculateVerificationScore(data);
 
-    let verification_status = "reviewing";
+    let verification_status = "syncing";
 
     if (data.verified_revenue) {
       verification_status = "api_verified";
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
       verification_status = "proof_submitted";
     }
 
-    let verification_label = "Reviewing";
+    let verification_label = "Syncing";
 
     if (data.verified_revenue) {
       verification_label = "API Verified";

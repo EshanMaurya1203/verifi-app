@@ -18,93 +18,73 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-import { VerificationStateResult, UnifiedVerificationStatus } from "@/lib/verification-state";
+import { VerificationStateResult, ConfidenceTier } from "@/lib/verification-state";
+import { supabase } from "@/lib/supabase";
+import { isAdmin } from "@/lib/isAdmin";
 
 interface VerificationTransparencyCardProps {
   verification: VerificationStateResult | null | undefined;
+  ownerId?: string;
 }
 
-// ─── Status Config ──────────────────────────────────────────────────────────
+// ─── Confidence Tier Config ─────────────────────────────────────────────────
 
-const STATUS_CONFIG = {
-  VERIFIED: {
-    icon: ShieldCheck,
-    label: "Verified",
-    color: "text-emerald-400",
-    bg: "bg-emerald-500/12",
-    border: "border-emerald-500/25",
-    glow: "bg-emerald-500",
-    ringColor: "stroke-emerald-500",
-    trackColor: "stroke-emerald-500/15",
-    description: "High-confidence data pipeline",
-  },
-  "PARTIALLY VERIFIED": {
-    icon: Activity,
-    label: "Partially Verified",
-    color: "text-blue-400",
-    bg: "bg-blue-500/12",
-    border: "border-blue-500/25",
-    glow: "bg-blue-500",
-    ringColor: "stroke-blue-500",
-    trackColor: "stroke-blue-500/15",
-    description: "Acceptable but incomplete signals",
-  },
-  REVIEWING: {
+const TIER_CONFIG: Record<ConfidenceTier, {
+  icon: React.ElementType;
+  label: string;
+  color: string;
+  bg: string;
+  border: string;
+  glow: string;
+  ringColor: string;
+  trackColor: string;
+  description: string;
+}> = {
+  SELF_REPORTED: {
     icon: ScanSearch,
-    label: "Reviewing",
+    label: "Self Reported",
+    color: "text-neutral-400",
+    bg: "bg-neutral-500/12",
+    border: "border-neutral-500/20",
+    glow: "bg-neutral-500",
+    ringColor: "stroke-neutral-500",
+    trackColor: "stroke-neutral-500/15",
+    description: "Revenue data self-declared",
+  },
+  PAYMENT_CONNECTED: {
+    icon: Activity,
+    label: "Payment Connected",
     color: "text-amber-400",
     bg: "bg-amber-500/12",
     border: "border-amber-500/25",
     glow: "bg-amber-500",
     ringColor: "stroke-amber-500",
     trackColor: "stroke-amber-500/15",
-    description: "Initial verification phase",
+    description: "Provider linked, building history",
   },
-  "NEEDS REVIEW": {
-    icon: ShieldAlert,
-    label: "Needs Review",
-    color: "text-amber-500",
-    bg: "bg-amber-500/12",
-    border: "border-amber-500/25",
-    glow: "bg-amber-500",
-    ringColor: "stroke-amber-500",
-    trackColor: "stroke-amber-500/15",
-    description: "Requires manual clarification",
+  REVENUE_VERIFIED: {
+    icon: ShieldCheck,
+    label: "Revenue Verified",
+    color: "text-blue-400",
+    bg: "bg-blue-500/12",
+    border: "border-blue-500/25",
+    glow: "bg-blue-500",
+    ringColor: "stroke-blue-500",
+    trackColor: "stroke-blue-500/15",
+    description: "Consistent revenue confirmed",
   },
-  INCOMPLETE: {
-    icon: Clock,
-    label: "Verification Incomplete",
-    color: "text-rose-400",
-    bg: "bg-rose-500/12",
-    border: "border-rose-500/25",
-    glow: "bg-rose-500",
-    ringColor: "stroke-rose-500",
-    trackColor: "stroke-rose-500/15",
-    description: "Awaiting final reconciliation",
+  HIGH_CONFIDENCE: {
+    icon: ShieldCheck,
+    label: "High Confidence",
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/12",
+    border: "border-emerald-500/25",
+    glow: "bg-emerald-500",
+    ringColor: "stroke-emerald-500",
+    trackColor: "stroke-emerald-500/15",
+    description: "Multi-signal verification complete",
   },
-  MONITORING: {
-    icon: Activity,
-    label: "Monitoring",
-    color: "text-neutral-400",
-    bg: "bg-neutral-500/12",
-    border: "border-neutral-500/25",
-    glow: "bg-neutral-500",
-    ringColor: "stroke-neutral-500",
-    trackColor: "stroke-neutral-500/15",
-    description: "Continuous audit active",
-  },
-  UNVERIFIED: {
-    icon: ScanSearch,
-    label: "Reviewing",
-    color: "text-amber-500",
-    bg: "bg-amber-500/12",
-    border: "border-amber-500/25",
-    glow: "bg-amber-500",
-    ringColor: "stroke-amber-500",
-    trackColor: "stroke-amber-500/15",
-    description: "Verification in progress",
-  },
-} as const;
+};
 
 const FRAUD_STATUS_CONFIG = {
   passed: { icon: CheckCircle2, label: "Passed", color: "text-emerald-400", bg: "bg-emerald-500/10" },
@@ -212,10 +192,10 @@ const MetricRow = ({
 
 const VerificationDepth = ({ level }: { level: number }) => {
   const steps = [
-    { label: "Signals", desc: "Data Ingested" },
-    { label: "Identity", desc: "Founder Verified" },
-    { label: "Sync", desc: "Institutional Sync" },
-    { label: "Forensic", desc: "Final Audit" },
+    { label: "Self Reported", desc: "Self Declared" },
+    { label: "Payment Connected", desc: "Provider Linked" },
+    { label: "Revenue Verified", desc: "Transactions Checked" },
+    { label: "High Confidence", desc: "Signals Validated" },
   ];
 
   return (
@@ -244,18 +224,35 @@ const VerificationDepth = ({ level }: { level: number }) => {
 
 export const VerificationTransparencyCard: React.FC<VerificationTransparencyCardProps> = ({
   verification,
+  ownerId,
 }) => {
+  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkOwner = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        const isOwner = data.user.id === ownerId;
+        const admin = isAdmin(data.user.email);
+        setIsOwnerOrAdmin(!!(isOwner || admin));
+      }
+    };
+    if (ownerId) {
+      checkOwner();
+    }
+  }, [ownerId]);
+
   if (!verification) {
     return (
       <div className="p-6 bg-neutral-900/20 border border-white/5 rounded-[2rem] flex items-center gap-4">
         <div className="p-3 bg-neutral-800/50 rounded-2xl">
-          <ScanSearch className="w-5 h-5 text-neutral-600" />
+          <ShieldAlert className="w-5 h-5 text-neutral-600" />
         </div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-600">
-            Verification Transparency
+            Unverified Profile
           </p>
-          <p className="text-sm text-neutral-500 mt-0.5">Awaiting pipeline data…</p>
+          <p className="text-sm text-neutral-500 mt-0.5">No verification data available yet.</p>
         </div>
       </div>
     );
@@ -263,7 +260,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
 
   const {
     verificationConfidence,
-    verificationStatus,
+    confidenceTier,
     transactionCount,
     duplicateProtectionActive,
     fraudChecksPassed,
@@ -272,7 +269,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
     lastSyncAt,
   } = verification;
 
-  const statusConfig = STATUS_CONFIG[verificationStatus];
+  const statusConfig = TIER_CONFIG[confidenceTier];
   const fraudCheckStatus = transactionCount === 0 ? "no_data" : fraudChecksPassed ? "passed" : "flagged";
   const fraudConfig = FRAUD_STATUS_CONFIG[fraudCheckStatus];
   const StatusIcon = statusConfig.icon;
@@ -299,7 +296,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
             </div>
             <div>
               <p className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">
-                Verification Transparency
+                Verification Details
               </p>
               <p className={`text-[10px] font-medium ${statusConfig.color} opacity-70 mt-0.5`}>
                 {statusConfig.description}
@@ -317,14 +314,20 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
         </div>
       </div>
 
-      {/* ── Confidence Ring + Key Metrics ──────────────── */}
+      {/* ── Confidence Ring / Shield Badge + Key Metrics ──────────────── */}
       <div className="px-6 pb-4 relative z-10">
         <div className="flex items-center gap-6">
-          <ConfidenceRing
-            value={verificationConfidence}
-            ringColor={statusConfig.ringColor}
-            trackColor={statusConfig.trackColor}
-          />
+          {isOwnerOrAdmin ? (
+            <ConfidenceRing
+              value={verificationConfidence}
+              ringColor={statusConfig.ringColor}
+              trackColor={statusConfig.trackColor}
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0 bg-white/[0.02] border border-white/[0.05] shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]">
+              <ShieldCheck className={`w-8 h-8 ${statusConfig.color}`} />
+            </div>
+          )}
 
           <div className="flex-1 min-w-0">
             {/* Provider pills */}
@@ -344,9 +347,12 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
                 </div>
               ))}
               {!hasConnectedProviders && (
-                <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">
-                  No providers connected
-                </span>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/5 border border-amber-500/10">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-amber-500">
+                    Awaiting API Sync
+                  </span>
+                </div>
               )}
             </div>
 
@@ -361,99 +367,122 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
         </div>
       </div>
 
-      <div className="px-6 pb-6 relative z-10">
-        <VerificationDepth level={verificationConfidence > 80 ? 4 : verificationConfidence > 50 ? 3 : 2} />
-      </div>
+      {/* ── Verification Depth & Audit Details (Owner-only) ── */}
+      {isOwnerOrAdmin ? (
+        <>
+          <div className="px-6 pb-6 relative z-10">
+            <VerificationDepth level={verificationConfidence > 80 ? 4 : verificationConfidence > 50 ? 3 : 2} />
+          </div>
 
-      {/* ── Divider ───────────────────────────────────── */}
-      <div className="mx-6 border-t border-white/[0.04]" />
+          {/* ── Divider ───────────────────────────────────── */}
+          <div className="mx-6 border-t border-white/[0.04]" />
 
-      {/* ── Audit Metrics ─────────────────────────────── */}
-      <div className="px-6 py-3 relative z-10">
-        <MetricRow
-          icon={FileCheck2}
-          label="Verified Transactions"
-          value={transactionCount.toLocaleString()}
-          iconColor="text-indigo-400/70"
-        />
-        <MetricRow
-          icon={Copy}
-          label="Duplicate Prevention"
-          value={
-            duplicateProtectionActive ? (
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Active
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Monitoring
-              </span>
-            )
-          }
-          valueColor={duplicateProtectionActive ? "text-emerald-400" : "text-red-400"}
-          iconColor="text-cyan-400/70"
-        />
-        <MetricRow
-          icon={FraudIcon}
-          label="Fraud Checks"
-          value={
-            <span className={`flex items-center gap-1.5 ${fraudConfig.color}`}>
-              <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${fraudConfig.bg}`}>
-                {fraudConfig.label}
-              </span>
-            </span>
-          }
-          iconColor={fraudConfig.color}
-        />
-        <MetricRow
-          icon={Activity}
-          label="Confidence Level"
-          value={`${verificationConfidence}%`}
-          valueColor={statusConfig.color}
-          iconColor={statusConfig.color}
-        />
-        <MetricRow
-          icon={Layers}
-          label="Authenticity Alignment"
-          value={verificationStatus}
-          valueColor={statusConfig.color}
-          iconColor="text-violet-400/70"
-        />
-      </div>
+          {/* ── Audit Metrics ─────────────────────────────── */}
+          <div className="px-6 py-3 relative z-10">
+            <MetricRow
+              icon={FileCheck2}
+              label="Verified Transactions"
+              value={transactionCount.toLocaleString()}
+              iconColor="text-indigo-400/70"
+            />
+            <MetricRow
+              icon={Copy}
+              label="Duplicate Prevention"
+              value={
+                duplicateProtectionActive ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Active
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    Monitoring
+                  </span>
+                )
+              }
+              valueColor={duplicateProtectionActive ? "text-emerald-400" : "text-red-400"}
+              iconColor="text-cyan-400/70"
+            />
+            <MetricRow
+              icon={FraudIcon}
+              label="Fraud Checks"
+              value={
+                <span className={`flex items-center gap-1.5 ${fraudConfig.color}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${fraudConfig.bg}`}>
+                    {fraudConfig.label}
+                  </span>
+                </span>
+              }
+              iconColor={fraudConfig.color}
+            />
+            <MetricRow
+              icon={Activity}
+              label="Confidence Level"
+              value={`${verificationConfidence}%`}
+              valueColor={statusConfig.color}
+              iconColor={statusConfig.color}
+            />
+            <MetricRow
+              icon={Layers}
+              label="Verification Status"
+              value={confidenceTier.replace(/_/g, " ")}
+              valueColor={statusConfig.color}
+              iconColor={statusConfig.color}
+            />
+          </div>
 
-      {/* ── Verification History (Premium) ──────────────── */}
-      <div className="mx-6 border-t border-white/[0.04] pt-4 pb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <History className="w-3.5 h-3.5 text-neutral-500" />
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Audit History</span>
-        </div>
-        <div className="space-y-4">
-          {providersConnected.map((provider) => (
-            <div key={provider} className="flex items-start gap-3 group">
-              <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10 group-hover:scale-125 transition-transform" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-neutral-300 capitalize">{provider} API Integrated</span>
-                  <span className="text-[9px] font-bold text-neutral-600">Active</span>
-                </div>
-                <p className="text-[9px] text-neutral-500 mt-0.5">Secure handshake established. Syncing historical snapshots.</p>
-              </div>
+          {/* ── Verification History (Premium) ──────────────── */}
+          <div className="mx-6 border-t border-white/[0.04] pt-4 pb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-3.5 h-3.5 text-neutral-500" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Audit History</span>
             </div>
-          ))}
-          <div className="flex items-start gap-3 group">
-            <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 ring-4 ring-indigo-500/10" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-neutral-300">Forensic Trust Computed</span>
-                <span className="text-[9px] font-bold text-indigo-400">Stable</span>
+            <div className="space-y-4">
+              {providersConnected.map((provider) => (
+                <div key={provider} className="flex items-start gap-3 group">
+                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10 group-hover:scale-125 transition-transform" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-neutral-300 capitalize">{provider} API Integrated</span>
+                      <span className="text-[9px] font-bold text-neutral-600">Active</span>
+                    </div>
+                    <p className="text-[9px] text-neutral-500 mt-0.5">Connection verified. Syncing your past revenue data.</p>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-start gap-3 group">
+                <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 ring-4 ring-indigo-500/10" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-neutral-300">Verification Recalculated</span>
+                    <span className="text-[9px] font-bold text-indigo-400">Stable</span>
+                  </div>
+                  <p className="text-[9px] text-neutral-500 mt-0.5">Verification recalculated from connected activity.</p>
+                </div>
               </div>
-              <p className="text-[9px] text-neutral-500 mt-0.5">Revenue integrity score generated based on multi-provider signals.</p>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          {/* ── Divider ───────────────────────────────────── */}
+          <div className="mx-6 border-t border-white/[0.04]" />
+          
+          {/* ── Public Verified Info Explainer ─────────────── */}
+          <div className="px-6 py-5 relative z-10">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 text-indigo-400 mt-0.5 shrink-0" />
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-white">Direct Ledger Sync</h4>
+                <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
+                  Financial figures are automatically reconciled and synchronized directly from verified API channels.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

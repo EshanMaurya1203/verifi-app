@@ -85,7 +85,7 @@ export default function SubmitPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
-  const [claimedCount, setClaimedCount] = useState(26);
+  const [claimedCount, setClaimedCount] = useState(0);
   const [slotNumber, setSlotNumber] = useState<number | null>(null);
   const [step, setStep] = useState<Step>(1);
   const [user, setUser] = useState<any>(null);
@@ -94,6 +94,8 @@ export default function SubmitPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState<{ mrr: number; currency: string } | null>(null);
   const [verifiedRevenue, setVerifiedRevenue] = useState<number | null>(null);
+  const [authError, setAuthError] = useState("");
+
 
   const handleVerifyRevenue = async () => {
     if (form.apiProvider === "stripe" && !form.apiKey) {
@@ -207,6 +209,20 @@ export default function SubmitPage() {
     return () => {
       listener.subscription.unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      
+      const error = searchParams.get("error") || hashParams.get("error");
+      const errorDesc = searchParams.get("error_description") || hashParams.get("error_description");
+      
+      if (error) {
+        setAuthError(errorDesc || error);
+      }
+    }
   }, []);
 
   const validate = (): FormErrors => {
@@ -396,14 +412,43 @@ export default function SubmitPage() {
 
   if (!user) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center text-white">
-        <h2 className="mb-4 text-xl">Login required</h2>
-        <button
-          onClick={handleGoogleLogin}
-          className="rounded-lg bg-white px-6 py-2 text-black"
-        >
-          Continue with Google
-        </button>
+      <div className="flex h-screen flex-col items-center justify-center bg-[#040406] px-6 text-white">
+        <div className="w-full max-w-[400px] p-8 rounded-[2rem] bg-neutral-900/40 border border-white/5 relative overflow-hidden backdrop-blur-xl shadow-2xl">
+          <div className="absolute -top-20 -left-20 w-40 h-40 rounded-full opacity-[0.05] bg-indigo-500 blur-3xl pointer-events-none" />
+          
+          <div className="text-center relative z-10">
+            <h2 className="font-syne text-2xl font-black tracking-[-1px] text-white mb-2">
+              Authentication Required
+            </h2>
+            <p className="text-[12px] font-medium text-neutral-500 tracking-[0.05em] leading-relaxed mb-6">
+              Listing your startup on Verifi requires a verified Google account.
+            </p>
+
+            {authError && (
+              <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest text-rose-400">
+                  Google Auth Error
+                </p>
+                <p className="text-[11px] font-bold text-neutral-400 mt-1 leading-relaxed">
+                  {authError === "unsupported_provider" || authError.toLowerCase().includes("not enabled") 
+                    ? "Google OAuth provider is not enabled in your Supabase Auth settings. Please enable the Google provider in your Supabase Dashboard."
+                    : authError}
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={handleGoogleLogin}
+              className="w-full h-12 rounded-xl bg-white text-black hover:bg-neutral-200 transition-colors text-[13px] font-black uppercase tracking-[0.1em] flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.98] transition-transform duration-100"
+            >
+              Continue with Google
+            </button>
+            
+            <p className="text-[10px] font-bold text-neutral-600 tracking-wider mt-6 uppercase">
+              Secure Auth by Supabase
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -458,8 +503,8 @@ export default function SubmitPage() {
                 Founding Member #{slotNumber ?? claimedCount + 1}
               </div>
               <p className="mt-4 max-w-[520px] text-[14px] text-muted-foreground">
-                Your startup has been submitted. Our team will review and reach out
-                within 24 hours to complete verification.
+                Your startup account has been created. We are securely connecting to your 
+                payment provider to verify your revenue data.
               </p>
               <Link
                 href={twitterShareUrl}
@@ -612,10 +657,10 @@ export default function SubmitPage() {
                     </label>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {[
-                        { id: "manual", label: "Manual", description: "(fastest, lowest trust)" },
-                        { id: "social", label: "Social proof", description: "(LinkedIn/Twitter based)" },
-                        { id: "proof", label: "Upload proof", description: "(screenshot)" },
-                        { id: "api", label: "Connect API", description: "Verify via Stripe or Razorpay" },
+                        { id: "manual", label: "Manual", description: "(self-reported)" },
+                        { id: "social", label: "Social proof", description: "(social profile confirmation)" },
+                        { id: "proof", label: "Upload proof", description: "(invoice or dashboard export)" },
+                        { id: "api", label: "Connect API", description: "(direct API integration, recommended)" },
                       ].map((option) => {
                         const isSelected = form.verificationType === option.id;
                         return (

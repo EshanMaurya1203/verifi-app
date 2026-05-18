@@ -14,7 +14,8 @@ export async function GET(
   if (!isNaN(Number(slug))) {
     query = query.eq("id", Number(slug));
   } else {
-    query = query.ilike("startup_name", slug);
+    // Check both slug and startup_name for maximum compatibility
+    query = query.or(`slug.eq.${slug},startup_name.ilike.${slug}`);
   }
   
   const { data: startup } = await query.maybeSingle();
@@ -55,23 +56,29 @@ export async function GET(
 
   // 3. Determine colors and labels
   const isDark = theme === "dark";
-  const bgColor = isDark ? "#0a0a0a" : "#ffffff";
-  const borderColor = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
-  const textColor = isDark ? "#ffffff" : "#0a0a0a";
-  const subTextColor = isDark ? "#737373" : "#525252";
+  const bgColor = isDark ? "#09090b" : "#ffffff";
+  const borderColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(9,9,11,0.06)";
+  const textColor = isDark ? "#ffffff" : "#09090b";
+  const subTextColor = isDark ? "#71717a" : "#71717a";
   
-  let tierLabel = "Active Audit";
-  let tierColor = "#f59e0b"; // Amber
-  if (verificationState.trustScore > 85) {
-    tierLabel = "Forensic Grade";
+  let tierLabel = "Self Reported";
+  let tierColor = "#71717a"; // Neutral-500
+  const tier = verificationState.confidenceTier;
+  if (tier === "HIGH_CONFIDENCE") {
+    tierLabel = "High Confidence";
     tierColor = "#10b981"; // Emerald
-  } else if (verificationState.trustScore > 65) {
-    tierLabel = "High Integrity";
+  } else if (tier === "REVENUE_VERIFIED") {
+    tierLabel = "Revenue Verified";
     tierColor = "#6366f1"; // Indigo
-  } else if (verificationState.verificationStatus === "UNVERIFIED") {
-    tierLabel = "Reviewing";
-    tierColor = "#737373"; // Neutral-500
+  } else if (tier === "PAYMENT_CONNECTED") {
+    tierLabel = "Payment Connected";
+    tierColor = "#f59e0b"; // Amber
   }
+
+  // Prevent overlap for long names: truncate rawName if > 15 chars, and dynamically adjust font size
+  const rawName = startup.startup_name;
+  const startupName = rawName.length > 15 ? rawName.substring(0, 14) + "..." : rawName;
+  const nameFontSize = startupName.length > 12 ? "11" : "13";
 
   // 4. Generate SVG
   const svg = `
@@ -79,18 +86,17 @@ export async function GET(
       <rect width="300" height="80" rx="16" fill="${bgColor}"/>
       <rect x="0.5" y="0.5" width="299" height="79" rx="15.5" stroke="${borderColor}"/>
       
-      <!-- Verifi Icon -->
-      <rect x="20" y="20" width="40" height="40" rx="8" fill="#6366f1"/>
-      <path d="M34 50L31.5 47.5L32.5 46.5L34 48L37.5 44.5L38.5 45.5L34 50Z" fill="white"/>
-      <path d="M40 32V35C40 37.7614 37.7614 40 35 40H32C29.2386 40 27 37.7614 27 35V32C27 29.2386 29.2386 27 32 27H35C37.7614 27 40 29.2386 40 32Z" stroke="white" stroke-width="1.5"/>
+      <!-- Verifi Icon (centered & premium checkmark) -->
+      <rect x="18" y="18" width="44" height="44" rx="11" fill="#6366f1"/>
+      <path d="M28 40 L34 46 L45 32" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       
       <!-- Content -->
-      <text x="75" y="32" font-family="Inter, sans-serif" font-size="14" font-weight="900" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startup.startup_name}</text>
-      <text x="75" y="52" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.1em;">Verified on Verifi</text>
+      <text x="72" y="34" font-family="Inter, sans-serif" font-size="${nameFontSize}" font-weight="900" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startupName}</text>
+      <text x="72" y="50" font-family="Inter, sans-serif" font-size="9" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.1em;">Verified on Verifi</text>
       
-      <!-- Tier Badge -->
-      <rect x="180" y="30" width="100" height="20" rx="10" fill="${tierColor}20"/>
-      <text x="230" y="44" font-family="Inter, sans-serif" font-size="8" font-weight="900" fill="${tierColor}" text-anchor="middle" style="text-transform: uppercase; letter-spacing: 0.1em;">${tierLabel}</text>
+      <!-- Tier Badge (perfectly aligned with no text overflow) -->
+      <rect x="184" y="30" width="100" height="20" rx="10" fill="${tierColor}15"/>
+      <text x="234" y="42.5" font-family="Inter, sans-serif" font-size="7.5" font-weight="900" fill="${tierColor}" text-anchor="middle" style="text-transform: uppercase; letter-spacing: 0.05em;">${tierLabel}</text>
     </svg>
   `.trim();
 

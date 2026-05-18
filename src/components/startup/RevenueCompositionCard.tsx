@@ -326,17 +326,22 @@ export const RevenueCompositionCard = ({
   const hasMultipleProviders =
     snapshots.some((s) => s.provider_breakdown && Object.keys(s.provider_breakdown).length > 1);
 
-  // ─── Empty State ────────────────────────────────────────────────────────
+  // ─── Empty State (Sleek Compact Placeholder) ────────────────────────────
   if (!breakdown || breakdown.length === 0) {
     return (
-      <div className="bg-neutral-900/30 border border-white/[0.05] rounded-[3rem] p-10 text-center">
-        <PieChart className="w-10 h-10 text-neutral-700 mx-auto mb-4" />
-        <h4 className="text-[11px] font-black uppercase tracking-widest text-neutral-500">
-          Composition Unavailable
-        </h4>
-        <p className="text-[9px] text-neutral-600 mt-2 max-w-[180px] mx-auto font-bold uppercase tracking-widest leading-relaxed">
-          Connect institutional providers to visualize revenue distribution.
-        </p>
+      <div className="bg-neutral-900/30 border border-white/[0.05] rounded-[3rem] p-8 md:p-10 text-center relative overflow-hidden group">
+        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 via-transparent to-transparent pointer-events-none" />
+        <div className="flex flex-col items-center justify-center py-4">
+          <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+            <PieChart className="w-5 h-5 text-neutral-500" />
+          </div>
+          <h4 className="text-xs font-black uppercase tracking-widest text-neutral-300">
+            No Revenue Data Available
+          </h4>
+          <p className="text-[10px] text-neutral-500 mt-2.5 max-w-sm mx-auto font-bold uppercase tracking-[0.12em] leading-relaxed">
+            Revenue composition is currently empty. Connect your payment provider to verify your revenue and build trust.
+          </p>
+        </div>
       </div>
     );
   }
@@ -350,10 +355,10 @@ export const RevenueCompositionCard = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 relative z-10 gap-4">
         <div>
           <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white flex items-center gap-3">
-            <PieChart className="w-5 h-5 text-indigo-400" /> Revenue Composition
+            <PieChart className="w-5 h-5 text-indigo-400" /> Revenue Breakdown
           </h3>
           <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1">
-            Multi-Source Verification
+            Verified Sources
           </p>
         </div>
 
@@ -557,7 +562,7 @@ export const RevenueCompositionCard = ({
       <div className="mt-10 pt-8 border-t border-white/[0.03] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
         <div>
           <p className="text-[9px] font-black text-neutral-600 uppercase tracking-widest mb-1">
-            Total Verified Aggregation
+            Total Verified MRR
           </p>
           <p className="text-3xl font-black font-syne text-white tracking-tighter tabular-nums">
             {formatCurrency(totalMrr)}

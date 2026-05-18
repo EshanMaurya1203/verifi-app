@@ -20,7 +20,7 @@ export default async function VerifyPage({
 
       <main className="flex-1 flex flex-col items-center justify-center p-6 mt-20">
         <div className="w-full max-w-2xl text-center mb-12">
-          <p className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-3">Verification Pipeline</p>
+          <p className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-3">Revenue Verification</p>
           <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">
             Audit {startup?.startup_name || "Startup"}
           </h1>

@@ -4,7 +4,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { decrypt } from "@/lib/encryption";
 import Razorpay from "razorpay";
 import { computeTrustScore } from "@/lib/scoring";
-import { calculateConsistency } from "@/lib/revenue-consistency";
+import { analyzeRevenueConsistency } from "@/lib/revenue-consistency";
 
 
 export async function POST(req: Request) {
@@ -82,7 +82,12 @@ export async function POST(req: Request) {
     });
 
     // 7. Calculate Advanced Metrics
-    const consistency = calculateConsistency(payments.items);
+    const consistency = analyzeRevenueConsistency(
+      (payments.items as any[]).map((p: any) => ({
+        amount: Number(p.amount) / 100,
+        timestamp: Number(p.created_at) * 1000,
+      }))
+    );
     
     // Fetch startup meta for scoring
     const { data: startup } = await supabaseServer

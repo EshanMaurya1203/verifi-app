@@ -87,7 +87,7 @@ export function calculateTrustScore(
         const gapCV = avgGap > 0 ? gapStdDev / avgGap : 0;
 
         if (gapCV < 0.4) {
-          // Repetition + Fixed Timing (Robotic behavior)
+          // Repetition + Fixed Timing (Automated pattern)
           patternPenalty = 20;
         } else {
           // Repetition + Varied Timing (Potentially legitimate but suspicious)
@@ -115,22 +115,22 @@ export function calculateTrustScore(
 
 export interface ScoringResult {
   score: number;
-  status: "verified" | "pending" | "unverified" | "flagged";
-  tier: "verified" | "trusted" | "emerging" | "unverified" | "flagged";
+  status: "verified" | "syncing" | "unverified" | "flagged";
+  tier: "high_confidence" | "revenue_verified" | "payment_connected" | "self_reported" | "flagged";
 }
 
 function getTrustTier(score: number): ScoringResult["tier"] {
-  if (score >= 80) return "verified";
-  if (score >= 60) return "trusted";
-  if (score >= 30) return "emerging";
-  return "unverified";
+  if (score >= 80) return "high_confidence";
+  if (score >= 60) return "revenue_verified";
+  if (score >= 30) return "payment_connected";
+  return "self_reported";
 }
 
 
 
 /**
- * Trust Score Engine
- * Computes a deterministic trust score based on hard signals and verification metadata.
+ * Verification Score Engine
+ * Computes a deterministic score based on revenue signals and verification metadata.
  */
 export async function computeTrustScore(
   startup_id: number,
@@ -157,7 +157,7 @@ export async function computeTrustScore(
     startup = data;
   }
 
-  if (!startup) return { score: 0, status: "unverified", tier: "unverified" };
+  if (!startup) return { score: 0, status: "unverified", tier: "self_reported" };
 
   // 1. Payment Gateway Connection (+30 base)
   if (startup.payment_connected) {
@@ -165,7 +165,7 @@ export async function computeTrustScore(
     score += 30;
   }
 
-  // 2. Revenue Stability Check (Stability-based scoring)
+  // 2. Revenue Stability Check (Consistency-based scoring)
   const { data: historicalSnapshots } = await supabase
     .from("revenue_snapshots")
     .select("total_revenue")
@@ -182,7 +182,7 @@ export async function computeTrustScore(
     avgHistoricalRevenue = sum / historicalSnapshots.length;
   }
 
-  // Use historical average for tier scoring to prevent instant spikes
+  // Use historical average for verification level to prevent instant spikes
   const scoringMrr = avgHistoricalRevenue;
   let revenueBonus = 0;
   
@@ -315,18 +315,18 @@ export async function computeTrustScore(
     breakdown.rate_penalty = -Math.round(penalty);
   }
 
-  // Trust Inertia: If a penalty happened recently (< 10 mins), apply a dampening factor
+  // Verification Stability: If a penalty happened recently (< 10 mins), apply a dampening factor
   const isInertiaActive = lastPenaltyAt && (Date.now() - lastPenaltyAt.getTime()) < 10 * 60 * 1000;
   if (isInertiaActive && !isAnyNewPenalty) {
-    const inertiaPenalty = score * 0.15; // 15% dampening of trust
+    const inertiaPenalty = score * 0.15; // 15% dampening of score
     score -= inertiaPenalty;
     breakdown.inertia_penalty = -Math.round(inertiaPenalty);
   }
 
-  // Trust Recovery Boost: If recovering (penalty_count decayed) and no new penalties
+  // Verification Recovery Boost: If recovering (penalty_count decayed) and no new penalties
   if (isRecovering && !isAnyNewPenalty) {
     const boostBase = Math.max(1, Math.floor(5 / (penaltyCount + 1))); 
-    const recoveryBoost = Math.min(2, boostBase); // Max trust gain per recovery cycle = +2
+    const recoveryBoost = Math.min(2, boostBase); // Max score gain per recovery cycle = +2
     score += recoveryBoost;
     breakdown.recovery_boost = recoveryBoost;
   }
@@ -342,7 +342,7 @@ export async function computeTrustScore(
   let status: ScoringResult["status"] = "unverified";
   if (maxSeverity >= 4) status = "flagged";
   else if (score >= 70) status = "verified";
-  else if (score >= 31) status = "pending";
+  else if (score >= 31) status = "syncing";
 
   // Persist back to DB with penalty state
   const updateData: Record<string, unknown> = {
