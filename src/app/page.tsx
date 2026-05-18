@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowUpRight, BadgeCheck, BarChart3, Eye } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
+import { supabase } from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/url";
 
 import { useEffect, useState } from "react";
 
@@ -42,6 +45,28 @@ export default function HomePage() {
   const [stats, setStats] = useState({ count: 0, totalRevenue: 0 });
   const [leaderboard, setLeaderboard] = useState(leaderboardPreview);
   const [recentlyListedData, setRecentlyListedData] = useState(recentlyListed);
+  const [user, setUser] = useState<any>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+  }, []);
+
+  const handleVerifyClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (user) {
+      router.push("/submit");
+    } else {
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${getBaseUrl()}/submit`,
+        },
+      });
+    }
+  };
 
 
 
@@ -155,6 +180,7 @@ export default function HomePage() {
             >
               <Link
                 href="/submit"
+                onClick={handleVerifyClick}
                 className="inline-flex h-11 w-full sm:w-auto items-center justify-center rounded-xl bg-primary px-7 text-[13px] font-black uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(185,255,75,0.15)]"
               >
                 Verify your revenue
@@ -400,6 +426,7 @@ export default function HomePage() {
             </p>
             <Link
               href="/submit"
+              onClick={handleVerifyClick}
               className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-8 text-[13px] font-black uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(99,102,241,0.2)]"
             >
               Verify your startup

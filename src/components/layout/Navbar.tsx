@@ -1,19 +1,51 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { getBaseUrl } from "@/lib/url";
 
 export function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setIsMobileOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      listener.subscription.unsubscribe();
+    };
   }, []);
+
+  const handleAddStartupClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsMobileOpen(false);
+    if (user) {
+      router.push("/submit");
+    } else {
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${getBaseUrl()}/submit`,
+        },
+      });
+    }
+  };
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-14 border-b border-border bg-background/85 backdrop-blur-xl">
@@ -37,6 +69,7 @@ export function Navbar() {
           </Link>
           <Link
             href="/submit"
+            onClick={handleAddStartupClick}
             className="rounded-md border border-primary bg-transparent px-4 py-1.5 text-sm font-medium text-primary transition-all duration-200 hover:bg-primary hover:text-primary-foreground"
           >
             Add your startup
@@ -70,7 +103,7 @@ export function Navbar() {
             </Link>
             <Link
               href="/submit"
-              onClick={() => setIsMobileOpen(false)}
+              onClick={handleAddStartupClick}
               className="inline-flex w-fit rounded-md border border-primary bg-transparent px-4 py-1.5 text-sm font-medium text-primary transition-all duration-200 hover:bg-primary hover:text-primary-foreground"
             >
               Add your startup

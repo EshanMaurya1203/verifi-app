@@ -89,6 +89,7 @@ export default function SubmitPage() {
   const [slotNumber, setSlotNumber] = useState<number | null>(null);
   const [step, setStep] = useState<Step>(1);
   const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -176,53 +177,59 @@ export default function SubmitPage() {
   const stepProgressPercentage = (step / 4) * 100;
 
   useEffect(() => {
-    const fetchCount = async () => {
+    let isMounted = true;
+
+    const initAuthAndData = async () => {
       try {
-        const response = await fetch("/api/startup-submissions/count");
-        if (!response.ok) return;
-        const data = (await response.json()) as { count?: number };
-        if (typeof data.count === "number") {
-          setClaimedCount(data.count);
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (isMounted) {
+          setUser(currentUser);
         }
-      } catch {
-        // Keep fallback count when request fails.
+      } catch (err) {
+        console.error("Error fetching current user:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+
+      try {
+        const countRes = await fetch("/api/startup-submissions/count");
+        if (countRes.ok) {
+          const countData = await countRes.json();
+          if (isMounted && typeof countData.count === "number") {
+            setClaimedCount(countData.count);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching claimed count:", err);
       }
     };
 
-    fetchCount();
-  }, []);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user);
-    };
-
-    getUser();
+    initAuthAndData();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUser(session?.user ?? null);
+        if (isMounted) {
+          setUser(session?.user ?? null);
+          setIsLoading(false);
+        }
       }
     );
 
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const error = searchParams.get("error") || hashParams.get("error");
+    const errorDesc = searchParams.get("error_description") || hashParams.get("error_description");
+    
+    if (error && isMounted) {
+      setAuthError(errorDesc || error);
+    }
+
     return () => {
+      isMounted = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const searchParams = new URLSearchParams(window.location.search);
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      
-      const error = searchParams.get("error") || hashParams.get("error");
-      const errorDesc = searchParams.get("error_description") || hashParams.get("error_description");
-      
-      if (error) {
-        setAuthError(errorDesc || error);
-      }
-    }
   }, []);
 
   const validate = (): FormErrors => {
@@ -409,6 +416,20 @@ export default function SubmitPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-[#040406] text-white">
+        <div className="relative flex items-center justify-center">
+          <div className="absolute w-24 h-24 rounded-full bg-primary/20 blur-2xl animate-pulse" />
+          <div className="h-10 w-10 animate-spin rounded-full border-t-2 border-primary border-r-2 border-r-transparent" />
+        </div>
+        <p className="mt-4 font-syne text-[10px] font-black uppercase tracking-[0.25em] text-neutral-500 animate-pulse">
+          Hydrating secure session...
+        </p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
