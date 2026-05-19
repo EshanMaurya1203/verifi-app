@@ -374,9 +374,10 @@ export default async function PublicStartupProfile({ params }: { params: Promise
           </div>
         </section>
 
-        {/* ─── Founder Identity & Core Trust Metrics ─────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8 mb-8">
+        {/* ─── Responsive Layout System: 65/35 Balanced Grid ───────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1fr] gap-8 mb-16 items-start">
           
+          {/* PRIMARY COLUMN: Revenue, Analytics, Timeline, Charts */}
           <div className="space-y-8 flex flex-col">
             {/* Human Trust Statement - Render only if authentic founder bio exists */}
             {startup.founder_bio && (
@@ -403,12 +404,38 @@ export default async function PublicStartupProfile({ params }: { params: Promise
               </section>
             )}
 
-            {/* Core Trust Metrics pulled out of sidebar to balance column height */}
-            <RevenueConsistencyCard consistency={verificationState} ownerId={startup.user_id} />
+            {/* Revenue Composition (Primary Financial Area) */}
+            <RevenueCompositionCard 
+              breakdown={compositionBreakdown}
+              totalMrr={startup.mrr || 0}
+              growth={revenueGrowth}
+              snapshots={snapshots}
+            />
+
+            {/* Revenue Analytics (Momentum & Charts) */}
+            {revenue && revenue.length >= 2 && (
+              <section className="bg-[#09090b]/30 border border-white/[0.05] p-10 rounded-[3rem] backdrop-blur-md shadow-xl ring-1 ring-white/[0.01]">
+                 <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white flex items-center gap-3">
+                      <TrendingUp className="w-5 h-5 text-indigo-500" /> Financial Momentum
+                    </h3>
+                    <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
+                      Live Provider Stream
+                    </div>
+                 </div>
+                 <div className="h-[280px]">
+                    <RevenueChart data={revenue} />
+                 </div>
+              </section>
+            )}
+
+            {/* Verification Timeline (Timeline) */}
+            {logs && logs.length > 0 && <VerificationTimeline logs={logs} ownerId={startup.user_id} />}
           </div>
 
+          {/* SECONDARY SIDEBAR: Verification, Founder, Badge, Status */}
           <aside className="space-y-8">
-            {/* Premium Founder Card */}
+            {/* Premium Founder Card (Founder) */}
             <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-8 rounded-[3rem] shadow-2xl relative overflow-hidden flex flex-col items-center text-center ring-1 ring-white/[0.01]">
               <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none" />
               
@@ -474,7 +501,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
               </div>
             </section>
 
-            {/* Verification Metadata Section */}
+            {/* Verification Metadata Section (Verification & Status) */}
             <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-6 rounded-[2rem] shadow-2xl relative overflow-hidden ring-1 ring-white/[0.01]">
               <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-widest flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-400" /> Verification Status
@@ -482,40 +509,12 @@ export default async function PublicStartupProfile({ params }: { params: Promise
               <VerificationMetadata state={verificationState} showBreakdown={true} />
             </section>
 
-            {/* Badge Embedder Card (Stand-alone premium card widget) */}
+            {/* Revenue Consistency Card (Status) */}
+            <RevenueConsistencyCard consistency={verificationState} ownerId={startup.user_id} />
+
+            {/* Badge Embedder Card (Badge) */}
             <BadgeEmbedder startupName={startup.startup_name} slug={slug} />
           </aside>
-        </div>
-
-        {/* ─── Financial Composition & Verified Analytics ────────────────────── */}
-        <div className="space-y-8 mb-16">
-          {/* Revenue Composition (Full-width Data Dashboard) */}
-          <RevenueCompositionCard 
-            breakdown={compositionBreakdown}
-            totalMrr={startup.mrr || 0}
-            growth={revenueGrowth}
-            snapshots={snapshots}
-          />
-
-          {/* Revenue Analytics (Brief - Conditionally shown only when we have sufficient trend history) */}
-          {revenue && revenue.length >= 2 && (
-            <section className="bg-[#09090b]/30 border border-white/[0.05] p-10 rounded-[3rem] backdrop-blur-md shadow-xl ring-1 ring-white/[0.01]">
-               <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white flex items-center gap-3">
-                    <TrendingUp className="w-5 h-5 text-indigo-500" /> Financial Momentum
-                  </h3>
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                    Live Provider Stream
-                  </div>
-               </div>
-               <div className="h-[280px]">
-                  <RevenueChart data={revenue} />
-               </div>
-            </section>
-          )}
-
-          {/* Verification Timeline (Verified Activity Log - Conditionally shown) */}
-          {logs && logs.length > 0 && <VerificationTimeline logs={logs} ownerId={startup.user_id} />}
         </div>
 
       </main>
