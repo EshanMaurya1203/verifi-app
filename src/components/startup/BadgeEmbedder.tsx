@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Copy, Check, Code, Image as ImageIcon } from "lucide-react";
+import { Copy, Check, Code, Image as ImageIcon, Share2, X, ExternalLink } from "lucide-react";
+import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { getSiteUrl } from "@/lib/site-url";
 
 interface BadgeEmbedderProps {
@@ -43,7 +44,9 @@ const BadgeSkeleton = () => {
 
 export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [copied, setCopied] = useState(false);
+  const [copiedBadge, setCopiedBadge] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [origin, setOrigin] = useState("");
@@ -60,14 +63,36 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   <img src="${badgeUrl}" alt="${startupName} is Verified on Verifi" width="300" height="80" />
 </a>`;
 
-  const handleCopy = async () => {
+  const handleCopyBadge = async () => {
     try {
       await navigator.clipboard.writeText(embedCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedBadge(true);
+      setTimeout(() => setCopiedBadge(false), 2000);
     } catch (err) {
-      console.error("Failed to copy:", err);
+      console.error("Failed to copy badge embed code:", err);
     }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+  };
+
+  const shareText = `Check out ${startupName}'s live verified revenue & metrics on Verifi. Verified data directly from billing source!`;
+
+  const handleLinkedInShare = () => {
+    const shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`;
+    window.open(shareUrl, "_blank", "width=600,height=600");
+  };
+
+  const handleXShare = () => {
+    const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(profileUrl)}`;
+    window.open(shareUrl, "_blank", "width=600,height=400");
   };
 
   const handleThemeChange = (newTheme: "dark" | "light") => {
@@ -77,46 +102,21 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   };
 
   return (
-    <div className="bg-[#0f0f0f]/80 border border-white/[0.08] rounded-3xl overflow-hidden shadow-2xl ring-1 ring-white/[0.02]">
-      <div className="p-6 md:p-8 border-b border-white/[0.05] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-bold text-white mb-1.5 uppercase tracking-widest flex items-center gap-2">
-            <Code className="w-4 h-4 text-indigo-400" />
-            Verification Badge
-          </h3>
-          <p className="text-neutral-500 text-xs">Embed live verification status on your site.</p>
-        </div>
-        <div className="flex bg-black p-1 rounded-xl border border-white/[0.08] w-full sm:w-auto">
-          <button
-            onClick={() => handleThemeChange("dark")}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-              theme === "dark" ? "bg-white/10 text-white shadow-md" : "text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            Dark
-          </button>
-          <button
-            onClick={() => handleThemeChange("light")}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-              theme === "light" ? "bg-white text-neutral-950 shadow-md" : "text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            Light
-          </button>
-        </div>
+    <div className="bg-[#09090b]/40 border border-white/[0.06] rounded-[2rem] overflow-hidden shadow-2xl backdrop-blur-md ring-1 ring-white/[0.01]">
+      {/* Header */}
+      <div className="p-6 border-b border-white/[0.05]">
+        <h3 className="text-sm font-bold text-white mb-1.5 uppercase tracking-widest flex items-center gap-2">
+          <Share2 className="w-4 h-4 text-indigo-400" />
+          Share & Verification Badge
+        </h3>
+        <p className="text-neutral-500 text-xs">Verify your metrics publicly and share your verified status.</p>
       </div>
 
-      <div className="p-8 flex flex-col items-center justify-center bg-black/40 min-h-[160px] w-full overflow-x-auto relative">
-        {/* Fixed stable container dimensions to prevent layout shifts */}
+      {/* Badge Preview Area */}
+      <div className="p-8 flex flex-col items-center justify-center bg-black/20 min-h-[160px] w-full overflow-x-auto relative">
         <div className="w-[300px] h-[80px] relative group select-none flex items-center justify-center shrink-0">
-          
-          {/* 1. Loading Skeleton */}
           {status === "loading" && <BadgeSkeleton />}
-
-          {/* 2. Error Fallback */}
           {status === "error" && <ErrorFallbackBadge startupName={startupName} />}
-
-          {/* 3. Dynamic Badge Image (rendered dynamically and hidden until fully loaded) */}
           {mounted && (
             <img 
               src={badgeUrl} 
@@ -130,42 +130,158 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
               }`}
             />
           )}
-          
           {status === "loaded" && (
             <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl pointer-events-none" />
           )}
         </div>
       </div>
 
-      <div className="p-6 md:p-8 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">HTML Snippet</span>
-          </div>
+      {/* Action Suite Area */}
+      <div className="p-6 space-y-4">
+        {/* Row 1: Copy Badge & Share Profile */}
+        <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors text-[10px] font-black uppercase tracking-widest bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/20"
+            onClick={handleCopyBadge}
+            className="flex items-center justify-center gap-2 text-white transition-all text-xs font-bold uppercase tracking-wider bg-white/10 hover:bg-white/15 px-4 py-3 rounded-xl border border-white/5 shadow-md active:scale-[0.98] select-none"
           >
-            {copied ? (
-              <><Check className="w-3.5 h-3.5" /> Copied</>
+            {copiedBadge ? (
+              <><Check className="w-4 h-4 text-emerald-400" /> Copied!</>
             ) : (
-              <><Copy className="w-3.5 h-3.5" /> Copy Code</>
+              <><Code className="w-4 h-4 text-indigo-400" /> Copy Badge</>
+            )}
+          </button>
+          
+          <button
+            onClick={handleCopyLink}
+            className="flex items-center justify-center gap-2 text-white transition-all text-xs font-bold uppercase tracking-wider bg-white/10 hover:bg-white/15 px-4 py-3 rounded-xl border border-white/5 shadow-md active:scale-[0.98] select-none"
+          >
+            {copiedLink ? (
+              <><Check className="w-4 h-4 text-emerald-400" /> Copied!</>
+            ) : (
+              <><Share2 className="w-4 h-4 text-indigo-400" /> Share Profile</>
             )}
           </button>
         </div>
 
-        <div className="relative group overflow-hidden rounded-xl border border-white/[0.08] bg-[#080808]">
-          <pre className="p-4 text-[11px] text-neutral-300 font-mono overflow-x-auto whitespace-pre">
-            {embedCode}
-          </pre>
-          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#080808] to-transparent pointer-events-none" />
+        {/* Row 2: Share on LinkedIn & Share on X */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleLinkedInShare}
+            className="flex items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all text-xs font-bold uppercase tracking-wider bg-black/40 hover:bg-black/60 px-4 py-3 rounded-xl border border-white/[0.03] active:scale-[0.98] select-none"
+          >
+            <FaLinkedin className="w-4 h-4 text-neutral-500 hover:text-white transition-colors" /> LinkedIn
+          </button>
+          
+          <button
+            onClick={handleXShare}
+            className="flex items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all text-xs font-bold uppercase tracking-wider bg-black/40 hover:bg-black/60 px-4 py-3 rounded-xl border border-white/[0.03] active:scale-[0.98] select-none"
+          >
+            <FaXTwitter className="w-4 h-4 text-neutral-500 hover:text-white transition-colors" /> Share on X
+          </button>
         </div>
 
-        <div className="flex items-start gap-2 pt-2 text-[10px] font-medium text-neutral-500 leading-relaxed">
-          <ImageIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-neutral-600" />
-          <span>Badge updates in real-time as your verification status or revenue tier changes.</span>
+        {/* Expand trigger for developers */}
+        <div className="pt-2 flex items-center justify-center">
+          <button
+            onClick={() => setShowAdvanced(true)}
+            className="text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-white/[0.02]"
+          >
+            Advanced Embed Options <ExternalLink className="w-3 h-3" />
+          </button>
         </div>
       </div>
+
+      {/* Advanced Embed Options Modal */}
+      {showAdvanced && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#0d0d0f] border border-white/[0.08] rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl relative">
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b border-white/[0.05] flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-widest text-white flex items-center gap-2">
+                  <Code className="w-4 h-4 text-indigo-400" />
+                  Advanced Embed Options
+                </h4>
+                <p className="text-neutral-500 text-[10px] mt-1">Copy and embed the dynamic status badge in your frontend app or docs.</p>
+              </div>
+              <button
+                onClick={() => setShowAdvanced(false)}
+                className="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition-colors text-neutral-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              
+              {/* Theme Toggle inside Modal */}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Badge Theme</span>
+                <div className="flex bg-black p-1 rounded-xl border border-white/[0.08] shrink-0">
+                  <button
+                    onClick={() => handleThemeChange("dark")}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                      theme === "dark" ? "bg-white/10 text-white" : "text-neutral-500 hover:text-neutral-300"
+                    }`}
+                  >
+                    Dark
+                  </button>
+                  <button
+                    onClick={() => handleThemeChange("light")}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                      theme === "light" ? "bg-white text-neutral-950" : "text-neutral-500 hover:text-neutral-300"
+                    }`}
+                  >
+                    Light
+                  </button>
+                </div>
+              </div>
+
+              {/* Snippet box */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-500">HTML Embed Code</span>
+                  <button
+                    onClick={handleCopyBadge}
+                    className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors text-[9px] font-black uppercase tracking-widest bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/20"
+                  >
+                    {copiedBadge ? (
+                      <><Check className="w-3.5 h-3.5" /> Copied</>
+                    ) : (
+                      <><Copy className="w-3.5 h-3.5" /> Copy Code</>
+                    )}
+                  </button>
+                </div>
+
+                <div className="relative group overflow-hidden rounded-xl border border-white/[0.08] bg-black p-4">
+                  <pre className="text-[10px] text-neutral-400 font-mono overflow-x-auto whitespace-pre leading-relaxed select-all">
+                    {embedCode}
+                  </pre>
+                  <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-black to-transparent pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Hint message */}
+              <div className="flex items-start gap-2.5 text-[9px] font-medium text-neutral-500 leading-relaxed bg-white/[0.01] border border-white/[0.03] p-4 rounded-xl">
+                <ImageIcon className="w-4 h-4 shrink-0 text-neutral-600" />
+                <span>The badge uses your production-safe routing URL and automatically refreshes whenever your verified revenue is updated. No manual code updates required.</span>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-black/40 border-t border-white/[0.05] flex justify-end">
+              <button
+                onClick={() => setShowAdvanced(false)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors shadow-lg active:scale-95"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
