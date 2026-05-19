@@ -1,9 +1,9 @@
 import { MetadataRoute } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
-import { getBaseUrl } from '@/lib/url'
+import { getSiteUrl } from '@/lib/site-url'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = getBaseUrl()
+  const baseUrl = getSiteUrl()
 
   // 1. Retrieve all startups that have completed dynamic revenue verification
   const { data: startups } = await supabaseServer

@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Share2, Link as LinkIcon, Check } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Share2, Link as LinkIcon, Check, ShieldCheck, Globe } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
 interface ShareVerificationButtonProps {
   startupName: string;
@@ -16,10 +16,12 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Generate absolute URL securely on the client
-    setShareUrl(`${getBaseUrl()}/startup/${slug}`);
+    // Generate absolute URL securely on the client to prevent localhost leakage
+    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : getSiteUrl();
+    setShareUrl(`${origin}/startup/${slug}`);
   }, [slug]);
 
   const handleCopy = async () => {
@@ -35,12 +37,12 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   // Resolve active tier name beautifully
   let trustTier = "Self Reported";
   if (confidenceTier) {
-    if (confidenceTier === "HIGH_CONFIDENCE") trustTier = "High Confidence";
+    if (confidenceTier === "HIGH_CONFIDENCE") trustTier = "Payment Verified";
     else if (confidenceTier === "REVENUE_VERIFIED") trustTier = "Revenue Verified";
     else if (confidenceTier === "PAYMENT_CONNECTED") trustTier = "Payment Connected";
     else trustTier = "Self Reported";
   } else if (trustScore !== undefined) {
-    if (trustScore > 85) trustTier = "High Confidence";
+    if (trustScore > 85) trustTier = "Payment Verified";
     else if (trustScore > 65) trustTier = "Revenue Verified";
     else if (trustScore > 30) trustTier = "Payment Connected";
   }
@@ -65,7 +67,7 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
 
   // Resolve dynamic tier status color beautifully for high contrast UI
   let tierColorClass = "text-neutral-400";
-  if (trustTier === "High Confidence") tierColorClass = "text-emerald-400 font-extrabold";
+  if (trustTier === "Payment Verified") tierColorClass = "text-emerald-400 font-extrabold";
   else if (trustTier === "Revenue Verified") tierColorClass = "text-indigo-400 font-extrabold";
   else if (trustTier === "Payment Connected") tierColorClass = "text-amber-400 font-extrabold";
 
@@ -73,9 +75,9 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-2.5 bg-[#b9ff4b] hover:bg-[#b9ff4b]/95 text-[#080808] rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all active:scale-95 shadow-lg shadow-[#b9ff4b]/15"
+        className="flex items-center gap-2 px-4 py-2.5 bg-[#b9ff4b] hover:bg-[#b9ff4b]/95 text-[#080808] rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all active:scale-95 shadow-[0_0_20px_rgba(185,255,75,0.15)]"
       >
-        <Share2 className="w-3.5 h-3.5" /> Share Verification
+        <Globe className="w-3.5 h-3.5" /> Share Proof
       </button>
 
       {isOpen && (
@@ -84,19 +86,25 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
             className="fixed inset-0 z-40" 
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute right-0 bottom-full mb-3 w-64 bg-[#0f0f0f] border border-white/[0.08] rounded-[1.5rem] shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 backdrop-blur-xl">
+          <div 
+            ref={dropdownRef}
+            className="absolute right-0 bottom-full mb-3 w-[280px] bg-[#0f0f0f]/95 border border-white/[0.08] rounded-3xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 backdrop-blur-xl ring-1 ring-white/[0.02]"
+          >
             <div className="p-5">
-              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-400 mb-4 px-2">
-                Share Profile
-              </p>
+              <div className="flex items-center gap-2 mb-4 px-2">
+                <Share2 className="w-4 h-4 text-indigo-400" />
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white">
+                  Share Public Link
+                </p>
+              </div>
               
               <div className="space-y-2">
                 <button 
                   onClick={handleCopy}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
+                  className="w-full flex items-center justify-between px-4 py-3.5 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
                 >
                   <div className="flex items-center gap-3">
-                    <LinkIcon className={`w-4 h-4 ${copied ? 'text-emerald-400' : 'text-neutral-400 group-hover:text-neutral-200'}`} />
+                    <LinkIcon className={`w-4 h-4 ${copied ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-indigo-400 transition-colors'}`} />
                     <span>{copied ? "Copied to clipboard" : "Copy Profile Link"}</span>
                   </div>
                   {copied && <Check className="w-3.5 h-3.5 text-emerald-400" />}
@@ -104,25 +112,29 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
 
                 <button 
                   onClick={handleTwitterShare}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
                 >
-                  <FaXTwitter className="w-4 h-4 text-white/60 group-hover:text-white transition-colors" />
-                  <span>Share on X / Twitter</span>
+                  <FaXTwitter className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" />
+                  <span>Announce on X / Twitter</span>
                 </button>
 
                 <button 
                   onClick={handleLinkedInShare}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
+                  className="w-full flex items-center gap-3 px-4 py-3.5 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
                 >
-                  <FaLinkedin className="w-4 h-4 text-blue-400/60 group-hover:text-blue-400 transition-colors" />
+                  <FaLinkedin className="w-4 h-4 text-neutral-500 group-hover:text-blue-400 transition-colors" />
                   <span>Post to LinkedIn</span>
                 </button>
               </div>
             </div>
             
-            <div className="px-5 py-3 bg-white/[0.02] border-t border-white/[0.05]">
-              <p className="text-[8px] font-medium text-neutral-400 text-center uppercase tracking-widest">
-                Verification status: <span className={tierColorClass}>{trustTier}</span>
+            <div className="px-5 py-4 bg-black/40 border-t border-white/[0.05] flex flex-col items-center justify-center">
+              <div className="flex items-center gap-1.5 mb-1 text-neutral-500">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="text-[9px] font-bold uppercase tracking-[0.2em]">Current Status</span>
+              </div>
+              <p className={`text-[10px] uppercase tracking-widest ${tierColorClass}`}>
+                {trustTier}
               </p>
             </div>
           </div>

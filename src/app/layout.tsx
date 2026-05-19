@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Syne, Geist } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -18,7 +18,7 @@ const syne = Syne({
   subsets: ["latin"],
 });
 
-const appUrl = getBaseUrl();
+const appUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),

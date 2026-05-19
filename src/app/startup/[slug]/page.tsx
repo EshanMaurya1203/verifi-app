@@ -3,7 +3,8 @@ import { Navbar } from "@/components/layout/Navbar";
 import { ShieldCheck, ShieldAlert, Share2, Globe, CalendarDays, ExternalLink, Award, CheckCircle2, AlertTriangle, Link, ScanSearch, Clock, TrendingUp, History, Fingerprint } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { RevenueConsistencyCard } from "@/components/startup/RevenueConsistencyCard";
-import { VerificationTransparencyCard } from "@/components/startup/VerificationTransparencyCard";
+import { VerificationMetadata } from "@/components/startup/VerificationMetadata";
+import { TrustBadge } from "@/components/startup/TrustBadge";
 import { RevenueChart } from "@/components/startup/RevenueChart";
 import { ShareVerificationButton } from "@/components/startup/ShareVerificationButton";
 import { BadgeEmbedder } from "@/components/startup/BadgeEmbedder";
@@ -11,39 +12,9 @@ import { Metadata } from "next";
 import { VerificationStateResult, ConfidenceTier, computeVerificationState } from "@/lib/verification-state";
 import { VerificationTimeline } from "@/components/startup/VerificationTimeline";
 import { RevenueCompositionCard } from "@/components/startup/RevenueCompositionCard";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
-const TIER_BADGE_CONFIG: Record<ConfidenceTier, { label: string; color: string; Icon: React.ElementType }> = {
-  SELF_REPORTED: {
-    label: "Self Reported",
-    color: "text-neutral-500 bg-neutral-900 border-white/5",
-    Icon: ScanSearch,
-  },
-  PAYMENT_CONNECTED: {
-    label: "Payment Connected",
-    color: "text-amber-400 bg-amber-500/10 border-amber-500/20 shadow-[0_0_15px_rgba(251,191,36,0.1)]",
-    Icon: Award,
-  },
-  REVENUE_VERIFIED: {
-    label: "Revenue Verified",
-    color: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]",
-    Icon: CheckCircle2,
-  },
-  HIGH_CONFIDENCE: {
-    label: "High Confidence",
-    color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]",
-    Icon: ShieldCheck,
-  },
-};
 
-const TrustTierBadge = ({ state }: { state: VerificationStateResult }) => {
-  const { label, color, Icon } = TIER_BADGE_CONFIG[state.confidenceTier];
-  return (
-    <div className={`px-4 py-1.5 border rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 backdrop-blur-md ${color}`}>
-      <Icon className="w-3.5 h-3.5" /> {label}
-    </div>
-  );
-};
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const resolvedParams = await params;
@@ -59,7 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     return { title: "Startup Not Found | Verifi" };
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = getSiteUrl();
   const ogImageUrl = `${baseUrl}/api/og/startup/${slug}`;
 
   return {
@@ -161,7 +132,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     penaltyCount: Number(startup.penalty_count) || 0
   });
 
-  const isVerified = verificationState.confidenceTier === "HIGH_CONFIDENCE" || verificationState.confidenceTier === "REVENUE_VERIFIED";
+  const isVerified = verificationState.confidenceTier === "HIGH_CONFIDENCE" || verificationState.confidenceTier === "REVENUE_VERIFIED" || verificationState.confidenceTier === "PAYMENT_CONNECTED";
   
   const formatInr = (value: number) => 
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
@@ -262,32 +233,19 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                     <div className="text-4xl font-black text-neutral-800">{startup.startup_name[0]}</div>
                   )}
                 </div>
-                <div className="absolute -bottom-3 -right-3 p-2 rounded-2xl border-4 border-[#050505] shadow-xl ring-1 ring-white/10 transition-colors duration-300 z-10 flex items-center justify-center bg-neutral-950">
-                  {(() => {
-                    const IconComponent = TIER_BADGE_CONFIG[verificationState.confidenceTier].Icon;
-                    return (
-                      <IconComponent
-                        className={`w-5 h-5 ${
-                          verificationState.confidenceTier === "HIGH_CONFIDENCE"
-                            ? "text-emerald-400"
-                            : verificationState.confidenceTier === "REVENUE_VERIFIED"
-                            ? "text-indigo-400"
-                            : verificationState.confidenceTier === "PAYMENT_CONNECTED"
-                            ? "text-amber-400"
-                            : "text-neutral-500"
-                        }`}
-                      />
-                    );
-                  })()}
+                  {isVerified && (
+                    <div className="absolute -bottom-2 -right-2 bg-emerald-500 p-2 rounded-2xl border-4 border-[#050505] shadow-xl">
+                      <ShieldCheck className="w-5 h-5 text-neutral-950" />
+                    </div>
+                  )}
                 </div>
-              </div>
 
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-4 mb-2">
                   <h1 className="text-5xl md:text-6xl font-black font-syne tracking-tighter leading-none">
                     {startup.startup_name}
                   </h1>
-                  <TrustTierBadge state={verificationState} />
+                  <TrustBadge tier={verificationState.confidenceTier} showGlow />
                 </div>
                 <p className="text-neutral-400 text-sm font-medium mb-6 tracking-tight max-w-xl">
                   {startup.notes ? (startup.notes.length > 80 ? startup.notes.substring(0, 80) + '...' : startup.notes) : `Innovative ${startup.biz_type || 'venture'} scaling with verified metrics.`}
@@ -431,7 +389,6 @@ export default async function PublicStartupProfile({ params }: { params: Promise
             )}
 
             {/* Core Trust Metrics pulled out of sidebar to balance column height */}
-            <VerificationTransparencyCard verification={verificationState} ownerId={startup.user_id} />
             <RevenueConsistencyCard consistency={verificationState} ownerId={startup.user_id} />
           </div>
 
@@ -500,6 +457,14 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                   </span>
                 </div>
               </div>
+            </section>
+
+            {/* Verification Metadata Section */}
+            <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-6 rounded-[2rem] shadow-2xl relative overflow-hidden ring-1 ring-white/[0.01]">
+              <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-400" /> Verification Status
+              </h3>
+              <VerificationMetadata state={verificationState} showBreakdown={true} />
             </section>
 
             {/* Badge Embedder Card (Stand-alone premium card widget) */}

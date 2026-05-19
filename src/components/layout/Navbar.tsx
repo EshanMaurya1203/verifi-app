@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
 export function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -41,7 +41,7 @@ export function Navbar() {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getBaseUrl()}/submit`,
+          redirectTo: `${getSiteUrl()}/submit`,
         },
       });
     }

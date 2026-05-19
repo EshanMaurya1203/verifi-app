@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Copy, Check, Code, Image as ImageIcon } from "lucide-react";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
 interface BadgeEmbedderProps {
   startupName: string;
@@ -46,18 +46,18 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+  const [origin, setOrigin] = useState("");
 
   useEffect(() => {
     setMounted(true);
+    setOrigin(typeof window !== 'undefined' && window.location.origin ? window.location.origin : getSiteUrl());
   }, []);
 
-  const baseUrl = getBaseUrl();
-
-  const badgeUrl = `${baseUrl}/api/badge/${slug}?theme=${theme}`;
-  const profileUrl = `${baseUrl}/startup/${slug}`;
+  const badgeUrl = `${origin || getSiteUrl()}/api/badge/${slug}?theme=${theme}`;
+  const profileUrl = `${origin || getSiteUrl()}/startup/${slug}`;
   
   const embedCode = `<a href="${profileUrl}" target="_blank">
-  <img src="${badgeUrl}" alt="${startupName} Verified on Verifi" width="300" height="80" />
+  <img src="${badgeUrl}" alt="${startupName} is Verified on Verifi" width="300" height="80" />
 </a>`;
 
   const handleCopy = async () => {
@@ -71,30 +71,34 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   };
 
   const handleThemeChange = (newTheme: "dark" | "light") => {
+    if (theme === newTheme) return;
     setTheme(newTheme);
     setStatus("loading");
   };
 
   return (
-    <div className="bg-[#0f0f0f]/60 border border-white/[0.08] rounded-2xl overflow-hidden shadow-xl">
-      <div className="p-6 border-b border-white/[0.08] flex items-center justify-between">
+    <div className="bg-[#0f0f0f]/80 border border-white/[0.08] rounded-3xl overflow-hidden shadow-2xl ring-1 ring-white/[0.02]">
+      <div className="p-6 md:p-8 border-b border-white/[0.05] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-bold text-white mb-1">Verification Badge</h3>
-          <p className="text-neutral-400 text-xs">Embed your verification status on your website or docs.</p>
+          <h3 className="text-sm font-bold text-white mb-1.5 uppercase tracking-widest flex items-center gap-2">
+            <Code className="w-4 h-4 text-indigo-400" />
+            Verification Badge
+          </h3>
+          <p className="text-neutral-500 text-xs">Embed live verification status on your site.</p>
         </div>
-        <div className="flex bg-black p-1 rounded-xl border border-white/[0.08]">
+        <div className="flex bg-black p-1 rounded-xl border border-white/[0.08] w-full sm:w-auto">
           <button
             onClick={() => handleThemeChange("dark")}
-            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-              theme === "dark" ? "bg-white/10 text-white" : "text-neutral-400 hover:text-neutral-200"
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+              theme === "dark" ? "bg-white/10 text-white shadow-md" : "text-neutral-500 hover:text-neutral-300"
             }`}
           >
             Dark
           </button>
           <button
             onClick={() => handleThemeChange("light")}
-            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-              theme === "light" ? "bg-white text-neutral-950" : "text-neutral-400 hover:text-neutral-200"
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+              theme === "light" ? "bg-white text-neutral-950 shadow-md" : "text-neutral-500 hover:text-neutral-300"
             }`}
           >
             Light
@@ -102,7 +106,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
         </div>
       </div>
 
-      <div className="p-8 flex flex-col items-center justify-center bg-black/20 min-h-[160px]">
+      <div className="p-8 flex flex-col items-center justify-center bg-black/40 min-h-[160px] w-full overflow-x-auto relative">
         {/* Fixed stable container dimensions to prevent layout shifts */}
         <div className="w-[300px] h-[80px] relative group select-none flex items-center justify-center shrink-0">
           
@@ -113,17 +117,19 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
           {status === "error" && <ErrorFallbackBadge startupName={startupName} />}
 
           {/* 3. Dynamic Badge Image (rendered dynamically and hidden until fully loaded) */}
-          <img 
-            src={badgeUrl} 
-            alt={`${startupName} Verification Badge Preview`}
-            width="300"
-            height="80"
-            onLoad={() => setStatus("loaded")}
-            onError={() => setStatus("error")}
-            className={`shadow-2xl rounded-2xl transition-transform group-hover:scale-[1.02] duration-300 ${
-              status === "loaded" ? "block" : "hidden"
-            }`}
-          />
+          {mounted && (
+            <img 
+              src={badgeUrl} 
+              alt={`${startupName} Verification Badge Preview`}
+              width="300"
+              height="80"
+              onLoad={() => setStatus("loaded")}
+              onError={() => setStatus("error")}
+              className={`shadow-xl rounded-2xl transition-transform group-hover:scale-[1.02] duration-300 ${
+                status === "loaded" ? "block" : "hidden"
+              }`}
+            />
+          )}
           
           {status === "loaded" && (
             <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl pointer-events-none" />
@@ -131,15 +137,14 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
         </div>
       </div>
 
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between px-2">
+      <div className="p-6 md:p-8 space-y-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Code className="w-4 h-4 text-neutral-400" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">HTML Snippet</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">HTML Snippet</span>
           </div>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-2 text-[#b9ff4b] hover:text-[#b9ff4b]/80 transition-colors text-[10px] font-black uppercase tracking-widest"
+            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors text-[10px] font-black uppercase tracking-widest bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/20"
           >
             {copied ? (
               <><Check className="w-3.5 h-3.5" /> Copied</>
@@ -149,16 +154,16 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
           </button>
         </div>
 
-        <div className="relative group">
-          <pre className="bg-black border border-white/[0.08] rounded-xl p-4 text-[11px] text-neutral-300 font-mono overflow-x-auto whitespace-pre">
+        <div className="relative group overflow-hidden rounded-xl border border-white/[0.08] bg-[#080808]">
+          <pre className="p-4 text-[11px] text-neutral-300 font-mono overflow-x-auto whitespace-pre">
             {embedCode}
           </pre>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#080808] to-transparent pointer-events-none" />
         </div>
 
-        <div className="flex items-center gap-2 px-2 pt-2 text-[9px] font-medium text-neutral-400 italic">
-          <ImageIcon className="w-3 h-3 text-neutral-500" />
-          Note: The badge updates automatically as your verification status changes.
+        <div className="flex items-start gap-2 pt-2 text-[10px] font-medium text-neutral-500 leading-relaxed">
+          <ImageIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-neutral-600" />
+          <span>Badge updates in real-time as your verification status or revenue tier changes.</span>
         </div>
       </div>
     </div>

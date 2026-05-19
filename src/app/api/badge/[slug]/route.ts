@@ -65,7 +65,7 @@ export async function GET(
   let tierColor = "#71717a"; // Neutral-500
   const tier = verificationState.confidenceTier;
   if (tier === "HIGH_CONFIDENCE") {
-    tierLabel = "High Confidence";
+    tierLabel = "Payment Verified";
     tierColor = "#10b981"; // Emerald
   } else if (tier === "REVENUE_VERIFIED") {
     tierLabel = "Revenue Verified";

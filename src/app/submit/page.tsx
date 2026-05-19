@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
 type PaymentMethod = {
   id: string;
@@ -152,7 +152,7 @@ export default function SubmitPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${getBaseUrl()}/submit`,
+        redirectTo: `${getSiteUrl()}/submit`,
       },
     });
   };

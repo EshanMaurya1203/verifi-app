@@ -22,7 +22,7 @@ export async function GET(
     if (slug === "default") {
       startupName = "Verifi Platform";
       isVerified = true;
-      trustTier = "High Confidence";
+      trustTier = "Payment Verified";
       tierColor = "#b9ff4b";
       mrr = 57428000; // ₹5.7 Cr collective verification volume
       providersConnected = ["stripe", "razorpay", "paddle"];
@@ -76,7 +76,7 @@ export async function GET(
       tierColor = "#a1a1aa"; // slate-400 for high-contrast neutral
 
       if (tier === "HIGH_CONFIDENCE") {
-        trustTier = "High Confidence";
+        trustTier = "Payment Verified";
         tierColor = "#b9ff4b"; // Standard neon lime-green
       } else if (tier === "REVENUE_VERIFIED") {
         trustTier = "Revenue Verified";

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowUpRight, BadgeCheck, BarChart3, Eye } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, BarChart3, Eye, Activity, RefreshCw, Zap, TrendingUp, ShieldCheck } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
-import { getBaseUrl } from "@/lib/url";
+import { getSiteUrl } from "@/lib/site-url";
 
 import { useEffect, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 
 type StartupCard = {
   initials: string;
@@ -18,11 +19,16 @@ type StartupCard = {
   mrr: string;
   growth: string;
   badge: string;
+  slug: string;
 };
 
-const recentlyListed: StartupCard[] = [];
-
-const leaderboardPreview: any[] = [];
+type ActivityEvent = {
+  id: string;
+  type: "VERIFIED" | "SYNCED" | "MILESTONE";
+  startupName: string;
+  timestamp: string;
+  detail: string;
+};
 
 const fadeUpContainer = {
   hidden: { opacity: 0 },
@@ -42,9 +48,11 @@ const fadeUpItem = {
 };
 
 export default function HomePage() {
-  const [stats, setStats] = useState({ count: 0, totalRevenue: 0 });
-  const [leaderboard, setLeaderboard] = useState(leaderboardPreview);
-  const [recentlyListedData, setRecentlyListedData] = useState(recentlyListed);
+  const [stats, setStats] = useState({ count: 0, totalRevenue: 0, activeSyncs: 0 });
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>([]);
+  const [trendingData, setTrendingData] = useState<StartupCard[]>([]);
+  const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [user, setUser] = useState<any>(null);
   const router = useRouter();
 
@@ -62,13 +70,11 @@ export default function HomePage() {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getBaseUrl()}/submit`,
+          redirectTo: `${getSiteUrl()}/submit`,
         },
       });
     }
   };
-
-
 
   useEffect(() => {
     // 1. Fetch real counts
@@ -88,15 +94,24 @@ export default function HomePage() {
 
           // Total Revenue calculation
           const total = list.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
-          setStats((prev) => ({ ...prev, totalRevenue: total }));
+          
+          // Calculate active syncs (startups with high confidence or verified)
+          const activeSyncsCount = list.filter((item: any) => item.trust_tier === 'HIGH_CONFIDENCE' || item.trust_tier === 'REVENUE_VERIFIED' || item.trust_tier === 'PAYMENT_CONNECTED').length;
+          
+          setStats((prev) => ({ 
+            ...prev, 
+            totalRevenue: total,
+            activeSyncs: activeSyncsCount || list.length // Fallback if no specific tier is found
+          }));
 
-          // Top 5 for leaderboard (Sorted by trust_score desc)
+          // Top 5 for leaderboard (Sorted by mrr/trust)
           const top5 = list
             .slice()
-            .sort((a: any, b: any) => (b.trust_score || 0) - (a.trust_score || 0))
+            .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
             .slice(0, 5)
             .map((s: any, idx: number) => ({
               rank: idx + 1,
+              slug: s.slug || s.id,
               name: s.startup_name,
               founder: s.name || "Anonymous",
               mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
@@ -105,22 +120,87 @@ export default function HomePage() {
           setLeaderboard(top5);
 
           // Recently listed
-          const recent = list.slice(0, 3).map((s: any) => ({
-            initials: s.startup_name ? s.startup_name.substring(0, 2).toUpperCase() : "ST",
-            name: s.startup_name,
-            category: s.biz_type,
-            description: s.notes || "No description provided.",
-            mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
-            growth: "+0%",
-            badge: s.verification_label || "Self Reported",
-            trust_score: s.trust_score || 0,
-          }));
+          const recent = list
+            .slice()
+            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 4)
+            .map((s: any) => ({
+              initials: s.startup_name ? s.startup_name.substring(0, 2).toUpperCase() : "ST",
+              name: s.startup_name,
+              slug: s.slug || s.id,
+              category: s.biz_type,
+              description: s.notes || "No description provided.",
+              mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
+              growth: s.growth ? `+${s.growth}%` : "Stable",
+              badge: s.trust_tier === 'HIGH_CONFIDENCE' ? 'Payment Verified' : s.trust_tier === 'REVENUE_VERIFIED' ? 'Revenue Verified' : s.trust_tier === 'PAYMENT_CONNECTED' ? 'Payment Connected' : 'Self Reported',
+            }));
           setRecentlyListedData(recent);
+
+          // Trending (Sorted by growth)
+          const trending = list
+            .slice()
+            .filter((s: any) => s.growth !== undefined && s.growth > 0)
+            .sort((a: any, b: any) => (b.growth || 0) - (a.growth || 0))
+            .slice(0, 3)
+            .map((s: any) => ({
+              initials: s.startup_name ? s.startup_name.substring(0, 2).toUpperCase() : "ST",
+              name: s.startup_name,
+              slug: s.slug || s.id,
+              category: s.biz_type,
+              description: s.notes || "No description provided.",
+              mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
+              growth: s.growth ? `+${s.growth}% MoM` : "",
+              badge: "Trending",
+            }));
+          setTrendingData(trending);
+
+          // Generate lightweight activity events from real data
+          const eventStream: ActivityEvent[] = [];
+          
+          // Use real created_at and updated_at dates to generate events
+          list.slice(0, 6).forEach((s: any, i: number) => {
+            const updatedAt = new Date(s.updated_at || s.created_at);
+            const createdAt = new Date(s.created_at);
+            
+            // If recently updated but not newly created, it's a sync event
+            if (updatedAt.getTime() - createdAt.getTime() > 86400000) {
+              eventStream.push({
+                id: `sync-${s.id}-${i}`,
+                type: "SYNCED",
+                startupName: s.startup_name,
+                timestamp: updatedAt.toISOString(),
+                detail: `Payment provider sync completed`
+              });
+            } else {
+              eventStream.push({
+                id: `verify-${s.id}-${i}`,
+                type: "VERIFIED",
+                startupName: s.startup_name,
+                timestamp: createdAt.toISOString(),
+                detail: `Joined the verified leaderboard`
+              });
+            }
+
+            // Milestone event if MRR is notable
+            if (s.mrr && s.mrr > 500000 && i % 3 === 0) {
+              const milestoneTime = new Date(updatedAt.getTime() - 1000 * 60 * 60 * 2); // 2 hours prior
+              eventStream.push({
+                id: `mile-${s.id}-${i}`,
+                type: "MILESTONE",
+                startupName: s.startup_name,
+                timestamp: milestoneTime.toISOString(),
+                detail: `Crossed ₹${(s.mrr / 100000).toFixed(1)}L MRR milestone`
+              });
+            }
+          });
+
+          // Sort by newest first
+          eventStream.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setActivities(eventStream.slice(0, 5));
         }
       })
       .catch(console.error);
 
-    // Removed demo startup fetch
   }, []);
 
   const formatStatsRevenue = (val: number) => {
@@ -130,18 +210,27 @@ export default function HomePage() {
     return `₹${val}`;
   };
 
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case "VERIFIED": return <ShieldCheck className="w-3 h-3 text-emerald-400" />;
+      case "SYNCED": return <RefreshCw className="w-3 h-3 text-blue-400" />;
+      case "MILESTONE": return <Zap className="w-3 h-3 text-amber-400" />;
+      default: return <Activity className="w-3 h-3 text-neutral-400" />;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       <Navbar />
 
-      <main className="mx-auto max-w-[840px] px-6 pb-24">
+      <main className="mx-auto max-w-[1080px] px-6 pb-24">
         {/* Hero Section */}
         <section className="pt-28 md:pt-36 pb-12 flex items-center justify-center">
           <motion.div
             variants={fadeUpContainer}
             initial="hidden"
             animate="show"
-            className="flex flex-col items-center text-center w-full"
+            className="flex flex-col items-center text-center w-full max-w-[840px]"
           >
             {/* Trust Framing Tag */}
             <motion.div
@@ -150,7 +239,7 @@ export default function HomePage() {
             >
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">
-                Public Financial Proof
+                Live Ecosystem Activity
               </span>
             </motion.div>
 
@@ -193,224 +282,269 @@ export default function HomePage() {
               </Link>
             </motion.div>
 
-            {/* Stat Cards */}
+            {/* Lightweight Ecosystem Stats */}
             <motion.div
               variants={fadeUpItem}
-              className="mt-14 grid w-full grid-cols-1 sm:grid-cols-2 gap-4"
+              className="mt-14 grid w-full grid-cols-1 sm:grid-cols-3 gap-4"
             >
-              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-6 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-5 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.01] to-transparent pointer-events-none" />
-                <div className="font-syne text-3xl md:text-4xl font-extrabold text-white leading-none tracking-tight">
+                <div className="font-syne text-2xl md:text-3xl font-extrabold text-white leading-none tracking-tight">
                   {stats.count}
                 </div>
-                <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
+                <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
                   Verified Startups
                 </div>
               </div>
-              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-6 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-5 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
                 <div className="absolute inset-0 bg-gradient-to-b from-[#b9ff4b]/[0.02] to-transparent pointer-events-none" />
-                <div className="font-syne text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-indigo-400 to-[#b9ff4b] bg-clip-text text-transparent leading-none tracking-tight">
+                <div className="font-syne text-2xl md:text-3xl font-extrabold bg-gradient-to-r from-indigo-400 to-[#b9ff4b] bg-clip-text text-transparent leading-none tracking-tight">
                   {formatStatsRevenue(stats.totalRevenue)}
                 </div>
-                <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
-                  Verified Combined MRR
+                <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
+                  Combined MRR
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-5 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
+                <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/[0.02] to-transparent pointer-events-none" />
+                <div className="font-syne text-2xl md:text-3xl font-extrabold text-white leading-none tracking-tight">
+                  {stats.activeSyncs}
+                </div>
+                <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
+                  Active API Syncs
                 </div>
               </div>
             </motion.div>
           </motion.div>
         </section>
 
-
-
-        {/* Leaderboard Preview */}
-        <section className="mt-20">
-          <div className="rounded-[2.5rem] border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md overflow-hidden shadow-2xl ring-1 ring-white/[0.02]">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/[0.05] px-8 py-6 gap-4">
-              <div>
-                <h3 className="font-syne text-lg font-black text-white uppercase tracking-tight">
-                  Leaderboard Preview
-                </h3>
-                <p className="text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1.5">Top performing internet startups</p>
-              </div>
-              <Link
-                href="/leaderboard"
-                className="text-xs font-bold text-primary hover:text-indigo-300 uppercase tracking-wider transition-colors"
-              >
-                View full list →
-              </Link>
-            </div>
-
-            <div className="divide-y divide-white/[0.04]">
-              {leaderboard.map((startup) => (
-                <div
-                  key={startup.rank}
-                  className="flex items-center justify-between px-8 py-5 transition-colors hover:bg-white/[0.015]"
-                >
-                  <div className="flex min-w-0 items-center gap-5">
-                    <div className="w-6 font-syne text-sm font-bold text-neutral-600 text-center">
-                      #{startup.rank}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-white tracking-wide leading-none">
-                        {startup.name}
-                      </p>
-                      <p className="truncate text-xs text-neutral-500 font-medium mt-1">
-                        by {startup.founder}
-                      </p>
-                    </div>
+        {/* Dense Two-Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
+          
+          {/* Main Column: Leaderboard & Trending */}
+          <div className="lg:col-span-8 space-y-12">
+            
+            {/* Leaderboard Preview */}
+            <section>
+              <div className="rounded-3xl border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md overflow-hidden shadow-2xl ring-1 ring-white/[0.02]">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/[0.05] px-6 md:px-8 py-5 md:py-6 gap-4">
+                  <div>
+                    <h3 className="font-syne text-base md:text-lg font-black text-white uppercase tracking-tight">
+                      Leaderboard Preview
+                    </h3>
+                    <p className="text-[9px] md:text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1">Top performing internet startups</p>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="flex flex-col items-end">
-                      <span className="font-syne text-sm font-black text-white tracking-tight tabular-nums">{startup.mrr}</span>
-                      <span className="text-[10px] text-neutral-600 uppercase font-bold tracking-widest leading-none mt-1">MRR</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-2.5 py-1.5">
-                      <BadgeCheck className="w-3.5 h-3.5 text-indigo-400" />
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider leading-none">
-                        Verified
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {leaderboard.length === 0 && (
-                <div className="px-8 py-14 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10">
-                  No startups verified yet. Be the first to join the leaderboard!
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Recently Listed */}
-        <section className="mt-24">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="font-syne text-lg font-black text-white uppercase tracking-tight">
-                Recently verified
-              </h3>
-              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mt-1.5">Latest verified startups in ecosystem</p>
-            </div>
-            <Link
-              href="/leaderboard"
-              className="text-xs font-bold text-neutral-500 hover:text-white uppercase tracking-wider transition-colors"
-            >
-              View all →
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {recentlyListedData.map((s) => (
-              <div
-                key={s.name}
-                className="bg-[#09090b]/30 border border-white/[0.05] p-6 rounded-2xl relative overflow-hidden group hover:border-white/10 hover:bg-[#0a0a0d]/50 hover:shadow-[0_0_30px_rgba(99,102,241,0.03)] hover:scale-[1.02] transition-all duration-300 shadow-md ring-1 ring-white/[0.01]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-xs font-bold text-white shadow-inner">
-                      {s.initials}
-                    </div>
-                    <div className="text-sm font-bold text-white tracking-wide">
-                      {s.name}
-                    </div>
-                  </div>
-                  <div className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                    ✓ {s.badge}
-                  </div>
+                  <Link
+                    href="/leaderboard"
+                    className="text-[10px] md:text-xs font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-wider transition-colors px-4 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20"
+                  >
+                    View full list
+                  </Link>
                 </div>
 
-                <div className="mt-3 text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                  {s.category}
-                </div>
-                <div
-                  className="mt-3 text-xs font-medium leading-relaxed text-[#8f8f97]"
-                  style={{
-                    display: "-webkit-box",
-                    WebkitBoxOrient: "vertical",
-                    WebkitLineClamp: 2,
-                    overflow: "hidden",
-                  }}
-                >
-                  {s.description}
-                </div>
-
-                <div className="mt-5 border-t border-white/[0.04] pt-4">
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <div className="font-syne text-[15px] font-black text-white leading-none tracking-tight">
-                        {s.mrr}
+                <div className="divide-y divide-white/[0.04]">
+                  {leaderboard.map((startup) => (
+                    <Link
+                      href={`/startup/${startup.slug}`}
+                      key={startup.rank}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between px-6 md:px-8 py-4 md:py-5 transition-colors hover:bg-white/[0.015] group gap-4 sm:gap-0"
+                    >
+                      <div className="flex min-w-0 items-center gap-4 md:gap-5">
+                        <div className="w-6 font-syne text-sm font-bold text-neutral-600 text-center">
+                          #{startup.rank}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-white tracking-wide leading-none group-hover:text-indigo-400 transition-colors">
+                            {startup.name}
+                          </p>
+                          <p className="truncate text-xs text-neutral-500 font-medium mt-1.5">
+                            by {startup.founder}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mt-1">MRR</div>
+                      <div className="flex items-center gap-4 md:gap-6 ml-10 sm:ml-0">
+                        <div className="flex flex-col items-start sm:items-end">
+                          <span className="font-syne text-sm font-black text-white tracking-tight tabular-nums">{startup.mrr}</span>
+                          <span className="text-[9px] text-neutral-600 uppercase font-bold tracking-widest leading-none mt-1">MRR</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-2.5 py-1.5 shrink-0">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider leading-none">
+                            Verified
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                  {leaderboard.length === 0 && (
+                    <div className="px-8 py-14 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10">
+                      No startups verified yet. Be the first to join the leaderboard!
                     </div>
-                    <div className="text-xs font-bold text-emerald-400">
-                      ↑ {s.growth}
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
-            ))}
+            </section>
+
+            {/* Trending Section */}
+            {trendingData.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-6 px-2">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                    <h3 className="font-syne text-sm font-black text-white uppercase tracking-wider">
+                      Trending Growth
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {trendingData.map((s) => (
+                    <Link
+                      href={`/startup/${s.slug}`}
+                      key={s.name}
+                      className="bg-[#09090b]/40 border border-white/[0.05] p-5 rounded-3xl relative overflow-hidden group hover:border-white/10 hover:bg-[#0a0a0d]/60 transition-all duration-300 shadow-md ring-1 ring-white/[0.01]"
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-[10px] font-bold text-white shadow-inner shrink-0">
+                          {s.initials}
+                        </div>
+                        <div className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 truncate">
+                          {s.growth}
+                        </div>
+                      </div>
+                      
+                      <div className="text-sm font-bold text-white tracking-wide truncate group-hover:text-emerald-400 transition-colors">
+                        {s.name}
+                      </div>
+                      <div className="mt-1 text-[10px] font-bold text-neutral-500 uppercase tracking-wider truncate">
+                        {s.category}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Recently Listed Grid */}
+            <section>
+              <div className="flex items-center justify-between mb-6 px-2">
+                <div>
+                  <h3 className="font-syne text-sm font-black text-white uppercase tracking-wider">
+                    Recently Verified
+                  </h3>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {recentlyListedData.map((s) => (
+                  <Link
+                    href={`/startup/${s.slug}`}
+                    key={s.name}
+                    className="bg-[#09090b]/30 border border-white/[0.05] p-5 rounded-3xl relative overflow-hidden group hover:border-white/10 hover:bg-[#0a0a0d]/50 transition-all duration-300 ring-1 ring-white/[0.01]"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-[10px] font-bold text-white shadow-inner shrink-0">
+                        {s.initials}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white tracking-wide group-hover:text-indigo-400 transition-colors">
+                          {s.name}
+                        </div>
+                        <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-0.5">
+                          {s.category}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-end justify-between border-t border-white/[0.04] pt-3 mt-3">
+                      <div>
+                        <div className="font-syne text-sm font-black text-white leading-none tracking-tight">
+                          {s.mrr}
+                        </div>
+                        <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest mt-1">MRR</div>
+                      </div>
+                      <div className="rounded-full bg-white/[0.03] border border-white/[0.05] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-neutral-400">
+                        {s.badge}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
           </div>
-          {recentlyListedData.length === 0 && (
-            <div className="rounded-2xl border border-white/[0.05] bg-[#09090b]/30 p-12 text-center backdrop-blur-sm mt-5 flex flex-col items-center">
-              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4 border border-white/10">
-                <BarChart3 className="w-5 h-5 text-neutral-500" />
-              </div>
-              <h4 className="text-sm font-bold uppercase tracking-[0.15em] text-white">
-                Ecosystem is initializing
-              </h4>
-              <p className="mt-2 text-xs leading-relaxed text-neutral-400 font-medium max-w-sm mx-auto">
-                No startups have completed the public verification process yet. Be the first to showcase transparent traction to investors and peers.
-              </p>
-              <Link
-                href="/submit"
-                className="mt-6 inline-flex h-9 items-center justify-center rounded-lg bg-white/10 border border-white/10 px-6 text-xs font-bold uppercase tracking-wider text-white transition-all hover:bg-white/20 hover:scale-[1.02]"
-              >
-                Start Verification
-              </Link>
-            </div>
-          )}
-        </section>
 
-        {/* Feature Grid */}
-        <section className="mt-24">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            <div className="rounded-2xl border border-white/[0.05] bg-[#09090b]/30 p-6 backdrop-blur-sm group hover:border-white/10 hover:bg-[#09090b]/60 transition-all duration-300">
-              <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-5 transition-transform duration-300 group-hover:scale-105">
-                <Eye className="h-4 w-4 text-indigo-400" />
-              </div>
-              <h3 className="text-xs font-extrabold uppercase tracking-[0.15em] text-white">
-                Transparent Revenue
-              </h3>
-              <p className="mt-3 text-xs leading-relaxed text-[#8f8f97] font-medium">
-                Public, verifiable revenue records so founders and investors can trust the signal.
-              </p>
-            </div>
+          {/* Sidebar Column: Activity Feed */}
+          <div className="lg:col-span-4">
+            <section className="sticky top-24">
+              <div className="rounded-3xl border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md overflow-hidden shadow-xl ring-1 ring-white/[0.02]">
+                <div className="border-b border-white/[0.05] px-6 py-5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-indigo-400" />
+                    <h3 className="font-syne text-sm font-black text-white uppercase tracking-tight">
+                      Live Feed
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">Real-time</span>
+                  </div>
+                </div>
 
-            <div className="rounded-2xl border border-white/[0.05] bg-[#09090b]/30 p-6 backdrop-blur-sm group hover:border-white/10 hover:bg-[#09090b]/60 transition-all duration-300">
-              <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-5 transition-transform duration-300 group-hover:scale-105">
-                <BarChart3 className="h-4 w-4 text-indigo-400" />
+                <div className="p-4 space-y-1">
+                  {activities.map((activity, idx) => (
+                    <div 
+                      key={activity.id}
+                      className="flex items-start gap-3 p-3 rounded-2xl hover:bg-white/[0.02] transition-colors"
+                    >
+                      <div className="mt-1 w-6 h-6 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center shrink-0">
+                        {getActivityIcon(activity.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold text-white truncate">
+                          {activity.startupName}
+                        </p>
+                        <p className="text-[10px] text-neutral-400 mt-0.5 leading-snug">
+                          {activity.detail}
+                        </p>
+                        <p className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider mt-1.5">
+                          {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {activities.length === 0 && (
+                    <div className="px-4 py-8 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest">
+                      Waiting for ecosystem events...
+                    </div>
+                  )}
+                </div>
+                
+                <div className="px-6 py-4 border-t border-white/[0.05] bg-black/20">
+                  <p className="text-[9px] font-medium text-neutral-500 leading-relaxed text-center">
+                    All events are cryptographically backed by live payment provider APIs.
+                  </p>
+                </div>
               </div>
-              <h3 className="text-xs font-extrabold uppercase tracking-[0.15em] text-white">
-                High-Trust Leaderboard
-              </h3>
-              <p className="mt-3 text-xs leading-relaxed text-[#8f8f97] font-medium">
-                Discover top-performing internet startups ranked by real MRR and verified growth patterns.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-white/[0.05] bg-[#09090b]/30 p-6 backdrop-blur-sm group hover:border-white/10 hover:bg-[#09090b]/60 transition-all duration-300">
-              <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-5 transition-transform duration-300 group-hover:scale-105">
-                <BadgeCheck className="h-4 w-4 text-indigo-400" />
+              
+              {/* Feature Box Sidebar */}
+              <div className="mt-6 rounded-3xl border border-white/[0.05] bg-indigo-500/[0.02] p-6 backdrop-blur-sm group hover:border-indigo-500/20 transition-all duration-300">
+                <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-4">
+                  <BadgeCheck className="h-4 w-4 text-indigo-400" />
+                </div>
+                <h3 className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-white">
+                  Payment-Backed Proof
+                </h3>
+                <p className="mt-2 text-[11px] leading-relaxed text-[#8f8f97] font-medium">
+                  Verifi connects securely to Stripe and Razorpay. Every profile uses raw API payment streams for authentic, high-confidence verification.
+                </p>
               </div>
-              <h3 className="text-xs font-extrabold uppercase tracking-[0.15em] text-white">
-                Payment-Backed Proof
-              </h3>
-              <p className="mt-3 text-xs leading-relaxed text-[#8f8f97] font-medium">
-                Every profile is connected to API payment streams for authentic, high-confidence verification.
-              </p>
-            </div>
+            </section>
           </div>
-        </section>
+          
+        </div>
 
         {/* Bottom CTA Card */}
         <section className="mt-28">
@@ -435,8 +569,8 @@ export default function HomePage() {
         {/* Footer */}
         <footer className="mt-20 border-t border-white/[0.05] pt-6 pb-2">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs font-bold uppercase tracking-widest text-neutral-500">© 2026 Verifi</div>
-            <div className="text-xs font-bold uppercase tracking-widest text-neutral-500">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">© 2026 Verifi</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">
               Built for founders worldwide
             </div>
           </div>

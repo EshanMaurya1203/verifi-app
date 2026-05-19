@@ -1,9 +1,11 @@
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
-import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award, Clock } from "lucide-react";
+import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award, Clock, Activity } from "lucide-react";
 import Link from "next/link";
 import { getStartupMetrics } from "@/lib/revenue-aggregation";
 import type { Metadata } from "next";
+import { TrustBadge } from "@/components/startup/TrustBadge";
+import { ConfidenceTier } from "@/lib/verification-state";
 
 export const metadata: Metadata = {
   title: "Leaderboard",
@@ -13,74 +15,24 @@ export const metadata: Metadata = {
   },
 };
 
-function TierBadge({ tier, status }: { tier: string, status: string }) {
-  // Map DB trust_tier to confidence-based display tiers
-  // Supports both legacy (verified/trusted/emerging/unverified) and new (high_confidence/revenue_verified/payment_connected/self_reported) keys
-  const config: Record<string, { label: string, color: string, icon: any, glow?: string }> = {
-    // New confidence-based tiers
-    high_confidence: { 
-      label: "High Confidence", 
-      color: "bg-green-500/10 text-green-400 border-green-500/20", 
-      icon: ShieldCheck,
-      glow: "shadow-[0_0_15px_rgba(34,197,94,0.3)]"
-    },
-    revenue_verified: { 
-      label: "Revenue Verified", 
-      color: "bg-blue-500/10 text-blue-400 border-blue-500/20", 
-      icon: Award,
-      glow: "shadow-[0_0_10px_rgba(59,130,246,0.1)]"
-    },
-    payment_connected: { 
-      label: "Payment Connected", 
-      color: "bg-yellow-500/10 text-yellow-500/80 border-yellow-500/20", 
-      icon: TrendingUp 
-    },
-    self_reported: { 
-      label: "Self Reported", 
-      color: "bg-neutral-800/50 text-neutral-500 border-neutral-700/50", 
-      icon: Clock 
-    },
-    // Legacy tier aliases (for existing DB records)
-    verified: { 
-      label: "High Confidence", 
-      color: "bg-green-500/10 text-green-400 border-green-500/20", 
-      icon: ShieldCheck,
-      glow: "shadow-[0_0_15px_rgba(34,197,94,0.3)]"
-    },
-    trusted: { 
-      label: "Revenue Verified", 
-      color: "bg-blue-500/10 text-blue-400 border-blue-500/20", 
-      icon: Award,
-      glow: "shadow-[0_0_10px_rgba(59,130,246,0.1)]"
-    },
-    emerging: { 
-      label: "Payment Connected", 
-      color: "bg-yellow-500/10 text-yellow-500/80 border-yellow-500/20", 
-      icon: TrendingUp 
-    },
-    unverified: { 
-      label: "Self Reported", 
-      color: "bg-neutral-800/50 text-neutral-500 border-neutral-700/50", 
-      icon: Clock 
-    },
-    flagged: { 
-      label: "Self Reported", 
-      color: "bg-neutral-800/50 text-neutral-500 border-neutral-700/50", 
-      icon: Clock 
-    },
+const getConfidenceTier = (tier: string, status: string): ConfidenceTier => {
+  if (status === "flagged") return "SELF_REPORTED";
+  
+  const normalizedTier = tier.toLowerCase();
+  const map: Record<string, ConfidenceTier> = {
+    high_confidence: "HIGH_CONFIDENCE",
+    verified: "HIGH_CONFIDENCE",
+    revenue_verified: "REVENUE_VERIFIED",
+    trusted: "REVENUE_VERIFIED",
+    payment_connected: "PAYMENT_CONNECTED",
+    emerging: "PAYMENT_CONNECTED",
+    self_reported: "SELF_REPORTED",
+    unverified: "SELF_REPORTED",
+    flagged: "SELF_REPORTED"
   };
-
-  // Flagged accounts silently downgrade to Self Reported (no scary wording)
-  const activeTier = status === "flagged" ? "flagged" : tier;
-  const { label, color, icon: Icon, glow } = config[activeTier] || config.self_reported;
-
-  return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all ${color} ${glow || ''}`}>
-      <Icon className="w-3.5 h-3.5" />
-      <span>{label}</span>
-    </div>
-  );
-}
+  
+  return map[normalizedTier] || "SELF_REPORTED";
+};
 
 export default async function LeaderboardPage() {
   const supabase = getSupabaseServer();
@@ -142,6 +94,37 @@ export default async function LeaderboardPage() {
           </div>
         </div>
 
+        {/* How Rankings Work Panel */}
+        <section className="bg-[#0a0a0c]/60 border border-white/[0.06] rounded-[2rem] p-6 mb-12 shadow-2xl ring-1 ring-white/[0.02] backdrop-blur-xl flex flex-col md:flex-row gap-8">
+          <div className="md:w-1/3 border-b md:border-b-0 md:border-r border-white/[0.06] pb-6 md:pb-0 md:pr-8">
+            <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2 mb-3">
+              <Info className="w-4 h-4 text-indigo-400" />
+              Ranking Methodology
+            </h2>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              We prioritize transparency over theatrics. This leaderboard ranks startups primarily by verified financial volume and data freshness, separating hard truth from manual claims.
+            </p>
+          </div>
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                <ShieldCheck className="w-3 h-3" /> Verification Weighting
+              </h3>
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Startups with <span className="text-neutral-300 font-bold">Payment Verified</span> status are visually prioritized. Self-reported figures are dimmed until verified via live ledger API to prevent artificial inflation.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <h3 className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                <Activity className="w-3 h-3" /> Data Freshness
+              </h3>
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Rankings factor in sync frequency. Companies with verified API access auto-sync every 24 hours, ensuring the public metrics reflect their trailing 30-day reporting window accurately.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Leaderboard Table */}
         <section className="bg-[#09090b]/30 border border-white/[0.06] rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-md ring-1 ring-white/[0.02]">
           <div className="grid grid-cols-12 px-6 md:px-10 py-6 text-[11px] uppercase font-bold text-neutral-500 tracking-[0.2em] border-b border-white/[0.05] bg-[#09090b]/60">
@@ -155,37 +138,51 @@ export default async function LeaderboardPage() {
           <div className="divide-y divide-white/[0.04]">
             {sortedData.map((row, i) => {
               const isFlagged = row.verification_status === "flagged";
-              const isVerified = (row.trust_tier || row.verification_status) === "verified";
+              const confidenceTier = getConfidenceTier(row.trust_tier || "unverified", row.verification_status || "unverified");
+              const isVerified = confidenceTier === "HIGH_CONFIDENCE" || confidenceTier === "REVENUE_VERIFIED" || confidenceTier === "PAYMENT_CONNECTED";
+              const isSelfReported = confidenceTier === "SELF_REPORTED" || isFlagged;
               
               return (
                 <Link 
                   href={`/startup/${row.slug}`} 
                   key={row.id}
-                  className={`grid grid-cols-12 px-6 md:px-10 py-6 md:py-8 items-center hover:bg-white/[0.015] transition-all group ${isFlagged ? 'opacity-50 grayscale' : ''} ${isVerified ? 'bg-indigo-500/[0.005]' : ''}`}
+                  className={`grid grid-cols-12 px-6 md:px-10 py-6 md:py-8 items-center transition-all group ${
+                    isSelfReported ? 'opacity-50 bg-transparent hover:opacity-100 hover:bg-white/[0.015]' : 'bg-white/[0.01] hover:bg-white/[0.03]'
+                  }`}
                 >
-                  <div className="col-span-2 md:col-span-1 text-center font-syne text-sm md:text-lg font-bold text-neutral-600 group-hover:text-neutral-400 transition-colors">
+                  <div className={`col-span-2 md:col-span-1 text-center font-syne text-sm md:text-lg font-bold transition-colors ${isVerified ? "text-neutral-500 group-hover:text-neutral-300" : "text-neutral-700"}`}>
                     {i + 1}
                   </div>
                   
                   <div className="col-span-6 md:col-span-4 space-y-1.5">
-                    <p className="font-bold text-sm md:text-lg tracking-tight group-hover:text-indigo-400 transition-colors leading-none">{row.startup_name || row.name}</p>
+                    <p className={`font-bold text-sm md:text-lg tracking-tight transition-colors leading-none ${isVerified ? "text-white group-hover:text-indigo-400" : "text-neutral-400"}`}>
+                      {row.startup_name || row.name}
+                    </p>
                     <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
-                       <span className="text-xs text-neutral-500 font-semibold">{row.founder_name || "Anonymous"}</span>
+                       <span className={`text-xs font-semibold ${isVerified ? "text-neutral-400" : "text-neutral-600"}`}>
+                         {row.founder_name || "Anonymous"}
+                       </span>
                        <div className="w-1 h-1 bg-neutral-800 rounded-full" />
-                       <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-wider">{row.city || 'India'}</span>
+                       <span className={`text-[10px] font-bold uppercase tracking-wider ${isVerified ? "text-neutral-500" : "text-neutral-700"}`}>
+                         {row.city || 'India'}
+                       </span>
                     </div>
                     {/* Inline Badge for Mobile */}
                     <div className="md:hidden mt-2">
-                      <TierBadge tier={row.trust_tier || "unverified"} status={row.verification_status || "unverified"} />
+                      <TrustBadge tier={confidenceTier} size="sm" showGlow={isVerified} />
                     </div>
                   </div>
 
                   <div className="col-span-4 md:col-span-3 text-right px-2 md:px-4">
-                    <p className="font-syne text-base md:text-xl text-white font-extrabold tracking-tight tabular-nums leading-none">{formatInr(row.mrr || 0)}</p>
+                    <p className={`font-syne text-base md:text-xl font-extrabold tracking-tight tabular-nums leading-none ${isVerified ? "text-white" : "text-neutral-500"}`}>
+                      {formatInr(row.mrr || 0)}
+                    </p>
                     <p className="text-[10px] mt-1.5 space-x-1 md:space-x-2 leading-none flex flex-wrap justify-end gap-1">
-                       <span className="text-neutral-600 font-bold uppercase tracking-wider hidden sm:inline">Monthly Audited</span>
+                       <span className={`font-bold uppercase tracking-wider hidden sm:inline ${isVerified ? "text-neutral-500" : "text-neutral-700"}`}>
+                         Monthly Audited
+                       </span>
                        {row.growth !== undefined && (
-                         <span className={row.growth > 0 ? "text-green-400 font-bold" : row.growth < 0 ? "text-red-400 font-bold" : "text-neutral-500 font-bold"}>
+                         <span className={row.growth > 0 ? (isVerified ? "text-emerald-400 font-bold" : "text-emerald-500/50 font-bold") : row.growth < 0 ? (isVerified ? "text-red-400 font-bold" : "text-red-500/50 font-bold") : "text-neutral-500 font-bold"}>
                            {row.growth > 0 ? '+' : ''}{row.growth}% MoM
                          </span>
                        )}
@@ -193,12 +190,12 @@ export default async function LeaderboardPage() {
                   </div>
 
                   <div className="col-span-3 hidden md:flex justify-center">
-                    <TierBadge tier={row.trust_tier || "unverified"} status={row.verification_status || "unverified"} />
+                    <TrustBadge tier={confidenceTier} size="md" showGlow={isVerified} />
                   </div>
 
                   <div className="col-span-1 hidden md:flex justify-end">
-                    <div className="w-9 h-9 rounded-xl bg-neutral-900 border border-white/5 flex items-center justify-center group-hover:border-indigo-500/50 transition-colors shadow-lg">
-                       <ChevronRight className="w-4 h-4 text-neutral-700 group-hover:text-white transition-all transform group-hover:translate-x-0.5" />
+                    <div className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-lg ${isVerified ? "bg-neutral-900 border-white/10 group-hover:border-indigo-500/50" : "bg-neutral-950 border-white/5"}`}>
+                       <ChevronRight className={`w-4 h-4 transition-all transform group-hover:translate-x-0.5 ${isVerified ? "text-neutral-500 group-hover:text-white" : "text-neutral-700 group-hover:text-neutral-500"}`} />
                     </div>
                   </div>
                 </Link>
