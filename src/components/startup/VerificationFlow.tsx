@@ -214,38 +214,54 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
 
       {/* Strength Section */}
       <section className="mt-12 bg-neutral-900/40 border border-white/5 rounded-3xl overflow-hidden p-8 flex flex-col md:flex-row gap-10 items-center">
-        <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
-          <svg className="w-full h-full -rotate-90">
-            <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-white/5" />
-            <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={364.4} strokeDashoffset={364.4 - (364.4 * progress) / 100} className={`transition-all duration-1000 ${strength.color}`} />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-black">{progress}%</span>
-            <span className="text-[10px] uppercase font-bold text-neutral-500">Score</span>
-          </div>
-        </div>
-        <div className="flex-1 space-y-4 text-center md:text-left">
-          <div className="flex items-center justify-center md:justify-start gap-2">
-            <h2 className="text-xl font-bold">Verification Score</h2>
-            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-tighter ${strength.color} ${strength.bg}`}>{strength.label}</span>
-          </div>
-          <p className="text-sm text-neutral-400 font-medium">{strength.msg}</p>
-          <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-            <div className="px-4 py-2 bg-white/5 border border-white/5 rounded-2xl text-[10px] uppercase font-bold text-neutral-500 text-center">
-              Verification <p className="text-sm font-bold text-indigo-400">{stepsCompleted}/{totalSteps} Steps</p>
+        {!hasPaymentSource ? (
+          <div className="flex flex-col md:flex-row gap-8 items-center w-full">
+            <div className="w-20 h-20 rounded-2xl bg-neutral-800/40 border border-white/5 flex items-center justify-center shrink-0">
+              <CircleDashed className="w-10 h-10 text-neutral-500 animate-spin" />
             </div>
-            {hasPaymentSource && (
-              <button
-                onClick={handleRefreshRevenue}
-                disabled={isRefreshing}
-                className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-[10px] uppercase font-bold text-indigo-400 hover:bg-indigo-500/20 transition-all flex items-center gap-2"
-              >
-                {isRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                Refresh Revenue
-              </button>
-            )}
+            <div className="flex-1 text-center md:text-left">
+              <h2 className="text-xl font-bold uppercase tracking-wider text-neutral-300">Awaiting Verification Data</h2>
+              <p className="text-sm text-neutral-500 font-medium mt-1 leading-relaxed">
+                Connect Stripe or Razorpay to initiate real-time revenue verification and calculate your dynamic trust metrics.
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
+              <svg className="w-full h-full -rotate-90">
+                <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-white/5" />
+                <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={364.4} strokeDashoffset={364.4 - (364.4 * progress) / 100} className={`transition-all duration-1000 ${strength.color}`} />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-black">{progress}%</span>
+                <span className="text-[10px] uppercase font-bold text-neutral-500">Score</span>
+              </div>
+            </div>
+            <div className="flex-1 space-y-4 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-2">
+                <h2 className="text-xl font-bold">Verification Score</h2>
+                <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-tighter ${strength.color} ${strength.bg}`}>{strength.label}</span>
+              </div>
+              <p className="text-sm text-neutral-400 font-medium">{strength.msg}</p>
+              <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+                <div className="px-4 py-2 bg-white/5 border border-white/5 rounded-2xl text-[10px] uppercase font-bold text-neutral-500 text-center">
+                  Verification <p className="text-sm font-bold text-indigo-400">{stepsCompleted}/{totalSteps} Steps</p>
+                </div>
+                {hasPaymentSource && (
+                  <button
+                    onClick={handleRefreshRevenue}
+                    disabled={isRefreshing}
+                    className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-[10px] uppercase font-bold text-indigo-400 hover:bg-indigo-500/20 transition-all flex items-center gap-2"
+                  >
+                    {isRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Refresh Revenue
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
       {/* Revenue Sources */}

@@ -84,17 +84,17 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
     }
   }, [ownerId]);
 
-  if (!consistency) {
+  if (!consistency || consistency.confidenceTier === "SELF_REPORTED") {
     return (
-      <div className="p-6 bg-neutral-900/20 border border-white/5 rounded-[2rem] flex items-center gap-4">
+      <div className="p-6 bg-neutral-900/20 border border-white/5 rounded-[2rem] flex items-center gap-4 relative overflow-hidden">
         <div className="p-3 bg-neutral-800/50 rounded-2xl">
-          <Fingerprint className="w-5 h-5 text-neutral-600" />
+          <Fingerprint className="w-5 h-5 text-neutral-600 animate-pulse" />
         </div>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-600">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-500">
             Revenue Consistency
           </p>
-          <p className="text-sm text-neutral-500 mt-0.5">Awaiting event data…</p>
+          <p className="text-sm text-neutral-400 font-bold mt-1">Awaiting Verification Data</p>
         </div>
       </div>
     );

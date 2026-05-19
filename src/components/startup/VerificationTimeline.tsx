@@ -27,64 +27,52 @@ interface VerificationTimelineProps {
 
 const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string; description: (meta: Record<string, any>) => string }> = {
   razorpay_sync_success: {
-    label: "Revenue Reconciliation",
-    icon: RefreshCcw,
+    label: "Verification Completed",
+    icon: ShieldCheck,
     color: "text-emerald-400 bg-emerald-500/10",
-    description: (meta) => `Successfully reconciled ₹${meta.mrr?.toLocaleString() || '0'} across ${meta.count || 0} API records.`
+    description: (meta) => `Successfully verified ₹${meta.mrr?.toLocaleString() || '0'} across ${meta.count || 0} API records.`
   },
   razorpay_sync_success_public: {
-    label: "Revenue Reconciliation",
-    icon: RefreshCcw,
+    label: "Verification Completed",
+    icon: ShieldCheck,
     color: "text-emerald-400 bg-emerald-500/10",
-    description: () => `Successfully reconciled and synced India (Razorpay) ledger connection.`
+    description: () => `Successfully verified and reconciled India (Razorpay) ledger connection.`
   },
   stripe_sync_success: {
-    label: "Revenue Reconciliation",
-    icon: RefreshCcw,
+    label: "Verification Completed",
+    icon: ShieldCheck,
     color: "text-emerald-400 bg-emerald-500/10",
-    description: (meta) => `Successfully reconciled $${meta.mrr?.toLocaleString() || '0'} across ${meta.count || 0} API records.`
+    description: (meta) => `Successfully verified $${meta.mrr?.toLocaleString() || '0'} across ${meta.count || 0} API records.`
   },
   stripe_sync_success_public: {
-    label: "Revenue Reconciliation",
-    icon: RefreshCcw,
+    label: "Verification Completed",
+    icon: ShieldCheck,
     color: "text-emerald-400 bg-emerald-500/10",
-    description: () => `Successfully reconciled and synced Stripe ledger connection.`
+    description: () => `Successfully verified and reconciled Stripe ledger connection.`
   },
   provider_connected: {
-    label: "Source Integrated",
+    label: "Payment Connected",
     icon: Link,
     color: "text-indigo-400 bg-indigo-500/10",
-    description: (meta) => `Successfully connected to ${meta.provider || 'payment provider'}.`
+    description: (meta) => `Successfully connected to ${meta.provider || 'payment provider'} secure feed.`
   },
   trust_score_updated: {
-    label: "Verification Updated",
-    icon: ShieldCheck,
-    color: "text-[#b9ff4b] bg-[#b9ff4b]/10",
-    description: (meta) => `System verification completed. Verification score refined to ${meta.score || 0}/100.`
-  },
-  trust_score_updated_public: {
-    label: "Verification Updated",
+    label: "Verification Completed",
     icon: ShieldCheck,
     color: "text-[#b9ff4b] bg-[#b9ff4b]/10",
     description: () => `System verification completed. Verification parameters and patterns validated.`
   },
-  tier_upgraded: {
-    label: "Verification Tier Upgrade",
-    icon: Award,
-    color: "text-amber-400 bg-amber-500/10 shadow-[0_0_15px_rgba(251,191,36,0.1)]",
-    description: (meta) => `Startup attained ${meta.tier || 'New'} Verification Tier based on sustained revenue consistency.`
-  },
-  fraud_check_passed: {
-    label: "Revenue Consistency Check",
+  trust_score_updated_public: {
+    label: "Verification Completed",
     icon: ShieldCheck,
-    color: "text-emerald-400 bg-emerald-500/10",
-    description: () => "Revenue patterns analyzed. Data verified as consistent and authentic."
+    color: "text-[#b9ff4b] bg-[#b9ff4b]/10",
+    description: () => `System verification completed. Verification parameters and patterns validated.`
   },
   listing_created: {
-    label: "Platform Listing",
+    label: "Profile Created",
     icon: ShieldCheck,
     color: "text-indigo-400 bg-indigo-500/10",
-    description: () => "Startup entered the Verifi ecosystem. Verification protocols initialized."
+    description: () => "Startup profile entered Verifi index. Verification protocols initialized."
   }
 };
 
@@ -106,8 +94,7 @@ export const VerificationTimeline = ({ logs, ownerId }: VerificationTimelineProp
   }, [ownerId]);
 
   const sanitizedLogs = useMemo(() => {
-    if (isOwnerOrAdmin) return logs;
-    return logs.map((log) => {
+    const raw = isOwnerOrAdmin ? logs : logs.map((log) => {
       if (log.event === "trust_score_updated") {
         return { ...log, event: "trust_score_updated_public" };
       }
@@ -119,6 +106,8 @@ export const VerificationTimeline = ({ logs, ownerId }: VerificationTimelineProp
       }
       return log;
     });
+    // Filter strictly to non-synthetic real events mapped in EVENT_CONFIG
+    return raw.filter((log) => log.event in EVENT_CONFIG);
   }, [logs, isOwnerOrAdmin]);
 
   if (!logs || logs.length === 0) {
