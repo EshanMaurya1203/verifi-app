@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { RevenueChart } from "./RevenueChart";
 import { Loader2, AlertCircle, Shield, TrendingUp, Zap } from "lucide-react";
+import { safeFetch } from "@/lib/safe-network";
 
 interface StartupOverview {
   startup: {
@@ -28,21 +29,16 @@ export const StartupDashboard = ({ id }: { id: string }) => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/startup/${id}/overview`);
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to fetch audit data");
-      }
-      const json = await res.json();
-      setData(json);
-    } catch (err: any) {
-      console.error("[Dashboard] Fetch error:", err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    setError(null);
+    const { data: resData, error: fetchErr, ok } = await safeFetch<StartupOverview>(`/api/startup/${id}/overview`);
+    
+    if (!ok || !resData) {
+      setError(fetchErr?.message || "Infrastructure unavailable or dynamic overview sync aborted.");
+    } else {
+      setData(resData);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -50,17 +46,15 @@ export const StartupDashboard = ({ id }: { id: string }) => {
   }, [id]);
 
   const handleSync = async () => {
-    try {
-      setSyncing(true);
-      const res = await fetch(`/api/startup/${id}/sync`, { method: "POST" });
-      if (!res.ok) throw new Error("Sync failed");
+    setSyncing(true);
+    const { ok, error: syncErr } = await safeFetch(`/api/startup/${id}/sync`, { method: "POST" });
+    
+    if (!ok) {
+      alert(syncErr?.message || "Manual connection synchronization failed. Please retry.");
+    } else {
       await fetchData();
-    } catch (err) {
-      console.error(err);
-      alert("Manual sync failed. Please try again.");
-    } finally {
-      setSyncing(false);
     }
+    setSyncing(false);
   };
 
   if (loading) {

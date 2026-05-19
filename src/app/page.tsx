@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowUpRight, BadgeCheck, BarChart3, Eye, Activity, RefreshCw, Zap, TrendingUp, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, BarChart3, Eye, Activity, RefreshCw, Zap, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
 import { getSiteUrl } from "@/lib/site-url";
+import { safeFetch } from "@/lib/safe-network";
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -54,6 +55,8 @@ export default function HomePage() {
   const [trendingData, setTrendingData] = useState<StartupCard[]>([]);
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -77,21 +80,28 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    // 1. Fetch real counts
-    fetch("/api/startup-submissions/count")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.count) setStats((prev) => ({ ...prev, count: data.count }));
-      })
-      .catch(console.error);
+    async function loadHomepageData() {
+      try {
+        setLoading(true);
+        setError(null);
 
-    // 2. Fetch submissions for leaderboard & recently listed
-    fetch("/api/startup-submissions")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data) {
-          const list = data.data;
+        // 1. Fetch real counts securely
+        const countRes = await safeFetch<{ count: number }>("/api/startup-submissions/count");
+        if (countRes.ok && countRes.data?.count) {
+          setStats((prev) => ({ ...prev, count: countRes.data!.count }));
+        }
 
+        // 2. Fetch submissions securely for all modules
+        const submissionsRes = await safeFetch<{ success: boolean; data: any[] }>("/api/startup-submissions");
+        
+        if (!submissionsRes.ok || !submissionsRes.data) {
+          setError(submissionsRes.error?.message || "Failed to establish ledger protocol connection.");
+          setLoading(false);
+          return;
+        }
+
+        const { success, data: list } = submissionsRes.data;
+        if (success && list) {
           // Total Revenue calculation
           const total = list.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
           
@@ -198,9 +208,16 @@ export default function HomePage() {
           eventStream.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           setActivities(eventStream.slice(0, 5));
         }
-      })
-      .catch(console.error);
+      } catch (err) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("Failed to load home data", err);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
 
+    loadHomepageData();
   }, []);
 
   const formatStatsRevenue = (val: number) => {
@@ -343,43 +360,63 @@ export default function HomePage() {
                 </div>
 
                 <div className="divide-y divide-white/[0.04]">
-                  {leaderboard.map((startup) => (
-                    <Link
-                      href={`/startup/${startup.slug}`}
-                      key={startup.rank}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between px-6 md:px-8 py-4 md:py-5 transition-colors hover:bg-white/[0.015] group gap-4 sm:gap-0"
-                    >
-                      <div className="flex min-w-0 items-center gap-4 md:gap-5">
-                        <div className="w-6 font-syne text-sm font-bold text-neutral-600 text-center">
-                          #{startup.rank}
+                  {loading ? (
+                    Array.from({ length: 3 }).map((_, idx) => (
+                      <div key={idx} className="flex items-center justify-between px-6 md:px-8 py-5 animate-pulse">
+                        <div className="flex items-center gap-4 w-1/2">
+                          <div className="w-6 h-4 bg-neutral-800 rounded" />
+                          <div className="space-y-2 w-full">
+                            <div className="h-4 bg-neutral-800 rounded w-2/3" />
+                            <div className="h-3 bg-neutral-900 rounded w-1/3" />
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-white tracking-wide leading-none group-hover:text-indigo-400 transition-colors">
-                            {startup.name}
-                          </p>
-                          <p className="truncate text-xs text-neutral-500 font-medium mt-1.5">
-                            by {startup.founder}
-                          </p>
-                        </div>
+                        <div className="h-6 bg-neutral-800 rounded w-20" />
                       </div>
-                      <div className="flex items-center gap-4 md:gap-6 ml-10 sm:ml-0">
-                        <div className="flex flex-col items-start sm:items-end">
-                          <span className="font-syne text-sm font-black text-white tracking-tight tabular-nums">{startup.mrr}</span>
-                          <span className="text-[9px] text-neutral-600 uppercase font-bold tracking-widest leading-none mt-1">MRR</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-2.5 py-1.5 shrink-0">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider leading-none">
-                            Verified
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
-                  {leaderboard.length === 0 && (
+                    ))
+                  ) : error ? (
+                    <div className="px-8 py-14 text-center flex flex-col items-center justify-center bg-black/10">
+                      <AlertTriangle className="w-6 h-6 text-amber-500/80 mb-3 animate-pulse" />
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-amber-500">Sync Interrupted</p>
+                      <p className="text-xs text-neutral-500 mt-1 max-w-xs leading-relaxed">Could not establish sync with live ledger. Dynamic rankings temporarily offline.</p>
+                    </div>
+                  ) : leaderboard.length === 0 ? (
                     <div className="px-8 py-14 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10">
                       No startups verified yet. Be the first to join the leaderboard!
                     </div>
+                  ) : (
+                    leaderboard.map((startup) => (
+                      <Link
+                        href={`/startup/${startup.slug}`}
+                        key={startup.rank}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between px-6 md:px-8 py-4 md:py-5 transition-colors hover:bg-white/[0.015] group gap-4 sm:gap-0"
+                      >
+                        <div className="flex min-w-0 items-center gap-4 md:gap-5">
+                          <div className="w-6 font-syne text-sm font-bold text-neutral-600 text-center">
+                            #{startup.rank}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-white tracking-wide leading-none group-hover:text-indigo-400 transition-colors">
+                              {startup.name}
+                            </p>
+                            <p className="truncate text-xs text-neutral-500 font-medium mt-1.5">
+                              by {startup.founder}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 md:gap-6 ml-10 sm:ml-0">
+                          <div className="flex flex-col items-start sm:items-end">
+                            <span className="font-syne text-sm font-black text-white tracking-tight tabular-nums">{startup.mrr}</span>
+                            <span className="text-[9px] text-neutral-600 uppercase font-bold tracking-widest leading-none mt-1">MRR</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-2.5 py-1.5 shrink-0">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider leading-none">
+                              Verified
+                            </span>
+                          </div>
+                        </div>
+                      </Link>
+                    ))
                   )}
                 </div>
               </div>
@@ -436,39 +473,63 @@ export default function HomePage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {recentlyListedData.map((s) => (
-                  <Link
-                    href={`/startup/${s.slug}`}
-                    key={s.name}
-                    className="bg-[#09090b]/30 border border-white/[0.05] p-5 rounded-3xl relative overflow-hidden group hover:border-white/10 hover:bg-[#0a0a0d]/50 transition-all duration-300 ring-1 ring-white/[0.01]"
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-[10px] font-bold text-white shadow-inner shrink-0">
-                        {s.initials}
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-white tracking-wide group-hover:text-indigo-400 transition-colors">
-                          {s.name}
-                        </div>
-                        <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-0.5">
-                          {s.category}
+                {loading ? (
+                  Array.from({ length: 2 }).map((_, idx) => (
+                    <div key={idx} className="bg-[#09090b]/30 border border-white/[0.05] p-5 rounded-3xl animate-pulse space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-neutral-800 rounded-xl" />
+                        <div className="space-y-2 w-2/3">
+                          <div className="h-4 bg-neutral-800 rounded w-full" />
+                          <div className="h-3 bg-neutral-900 rounded w-1/2" />
                         </div>
                       </div>
+                      <div className="h-8 bg-neutral-900 rounded w-full mt-4" />
                     </div>
+                  ))
+                ) : error ? (
+                  <div className="col-span-2 px-6 py-10 text-center flex flex-col items-center justify-center bg-black/10 rounded-3xl border border-white/[0.05]">
+                    <AlertTriangle className="w-6 h-6 text-amber-500/80 mb-2 animate-pulse" />
+                    <p className="text-[10px] uppercase font-bold tracking-widest text-amber-500">Sync Offline</p>
+                  </div>
+                ) : recentlyListedData.length === 0 ? (
+                  <div className="col-span-2 px-6 py-10 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10 rounded-3xl">
+                    No startups listed yet.
+                  </div>
+                ) : (
+                  recentlyListedData.map((s) => (
+                    <Link
+                      href={`/startup/${s.slug}`}
+                      key={s.name}
+                      className="bg-[#09090b]/30 border border-white/[0.05] p-5 rounded-3xl relative overflow-hidden group hover:border-white/10 hover:bg-[#0a0a0d]/50 transition-all duration-300 ring-1 ring-white/[0.01]"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-800/80 border border-white/5 font-syne text-[10px] font-bold text-white shadow-inner shrink-0">
+                          {s.initials}
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-white tracking-wide group-hover:text-indigo-400 transition-colors">
+                            {s.name}
+                          </div>
+                          <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-0.5">
+                            {s.category}
+                          </div>
+                        </div>
+                      </div>
 
-                    <div className="flex items-end justify-between border-t border-white/[0.04] pt-3 mt-3">
-                      <div>
-                        <div className="font-syne text-sm font-black text-white leading-none tracking-tight">
-                          {s.mrr}
+                      <div className="flex items-end justify-between border-t border-white/[0.04] pt-3 mt-3">
+                        <div>
+                          <div className="font-syne text-sm font-black text-white leading-none tracking-tight">
+                            {s.mrr}
+                          </div>
+                          <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest mt-1">MRR</div>
                         </div>
-                        <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest mt-1">MRR</div>
+                        <div className="rounded-full bg-white/[0.03] border border-white/[0.05] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-neutral-400">
+                          {s.badge}
+                        </div>
                       </div>
-                      <div className="rounded-full bg-white/[0.03] border border-white/[0.05] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-neutral-400">
-                        {s.badge}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ))
+                )}
               </div>
             </section>
           </div>

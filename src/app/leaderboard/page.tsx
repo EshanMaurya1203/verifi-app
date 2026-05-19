@@ -1,4 +1,5 @@
 import { getSupabaseServer } from "@/lib/supabase-server";
+import { safeSupabaseQuery } from "@/lib/safe-network";
 import { Navbar } from "@/components/layout/Navbar";
 import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award, Clock, Activity } from "lucide-react";
 import Link from "next/link";
@@ -37,13 +38,17 @@ const getConfidenceTier = (tier: string, status: string): ConfidenceTier => {
 export default async function LeaderboardPage() {
   const supabase = getSupabaseServer();
   
-  const { data, error } = await supabase
-    .from("startup_submissions")
-    .select("*")
-    .order("mrr", { ascending: false });
+  const { data, error, ok } = await safeSupabaseQuery<any[]>(
+    supabase
+      .from("startup_submissions")
+      .select("*")
+      .order("mrr", { ascending: false })
+  );
 
-  if (error) {
-    console.error("Leaderboard Server Fetch Error:", error);
+  if (error || !ok) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Leaderboard Server Fetch Error:", error);
+    }
   }
 
   // Fetch growth metrics via snapshots
@@ -201,13 +206,19 @@ export default async function LeaderboardPage() {
                 </Link>
               );
             })}
-            {sortedData.length === 0 && (
+            {!ok || error ? (
+              <div className="px-6 py-20 text-center flex flex-col items-center justify-center bg-black/10">
+                <AlertTriangle className="w-8 h-8 text-amber-500/80 mb-4 animate-pulse" />
+                <p className="text-xs uppercase font-bold tracking-widest text-amber-500">Ecosystem Offline</p>
+                <p className="text-xs text-neutral-500 font-medium mt-2 max-w-sm leading-relaxed">Verifi protocol is currently experiencing dynamic sync latency. Real-time ranking verification is temporarily paused. Please reload.</p>
+              </div>
+            ) : sortedData.length === 0 ? (
               <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
                 <ShieldCheck className="w-8 h-8 text-neutral-800 mb-4" />
                 <p className="text-xs uppercase font-bold tracking-widest text-neutral-500">No verified startups yet</p>
                 <p className="text-xs text-neutral-600 font-medium mt-2 max-w-sm leading-relaxed">The leaderboard is currently empty. Connect your payment provider to become the first verified startup.</p>
               </div>
-            )}
+            ) : null}
           </div>
         </section>
       </main>

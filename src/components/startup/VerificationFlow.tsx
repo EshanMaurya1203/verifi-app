@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { CheckCircle2, Globe, User, ShieldCheck, XCircle, ArrowRight, CircleDashed, Award, Zap, TrendingUp, X, Upload, CreditCard, Loader2, Link as LinkIcon, Sparkles, Video } from "lucide-react";
+import { safeFetch, safeSupabaseQuery } from "@/lib/safe-network";
 
 type StartupProfile = {
   id: number;
@@ -46,9 +47,8 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
 
   useEffect(() => {
     async function fetchConnections() {
-      const res = await fetch(`/api/startup/${id}/connections`);
-      if (res.ok) {
-        const data = await res.json();
+      const { data, ok } = await safeFetch<any>(`/api/startup/${id}/connections`);
+      if (ok && data) {
         if (data.providers) setConnections(data.providers);
         if (data.totalMRR !== undefined) setTotalRevenue(data.totalMRR);
       }
@@ -87,21 +87,25 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
   // --- Actions ---
   const updateStartup = async (data: any, msg: string, pointsVal: number) => {
     setLoading(true);
-    const { data: updated, error } = await supabase.from("startup_submissions").update(data).eq("id", id).select().single();
-    if (!error) {
-      // Trigger deterministic re-score
-      const res = await fetch("/api/trust/calculate", {
+    const { data: updated, error, ok } = await safeSupabaseQuery<any>(
+      supabase.from("startup_submissions").update(data).eq("id", id).select().single()
+    );
+    
+    if (ok && updated) {
+      // Trigger deterministic re-score securely
+      const { data: scoreData, ok: scoreOk } = await safeFetch<any>("/api/trust/calculate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ startup_id: id })
       });
-      const scoreData = await res.json();
       
-      setStartup({ ...updated, ...scoreData });
-      setSuccessMsg(msg);
-      setPointsGained(pointsVal);
-      setActiveModal(null);
-      setTimeout(() => { setSuccessMsg(null); setPointsGained(null); }, 4000);
+      if (scoreOk && scoreData) {
+        setStartup({ ...updated, ...scoreData });
+        setSuccessMsg(msg);
+        setPointsGained(pointsVal);
+        setActiveModal(null);
+        setTimeout(() => { setSuccessMsg(null); setPointsGained(null); }, 4000);
+      }
     }
     setLoading(false);
   };
@@ -116,37 +120,32 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
     }
     setLoading(true);
     setStripeError(null);
-    try {
-      const res = await fetch("/api/stripe/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: stripeKey,
-          startupId: id
-        })
-      });
+    
+    const { data, ok, error } = await safeFetch<any>("/api/stripe/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: stripeKey,
+        startupId: id
+      })
+    });
+    
+    if (ok && data && data.revenue !== undefined) {
+      setStripeSuccess(true);
+      await updateStartup({
+        payment_connected: true,
+        last_verified_at: new Date().toISOString()
+      }, "Stripe connected: Revenue synced!", 50);
       
-      const data = await res.json();
-      
-      if (res.ok && data.revenue !== undefined) {
-        setStripeSuccess(true);
-        await updateStartup({
-          payment_connected: true,
-          last_verified_at: new Date().toISOString()
-        }, "Stripe connected: Revenue synced!", 50);
-        
-        // Modal will stay open for a moment to show success state before auto-closing
-        setTimeout(() => {
-          setActiveModal(null);
-          setPaymentView("options");
-          setStripeSuccess(false);
-          setStripeKey("");
-        }, 2500);
-      } else {
-        setStripeError(data.error || "Stripe verification failed");
-      }
-    } catch (err: any) {
-      setStripeError(err.message);
+      // Modal will stay open for a moment to show success state before auto-closing
+      setTimeout(() => {
+        setActiveModal(null);
+        setPaymentView("options");
+        setStripeSuccess(false);
+        setStripeKey("");
+      }, 2500);
+    } else {
+      setStripeError(error?.message || data?.error || "Stripe verification failed");
     }
     setLoading(false);
   };
@@ -156,51 +155,42 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
     setLoading(true);
     setRazorpayError(null);
 
-    try {
-      const res = await fetch("/api/razorpay/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          key_id: keyId,
-          key_secret: keySecret,
-          startup_id: id
-        })
-      });
-      const data = await res.json();
+    const { data, ok, error } = await safeFetch<any>("/api/razorpay/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key_id: keyId,
+        key_secret: keySecret,
+        startup_id: id
+      })
+    });
 
-      if (data.success) {
-        await updateStartup({
-          payment_connected: true,
-          last_verified_at: new Date().toISOString()
-        }, "Razorpay connected & revenue audited!", 50);
-        setPaymentView("options");
-      } else {
-        setRazorpayError(data.error || "Connection failed");
-      }
-    } catch (err) {
-      setRazorpayError("Network error during verification");
+    if (ok && data && data.success) {
+      await updateStartup({
+        payment_connected: true,
+        last_verified_at: new Date().toISOString()
+      }, "Razorpay connected & revenue audited!", 50);
+      setPaymentView("options");
+    } else {
+      setRazorpayError(error?.message || data?.error || "Connection failed");
     }
     setLoading(false);
   };
 
   const handleRefreshRevenue = async () => {
     setIsRefreshing(true);
-    try {
-      const res = await fetch("/api/verify/revenue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startup_id: id
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await updateStartup({
-          last_verified_at: new Date().toISOString()
-        }, `Revenue refreshed: ₹${Math.round(data.revenue).toLocaleString()}`, 10);
-      }
-    } catch (err) {
-      console.error("Refresh error:", err);
+    const { data, ok } = await safeFetch<any>("/api/verify/revenue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startup_id: id
+      })
+    });
+    
+    if (ok && data && data.success) {
+      await updateStartup({
+        last_verified_at: new Date().toISOString()
+      }, `Revenue refreshed: ₹${Math.round(data.revenue).toLocaleString()}`, 10);
     }
     setIsRefreshing(false);
   };

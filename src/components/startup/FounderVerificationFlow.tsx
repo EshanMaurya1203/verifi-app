@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { safeFetch } from "@/lib/safe-network";
 import { 
   ShieldCheck, 
   CreditCard, 
@@ -78,15 +79,15 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
     setTimeLeft(45);
 
     try {
-      let res;
+      let syncResult;
       if (provider === "stripe") {
-        res = await fetch("/api/sync/stripe", {
+        syncResult = await safeFetch<any>("/api/sync/stripe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ apiKey: stripeKey, startupId })
         });
       } else if (provider === "razorpay") {
-        res = await fetch("/api/sync/razorpay", {
+        syncResult = await safeFetch<any>("/api/sync/razorpay", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ key_id: rzpKeyId, key_secret: rzpKeySecret, startup_id: startupId })
@@ -95,31 +96,34 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
         throw new Error("No provider selected");
       }
 
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Verification failed");
+      if (!syncResult.ok || !syncResult.data) {
+        throw new Error(syncResult.error?.message || "Verification connection failed.");
       }
 
       // Sync successful, move to analysis
       setCurrentStep("analyzing");
 
-      // Fetch overview data for consistency and verification score
-      const overviewRes = await fetch(`/api/startup/${startupId}/overview`);
-      const overview = await overviewRes.json();
+      // Fetch overview data for consistency and verification score securely
+      const overviewRes = await safeFetch<any>(`/api/startup/${startupId}/overview`);
       
-      if (!overviewRes.ok) throw new Error("Failed to generate verification profile");
+      if (!overviewRes.ok || !overviewRes.data) {
+        throw new Error(overviewRes.error?.message || "Failed to generate verification profile");
+      }
 
-      setOverviewData(overview);
+      setOverviewData(overviewRes.data);
       
       const timeTaken = startTime ? (Date.now() - startTime) / 1000 : 0;
-      console.log(`[Verification] Time to first verification: ${timeTaken.toFixed(2)}s`);
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[Verification] Time to first verification: ${timeTaken.toFixed(2)}s`);
+      }
       
       // Auto-progress to summary
       setCurrentStep("summary");
 
     } catch (err: any) {
-      console.error(err);
+      if (process.env.NODE_ENV === "development") {
+        console.error(err);
+      }
       let friendlyError = err.message || "An unexpected error occurred";
       if (friendlyError.includes("failed to fetch")) friendlyError = "Network error: Please check your connection and try again.";
       if (friendlyError.includes("401")) friendlyError = "Invalid API Key: Please verify your credentials and try again.";

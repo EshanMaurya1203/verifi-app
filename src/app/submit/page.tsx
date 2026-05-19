@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
+import { safeFetch, safeSupabaseQuery } from "@/lib/safe-network";
 import { getSiteUrl } from "@/lib/site-url";
 
 type PaymentMethod = {
@@ -109,35 +110,31 @@ export default function SubmitPage() {
     }
 
     setIsVerifying(true);
-    try {
-      const payload: any = { provider: form.apiProvider };
-      if (form.apiProvider === "stripe") {
-        payload.apiKey = form.apiKey;
-      } else {
-        const [id, secret] = form.apiKey.split(":");
-        payload.keyId = id;
-        payload.keySecret = secret;
-      }
+    const payload: any = { provider: form.apiProvider };
+    if (form.apiProvider === "stripe") {
+      payload.apiKey = form.apiKey;
+    } else {
+      const [id, secret] = form.apiKey.split(":");
+      payload.keyId = id;
+      payload.keySecret = secret;
+    }
 
-      const res = await fetch("/api/verify/one-off", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const { data, ok, error } = await safeFetch<any>("/api/verify/one-off", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Verification failed");
-
+    if (ok && data && data.revenue !== undefined) {
       setVerifyStatus({ mrr: data.revenue, currency: data.currency });
       setVerifiedRevenue(data.revenue);
       // Automatically update the MRR field with the verified value
       onInputChange("mrr", Math.round(data.revenue).toString());
       alert(`Verified MRR: ${data.currency} ${Math.round(data.revenue)}`);
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setIsVerifying(false);
+    } else {
+      alert(error?.message || data?.error || "Verification failed");
     }
+    setIsVerifying(false);
   };
 
 
@@ -186,23 +183,18 @@ export default function SubmitPage() {
           setUser(currentUser);
         }
       } catch (err) {
-        console.error("Error fetching current user:", err);
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[Auth] Current user verification deferred or interrupted:", err);
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
         }
       }
 
-      try {
-        const countRes = await fetch("/api/startup-submissions/count");
-        if (countRes.ok) {
-          const countData = await countRes.json();
-          if (isMounted && typeof countData.count === "number") {
-            setClaimedCount(countData.count);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching claimed count:", err);
+      const { data: countData, ok } = await safeFetch<any>("/api/startup-submissions/count");
+      if (ok && countData && isMounted && typeof countData.count === "number") {
+        setClaimedCount(countData.count);
       }
     };
 
@@ -384,7 +376,7 @@ export default function SubmitPage() {
 
 
 
-      const res = await fetch("/api/startup-submissions", {
+      const { data: result, ok, error } = await safeFetch<any>("/api/startup-submissions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -392,12 +384,9 @@ export default function SubmitPage() {
         body: JSON.stringify(payload),
       });
 
-      const result = await res.json();
-
-
-
-      if (!res.ok || !result.success) {
-        alert(result.error || "Submission failed");
+      if (!ok || !result || !result.success) {
+        alert(error?.message || result?.error || "Submission failed. Please try again.");
+        setIsSubmitting(false);
         return;
       }
 
@@ -410,7 +399,9 @@ export default function SubmitPage() {
       setForm(initialForm);
       setStep(1);
     } catch (err) {
-      console.error("Submission error:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Submission error:", err);
+      }
       setSubmitError("Submission failed. Please try again in a few moments.");
     } finally {
       setIsSubmitting(false);

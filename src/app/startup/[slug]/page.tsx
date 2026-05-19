@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabase-server";
+import { safeSupabaseQuery } from "@/lib/safe-network";
 import { Navbar } from "@/components/layout/Navbar";
 import { ShieldCheck, ShieldAlert, Share2, Globe, CalendarDays, ExternalLink, Award, CheckCircle2, AlertTriangle, Link, ScanSearch, Clock, TrendingUp, History, Fingerprint } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
@@ -62,54 +63,68 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   const slug = decodeURIComponent(resolvedParams.slug);
 
   // 1. Resolve Startup
-  const { data: startup, error } = await supabaseServer
-    .from("startup_submissions")
-    .select("*")
-    .eq("slug", slug)
-    .maybeSingle();
+  const { data: startup, error, ok } = await safeSupabaseQuery<any>(
+    supabaseServer
+      .from("startup_submissions")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle()
+  );
 
-  if (error || !startup) {
+  if (error || !ok || !startup) {
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
         <Navbar />
-        <AlertTriangle className="w-12 h-12 text-neutral-600 mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Profile Not Found</h1>
-        <p className="text-neutral-400">The requested startup profile could not be located.</p>
+        <AlertTriangle className="w-12 h-12 text-neutral-600 mb-4 animate-pulse" />
+        <h1 className="text-2xl font-bold mb-2">Profile Latency</h1>
+        <p className="text-neutral-400 max-w-sm text-center leading-relaxed">
+          The requested startup profile cannot be verified right now. The live database connection may be experiencing high latency. Please try refreshing.
+        </p>
       </div>
     );
   }
 
   const startupId = startup.id;
 
-  // 2. Fetch all verification data (including snapshots for trend charts)
+  // 2. Fetch all verification data (including snapshots for trend charts) safely
   const [revenueRes, fraudRes, providerRes, logsRes, snapshotRes] = await Promise.all([
-    supabaseServer
-      .from("revenue_transactions")
-      .select("amount, created_at, provider")
-      .eq("startup_id", startupId)
-      .order("created_at", { ascending: true })
-      .limit(200),
-    supabaseServer
-      .from("fraud_signals")
-      .select("signal_type")
-      .eq("startup_id", startupId),
-    supabaseServer
-      .from("provider_connections")
-      .select("provider, status, last_synced_at, last_mrr")
-      .eq("startup_id", startupId)
-      .eq("status", "connected"),
-    supabaseServer
-      .from("verification_logs")
-      .select("*")
-      .eq("startup_id", startupId)
-      .order("created_at", { ascending: false })
-      .limit(10),
-    supabaseServer
-      .from("revenue_snapshots")
-      .select("total_revenue, provider_breakdown, created_at")
-      .eq("startup_id", startupId)
-      .order("created_at", { ascending: true })
-      .limit(30)
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("revenue_transactions")
+        .select("amount, created_at, provider")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: true })
+        .limit(200)
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("fraud_signals")
+        .select("signal_type")
+        .eq("startup_id", startupId)
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("provider_connections")
+        .select("provider, status, last_synced_at, last_mrr")
+        .eq("startup_id", startupId)
+        .eq("status", "connected")
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("verification_logs")
+        .select("*")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: false })
+        .limit(10)
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("revenue_snapshots")
+        .select("total_revenue, provider_breakdown, created_at")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: true })
+        .limit(30)
+    )
   ]);
 
   const rawRevenue = revenueRes.data || [];
