@@ -5,19 +5,19 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const { searchParams } = new URL(request.url);
   const theme = searchParams.get("theme") || "dark";
 
-  // 1. Resolve Startup
+  // 1. Resolve Startup (match public profile lookup by slug)
   let query = supabaseServer.from("startup_submissions").select("*");
   if (!isNaN(Number(slug))) {
     query = query.eq("id", Number(slug));
   } else {
-    // Check both slug and startup_name for maximum compatibility
-    query = query.or(`slug.eq.${slug},startup_name.ilike.${slug}`);
+    query = query.eq("slug", slug);
   }
-  
+
   const { data: startup } = await query.maybeSingle();
 
   if (!startup) {

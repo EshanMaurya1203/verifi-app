@@ -3,27 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { Copy, Check, Code, Image as ImageIcon, Share2, X, ExternalLink } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
-import { getStartupUrl, getBadgeUrl } from "@/lib/site-url";
+import { getStartupUrl, getBadgeUrl, getRelativeBadgeUrl } from "@/lib/site-url";
 
 interface BadgeEmbedderProps {
   startupName: string;
   slug: string;
 }
-
-const ErrorFallbackBadge = ({ startupName }: { startupName: string }) => {
-  return (
-    <svg width="300" height="80" viewBox="0 0 300 80" fill="none" xmlns="http://www.w3.org/2000/svg" className="rounded-2xl border border-rose-500/30">
-      <rect width="300" height="80" rx="16" fill="#0f0f11"/>
-      <rect x="0.5" y="0.5" width="299" height="79" rx="15.5" stroke="rgba(244,63,94,0.2)"/>
-      <rect x="20" y="20" width="40" height="40" rx="8" fill="#f43f5e" fillOpacity="0.1"/>
-      <path d="M40 32V35C40 37.7614 37.7614 40 35 40H32C29.2386 40 27 37.7614 27 35V32C27 29.2386 29.2386 27 32 27H35C37.7614 27 40 29.2386 40 32Z" stroke="#f43f5e" strokeWidth="1.5"/>
-      <circle cx="33.5" cy="33.5" r="1.5" fill="#f43f5e"/>
-      <path d="M30 49.5C31.5 48 33.5 47 36 47C38.5 47 40.5 48 42 49.5" stroke="#f43f5e" strokeWidth="1.5" strokeLinecap="round"/>
-      <text x="76" y="38" fill="#f43f5e" fontFamily="var(--font-sans), system-ui, sans-serif" fontSize="13" fontWeight="700" letterSpacing="0.05em">ERROR RESOLVING LEDGER</text>
-      <text x="76" y="53" fill="rgba(244,63,94,0.6)" fontFamily="var(--font-sans), system-ui, sans-serif" fontSize="10" fontWeight="600" letterSpacing="0.05em">VERIFICATION FEED SUSPENDED</text>
-    </svg>
-  );
-};
 
 const BadgeSkeleton = () => {
   return (
@@ -49,17 +34,18 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "loaded" | "unavailable">("loading");
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const badgeUrl = `${getBadgeUrl(slug)}?theme=${theme}`;
+  const badgePreviewUrl = `${getRelativeBadgeUrl(slug)}?theme=${theme}`;
+  const badgeEmbedUrl = `${getBadgeUrl(slug)}?theme=${theme}`;
   const profileUrl = getStartupUrl(slug);
   
   const embedCode = `<a href="${profileUrl}" target="_blank">
-  <img src="${badgeUrl}" alt="${startupName} is Verified on Verifi" width="300" height="80" />
+  <img src="${badgeEmbedUrl}" alt="${startupName} is Verified on Verifi" width="300" height="80" />
 </a>`;
 
   const handleCopyBadge = async () => {
@@ -114,16 +100,15 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
       {/* Badge Preview Area */}
       <div className="py-5 px-4 flex flex-col items-center justify-center bg-black/20 min-h-[110px] w-full overflow-x-auto relative">
         <div className="w-[300px] h-[80px] relative group select-none flex items-center justify-center shrink-0">
-          {status === "loading" && <BadgeSkeleton />}
-          {status === "error" && <ErrorFallbackBadge startupName={startupName} />}
-          {mounted && (
+          {(status === "loading" || status === "unavailable") && <BadgeSkeleton />}
+          {mounted && status !== "unavailable" && (
             <img 
-              src={badgeUrl} 
+              src={badgePreviewUrl} 
               alt={`${startupName} Verification Badge Preview`}
               width="300"
               height="80"
               onLoad={() => setStatus("loaded")}
-              onError={() => setStatus("error")}
+              onError={() => setStatus("unavailable")}
               className={`shadow-xl rounded-2xl transition-transform group-hover:scale-[1.02] duration-300 ${
                 status === "loaded" ? "block" : "hidden"
               }`}

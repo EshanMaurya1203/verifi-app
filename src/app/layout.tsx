@@ -19,9 +19,10 @@ const syne = Syne({
 });
 
 const appUrl = getSiteUrl();
+const metadataBase = appUrl ? new URL(appUrl) : undefined;
 
 export const metadata: Metadata = {
-  metadataBase: new URL(appUrl),
+  ...(metadataBase ? { metadataBase } : {}),
   title: {
     default: "Verifi — Verified Startup Revenue Database",
     template: "%s | Verifi"

@@ -33,7 +33,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 
   const baseUrl = getSiteUrl();
-  const ogImageUrl = `${baseUrl}/api/og/startup/${slug}`;
+  const encodedSlug = encodeURIComponent(slug);
+  const ogImageUrl = baseUrl
+    ? `${baseUrl}/api/og/startup/${encodedSlug}`
+    : `/api/og/startup/${encodedSlug}`;
 
   return {
     title: `${startup.startup_name} - Verified Financial Profile | Verifi`,
