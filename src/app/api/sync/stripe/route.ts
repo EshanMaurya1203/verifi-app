@@ -7,8 +7,15 @@ import { supabaseServer } from "@/lib/supabase-server";
  * Simulates fetching live transaction data from Stripe and
  * persisting it to the revenue_snapshots table.
  */
+import { getAuthenticatedUser } from "@/lib/auth-server";
+
 export async function POST() {
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
     // 1. Fetch active Stripe connections (simulating looking up API keys)
     const { data: connections, error: connError } = await supabaseServer
       .from("payment_connections")

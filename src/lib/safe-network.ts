@@ -13,89 +13,102 @@ export interface SafeNetworkResponse<T> {
 
 interface SafeFetchOptions extends RequestInit {
   timeoutMs?: number;
+  retries?: number;
+  retryDelay?: number;
 }
 
 /**
- * Perform a fetch operation with timeout, status checking, and automatic JSON/Text parsing
+ * Perform a fetch operation with timeout, status checking, automatic JSON/Text parsing,
+ * and optional retries for transient network errors.
  * Wrapped in a global safety net to guarantee it never throws an uncaught exception.
  */
 export async function safeFetch<T>(
   url: string,
   options: SafeFetchOptions = {}
 ): Promise<SafeNetworkResponse<T>> {
-  const { timeoutMs = 8000, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
+  const { timeoutMs = 8000, retries = 1, retryDelay = 1000, ...fetchOptions } = options;
+  
+  let attempt = 0;
+  let lastError: Error | null = null;
+  
+  while (attempt <= retries) {
+    attempt++;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
 
-  try {
-    const response = await fetch(url, {
-      ...fetchOptions,
-      signal: controller.signal,
-    });
+    try {
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: controller.signal,
+      });
 
-    clearTimeout(id);
+      clearTimeout(id);
 
-    let data: any = null;
-    const contentType = response.headers.get("content-type");
+      let data: any = null;
+      const contentType = response.headers.get("content-type");
 
-    if (contentType && contentType.includes("application/json")) {
-      try {
-        data = await response.json();
-      } catch (parseError: any) {
-        if (process.env.NODE_ENV === "development") {
-          console.warn(
-            `[safeFetch] Failed to parse JSON response from ${url}:`,
-            parseError
-          );
+      if (contentType && contentType.includes("application/json")) {
+        try {
+          data = await response.json();
+        } catch (parseError: any) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn(`[safeFetch] Failed to parse JSON response from ${url}:`, parseError);
+          }
+        }
+      } else {
+        try {
+          const text = await response.text();
+          data = text ? { message: text } : null;
+        } catch (textError) {
+          // Fallback silently if response body can't be read
         }
       }
-    } else {
-      try {
-        const text = await response.text();
-        data = text ? { message: text } : null;
-      } catch (textError) {
-        // Fallback silently if response body can't be read
-      }
-    }
 
-    if (!response.ok) {
-      const errorMsg = data?.error || data?.message || `HTTP error! status: ${response.status}`;
-      const httpError = new Error(errorMsg);
-      if (process.env.NODE_ENV === "development") {
-        console.warn(`[safeFetch] Request to ${url} failed with status ${response.status}:`, errorMsg);
+      if (!response.ok) {
+        const errorMsg = typeof data?.error === 'string' ? data.error : (data?.error?.message || data?.error?.description || data?.message || `HTTP error! status: ${response.status}`);
+        const httpError = new Error(errorMsg);
+        
+        // Don't retry on 4xx client errors (except 429 Too Many Requests)
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          return { data: null, error: httpError, ok: false, status: response.status };
+        }
+        
+        throw httpError;
       }
+
       return {
-        data: null,
-        error: httpError,
-        ok: false,
+        data: data as T,
+        error: null,
+        ok: true,
         status: response.status,
       };
+    } catch (error: any) {
+      clearTimeout(id);
+      
+      let finalError = error;
+      if (error.name === "AbortError") {
+        finalError = new Error(`Request timed out after ${timeoutMs}ms`);
+      }
+      lastError = finalError;
+      
+      if (attempt <= retries) {
+        if (process.env.NODE_ENV === "development") {
+           console.warn(`[safeFetch] Attempt ${attempt} failed for ${url}. Retrying in ${retryDelay}ms...`);
+        }
+        await new Promise(res => setTimeout(res, retryDelay));
+      }
     }
-
-    return {
-      data: data as T,
-      error: null,
-      ok: true,
-      status: response.status,
-    };
-  } catch (error: any) {
-    clearTimeout(id);
-    let finalError = error;
-
-    if (error.name === "AbortError") {
-      finalError = new Error(`Request timed out after ${timeoutMs}ms`);
-    }
-
-    if (process.env.NODE_ENV === "development") {
-      console.warn(`[safeFetch] Network request to ${url} crashed:`, finalError.message || finalError);
-    }
-
-    return {
-      data: null,
-      error: finalError,
-      ok: false,
-    };
   }
+
+  if (process.env.NODE_ENV === "development") {
+    console.warn(`[safeFetch] Network request to ${url} failed after ${retries + 1} attempts:`, lastError?.message || lastError);
+  }
+
+  return {
+    data: null,
+    error: lastError,
+    ok: false,
+  };
 }
 
 /**

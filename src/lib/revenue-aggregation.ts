@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase-server";
 import { decrypt } from "@/lib/encryption";
+import { safeFetch } from "@/lib/safe-network";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -32,24 +33,23 @@ export async function getStripeRevenue(apiKey: string): Promise<ProviderRevenue>
       (Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000
     );
 
-    const res = await fetch(
+    const res = await safeFetch<any>(
       `https://api.stripe.com/v1/balance_transactions?created[gte]=${thirtyDaysAgo}&limit=100`,
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
       return {
         provider: "stripe",
         revenue: 0,
         currency: "INR",
         transactionCount: 0,
         success: false,
-        error: err?.error?.message || `Stripe API error: ${res.status}`,
+        error: res.error?.message || `Stripe API error: ${res.status}`,
       };
     }
 
-    const data = await res.json();
+    const data = res.data;
     const charges = (data.data || []).filter(
       (t: { type: string }) => t.type === "charge" || t.type === "payment"
     );
@@ -93,13 +93,12 @@ export async function getRazorpayRevenue(
     const now = Math.floor(Date.now() / 1000);
     const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
 
-    const res = await fetch(
+    const res = await safeFetch<any>(
       `https://api.razorpay.com/v1/payments?from=${thirtyDaysAgo}&to=${now}&count=100`,
       { headers: { Authorization: `Basic ${auth}` } }
     );
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
       return {
         provider: "razorpay",
         revenue: 0,
@@ -107,11 +106,11 @@ export async function getRazorpayRevenue(
         transactionCount: 0,
         success: false,
         error:
-          err?.error?.description || `Razorpay API error: ${res.status}`,
+          res.error?.message || `Razorpay API error: ${res.status}`,
       };
     }
 
-    const data = await res.json();
+    const data = res.data;
     const captured = (data.items || []).filter(
       (p: { status: string }) => p.status === "captured"
     );

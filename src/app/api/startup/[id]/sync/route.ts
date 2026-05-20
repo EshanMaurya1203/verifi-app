@@ -6,11 +6,23 @@ import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
 import { computeTrustScore } from "@/lib/scoring";
 import { decrypt } from "@/lib/encryption";
 
+import { verifyStartupOwnership } from "@/lib/auth-server";
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Enforce authentication and strict startup ownership validation
+  const { authenticated, owned, startup } = await verifyStartupOwnership(id);
+  if (!authenticated) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  if (!owned) {
+    return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
+  }
+
   const supabase = getSupabaseServer();
 
   // 1. Fetch provider connections for this startup

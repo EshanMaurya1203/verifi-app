@@ -4,6 +4,7 @@ import React from "react";
 import { Fingerprint, ShieldCheck, ShieldAlert, ShieldQuestion, TrendingUp, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { isAdmin } from "@/lib/isAdmin";
+import { formatScore } from "@/lib/formatters";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ import { VerificationStateResult } from "@/lib/verification-state";
 interface RevenueConsistencyCardProps {
   consistency: VerificationStateResult | null | undefined;
   ownerId?: string;
+  isDemo?: boolean;
 }
 
 // ─── Level Config ───────────────────────────────────────────────────────────
@@ -67,7 +69,7 @@ const FLAG_COLORS = {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ consistency, ownerId }) => {
+export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ consistency, ownerId, isDemo = false }) => {
   const [isOwnerOrAdmin, setIsOwnerOrAdmin] = React.useState(false);
 
   React.useEffect(() => {
@@ -102,11 +104,25 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
 
   const { consistencyScore: score, consistencyLevel, consistencyFlags: flags } = consistency;
   
-  const level = (
-    consistencyLevel === "Consistent" ? "Verified Patterns" : "Refining"
-  ) as "Refining" | "Verified Patterns";
+  const level = isDemo
+    ? (consistencyLevel === "Consistent" ? "Simulated Patterns" : "Simulated/Illustrative")
+    : (consistencyLevel === "Consistent" ? "Verified Patterns" : "Refining");
   
-  const config = LEVEL_CONFIG[level] || LEVEL_CONFIG["Refining"];
+  const demoConfig = {
+    icon: ShieldQuestion,
+    gradient: "from-amber-500/10 to-amber-900/5",
+    border: "border-amber-500/20",
+    textColor: "text-amber-400",
+    badgeBg: "bg-amber-500/15",
+    badgeText: "text-amber-300",
+    barColor: "bg-amber-500",
+    barGlow: "shadow-amber-500/40",
+    description: "Illustrative simulation dataset",
+  };
+  
+  const config = isDemo
+    ? demoConfig
+    : (LEVEL_CONFIG[level as "Refining" | "Verified Patterns"] || LEVEL_CONFIG["Refining"]);
   const LevelIcon = config.icon;
 
   return (
@@ -157,7 +173,7 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
         <div className="flex items-end gap-4 mb-5 relative z-10">
           <div className="flex items-baseline gap-1">
             <span className="text-4xl font-black text-white tabular-nums tracking-tight">
-              {score}
+              {formatScore(score, 0)}
             </span>
             <span className="text-sm font-bold text-neutral-500">/100</span>
           </div>
@@ -175,7 +191,7 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
                 Refining
               </span>
               <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-700">
-                Verified Patterns
+                {isDemo ? "Simulated Patterns" : "Verified Patterns"}
               </span>
             </div>
           </div>
@@ -183,11 +199,19 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
       ) : (
         <div className="mt-2 mb-5 p-4 bg-white/[0.02] border border-white/[0.04] rounded-2xl relative z-10">
           <div className="flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+            {isDemo ? (
+              <Info className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+            ) : (
+              <ShieldCheck className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+            )}
             <div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-white">Consistent Billing History</h4>
+              <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                {isDemo ? "Illustrative Sandbox Data" : "Consistent Billing History"}
+              </h4>
               <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
-                Verification algorithms analyze transaction diversity, pattern spacing, and recurring intervals to confirm organic, non-synthetic revenue.
+                {isDemo
+                  ? "This startup profile is a sandbox demonstration containing simulated metrics. No real verification of billing accounts has been conducted."
+                  : "Verification algorithms analyze transaction diversity, pattern spacing, and recurring intervals to confirm organic, non-synthetic revenue."}
               </p>
             </div>
           </div>

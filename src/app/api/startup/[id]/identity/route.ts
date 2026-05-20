@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { verifyStartupOwnership } from "@/lib/auth-server";
 
 export async function PUT(
   request: Request,
@@ -7,8 +8,18 @@ export async function PUT(
 ) {
   try {
     const resolvedParams = await params;
+    const startupId = resolvedParams.id;
+
+    // Enforce authentication and strict startup ownership validation
+    const { authenticated, owned, startup } = await verifyStartupOwnership(startupId);
+    if (!authenticated) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (!owned) {
+      return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
+    }
+
     const body = await request.json();
-    
     const { founder_name, founder_avatar, startup_logo, founder_bio } = body;
 
     const { data, error } = await supabaseServer
@@ -19,7 +30,7 @@ export async function PUT(
         startup_logo,
         founder_bio
       })
-      .eq("id", resolvedParams.id)
+      .eq("id", startupId)
       .select()
       .single();
 

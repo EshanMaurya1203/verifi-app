@@ -15,15 +15,17 @@ import {
   ScanSearch,
   Activity
 } from "lucide-react";
+import { formatScore } from "@/lib/formatters";
 
 type VerificationStep = "connect" | "syncing" | "analyzing" | "summary" | "incomplete";
 
 interface FounderVerificationFlowProps {
   startupId: string;
   slug: string;
+  isDemo?: boolean;
 }
 
-export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = ({ startupId, slug }) => {
+export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = ({ startupId, slug, isDemo = false }) => {
   const router = useRouter();
   
   const [currentStep, setCurrentStep] = useState<VerificationStep>("connect");
@@ -53,6 +55,34 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
     return STEPS.findIndex(s => s.id === step);
   };
 
+  // Sandbox demo simulation flows
+  useEffect(() => {
+    if (isDemo && currentStep === "connect" && provider) {
+      setStartTime(Date.now());
+      setCurrentStep("syncing");
+      setTimeLeft(3);
+    }
+  }, [provider, isDemo, currentStep]);
+
+  useEffect(() => {
+    if (isDemo && currentStep === "syncing" && timeLeft === 0) {
+      setCurrentStep("analyzing");
+      setTimeLeft(2);
+    }
+  }, [timeLeft, currentStep, isDemo]);
+
+  useEffect(() => {
+    if (isDemo && currentStep === "analyzing" && timeLeft === 0) {
+      setOverviewData({
+        startup: { trust_score: 98 },
+        authenticity: { level: "Organic" },
+        verification: { verification_confidence: 100 }
+      });
+      setCurrentStep("summary");
+      setAutoForwardSeconds(8);
+    }
+  }, [timeLeft, currentStep, isDemo]);
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if ((currentStep === "syncing" || currentStep === "analyzing") && timeLeft > 0) {
@@ -73,6 +103,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isDemo) return;
     setErrorMsg(null);
     setStartTime(Date.now());
     setCurrentStep("syncing");
@@ -335,7 +366,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
               <div className="bg-black/50 border border-white/5 p-5 rounded-2xl flex flex-col items-center text-center">
                 <ShieldCheck className="w-5 h-5 text-indigo-400 mb-3" />
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Verification Score</span>
-                <span className="text-3xl font-black tabular-nums text-white">{overviewData.startup.trust_score}<span className="text-sm text-neutral-600">/100</span></span>
+                <span className="text-3xl font-black tabular-nums text-white">{formatScore(overviewData.startup.trust_score, 0)}<span className="text-sm text-neutral-600">/100</span></span>
               </div>
 
               {/* Consistency */}

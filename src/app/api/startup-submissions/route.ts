@@ -99,6 +99,8 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
   return null;
 }
 
+import { getAuthenticatedUser } from "@/lib/auth-server";
+
 export async function POST(req: Request) {
   try {
     const identifier = getClientIdentifier(req);
@@ -111,7 +113,24 @@ export async function POST(req: Request) {
       );
     }
 
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     const data = (await req.json()) as StartupSubmissionPayload;
+
+    // Prevent anonymous user_id spoofing by matching with authenticated session user
+    if (data.user_id !== user.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized user ID binding" },
+        { status: 403 }
+      );
+    }
+
     const validationError = validatePayload(data);
     if (validationError) {
       return NextResponse.json(

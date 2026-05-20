@@ -6,18 +6,20 @@ import { Clock } from "lucide-react";
 interface FreshnessIndicatorProps {
   lastSyncAt: string | null;
   className?: string;
+  isDemo?: boolean;
 }
 
 export const FreshnessIndicator: React.FC<FreshnessIndicatorProps> = ({ 
   lastSyncAt,
-  className = ""
+  className = "",
+  isDemo = false
 }) => {
   if (!lastSyncAt) {
     return (
-      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 ${className}`}>
+      <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 ${className}`}>
         <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">
-          Verification Pending
+        <span className="text-[9px] font-bold uppercase tracking-wider leading-none text-amber-500">
+          {isDemo ? "Simulated Data" : "Verification Pending"}
         </span>
       </div>
     );
@@ -45,10 +47,10 @@ export const FreshnessIndicator: React.FC<FreshnessIndicatorProps> = ({
   }
 
   return (
-    <div className={`flex items-center gap-1.5 ${className}`}>
-      <Clock className={`w-3.5 h-3.5 ${isStale ? "text-amber-500" : "text-emerald-500"}`} />
-      <span className={`text-[10px] font-bold uppercase tracking-wider ${isStale ? "text-amber-500" : "text-emerald-500"}`}>
-        Updated: {timeString}
+    <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/[0.02] border border-white/[0.04] backdrop-blur-md ${className}`}>
+      <Clock className={`w-3 h-3 ${isStale || isDemo ? "text-amber-500" : "text-emerald-500"}`} />
+      <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${isStale || isDemo ? "text-amber-500" : "text-emerald-500"}`}>
+        {isDemo ? `Simulated ${timeString}` : `Updated ${timeString}`}
       </span>
     </div>
   );

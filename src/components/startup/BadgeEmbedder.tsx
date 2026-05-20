@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Copy, Check, Code, Image as ImageIcon, Share2, X, ExternalLink } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
-import { getSiteUrl } from "@/lib/site-url";
+import { getStartupUrl, getBadgeUrl } from "@/lib/site-url";
 
 interface BadgeEmbedderProps {
   startupName: string;
@@ -18,8 +18,9 @@ const ErrorFallbackBadge = ({ startupName }: { startupName: string }) => {
       <rect x="20" y="20" width="40" height="40" rx="8" fill="#f43f5e" fillOpacity="0.1"/>
       <path d="M40 32V35C40 37.7614 37.7614 40 35 40H32C29.2386 40 27 37.7614 27 35V32C27 29.2386 29.2386 27 32 27H35C37.7614 27 40 29.2386 40 32Z" stroke="#f43f5e" strokeWidth="1.5"/>
       <circle cx="33.5" cy="33.5" r="1.5" fill="#f43f5e"/>
-      <text x="75" y="32" fontFamily="Inter, sans-serif" fontSize="13" fontWeight="800" fill="#f43f5e" style={{ textTransform: "uppercase", letterSpacing: "0.05em" }}>{startupName}</text>
-      <text x="75" y="52" fontFamily="Inter, sans-serif" fontSize="10" fontWeight="600" fill="#71717a" style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}>Audit Temporarily Offline</text>
+      <path d="M30 49.5C31.5 48 33.5 47 36 47C38.5 47 40.5 48 42 49.5" stroke="#f43f5e" strokeWidth="1.5" strokeLinecap="round"/>
+      <text x="76" y="38" fill="#f43f5e" fontFamily="var(--font-sans), system-ui, sans-serif" fontSize="13" fontWeight="700" letterSpacing="0.05em">ERROR RESOLVING LEDGER</text>
+      <text x="76" y="53" fill="rgba(244,63,94,0.6)" fontFamily="var(--font-sans), system-ui, sans-serif" fontSize="10" fontWeight="600" letterSpacing="0.05em">VERIFICATION FEED SUSPENDED</text>
     </svg>
   );
 };
@@ -49,15 +50,13 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
-  const [origin, setOrigin] = useState("");
 
   useEffect(() => {
     setMounted(true);
-    setOrigin(typeof window !== 'undefined' && window.location.origin ? window.location.origin : getSiteUrl());
   }, []);
 
-  const badgeUrl = `${origin || getSiteUrl()}/api/badge/${slug}?theme=${theme}`;
-  const profileUrl = `${origin || getSiteUrl()}/startup/${slug}`;
+  const badgeUrl = `${getBadgeUrl(slug)}?theme=${theme}`;
+  const profileUrl = getStartupUrl(slug);
   
   const embedCode = `<a href="${profileUrl}" target="_blank">
   <img src="${badgeUrl}" alt="${startupName} is Verified on Verifi" width="300" height="80" />
@@ -104,16 +103,16 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   return (
     <div className="bg-[#09090b]/40 border border-white/[0.06] rounded-[2rem] overflow-hidden shadow-2xl backdrop-blur-md ring-1 ring-white/[0.01]">
       {/* Header */}
-      <div className="p-6 border-b border-white/[0.05]">
-        <h3 className="text-sm font-bold text-white mb-1.5 uppercase tracking-widest flex items-center gap-2">
-          <Share2 className="w-4 h-4 text-indigo-400" />
-          Share & Verification Badge
+      <div className="p-5 border-b border-white/[0.05]">
+        <h3 className="text-xs font-bold text-white mb-1 uppercase tracking-widest flex items-center gap-2">
+          <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+          Share & Badge Verification
         </h3>
-        <p className="text-neutral-500 text-xs">Verify your metrics publicly and share your verified status.</p>
+        <p className="text-neutral-500 text-[10px]">Verify your metrics publicly and share your verified status.</p>
       </div>
 
       {/* Badge Preview Area */}
-      <div className="p-8 flex flex-col items-center justify-center bg-black/20 min-h-[160px] w-full overflow-x-auto relative">
+      <div className="py-5 px-4 flex flex-col items-center justify-center bg-black/20 min-h-[110px] w-full overflow-x-auto relative">
         <div className="w-[300px] h-[80px] relative group select-none flex items-center justify-center shrink-0">
           {status === "loading" && <BadgeSkeleton />}
           {status === "error" && <ErrorFallbackBadge startupName={startupName} />}
@@ -137,56 +136,56 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
       </div>
 
       {/* Action Suite Area */}
-      <div className="p-6 space-y-4">
-        {/* Row 1: Copy Badge & Share Profile */}
-        <div className="grid grid-cols-2 gap-3">
+      <div className="p-4 space-y-3">
+        {/* Row 1: Copy Badge & Share Profile (Primary Actions) */}
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleCopyBadge}
-            className="flex items-center justify-center gap-2 text-white transition-all text-xs font-bold uppercase tracking-wider bg-white/10 hover:bg-white/15 px-4 py-3 rounded-xl border border-white/5 shadow-md active:scale-[0.98] select-none"
+            className="flex items-center justify-center gap-2 text-indigo-400 hover:text-white transition-all text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-2.5 rounded-xl border border-indigo-500/20 active:scale-[0.98] select-none shadow-md shadow-indigo-950/20"
           >
             {copiedBadge ? (
-              <><Check className="w-4 h-4 text-emerald-400" /> Copied!</>
+              <><Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!</>
             ) : (
-              <><Code className="w-4 h-4 text-indigo-400" /> Copy Badge</>
+              <><Code className="w-3.5 h-3.5" /> Copy Badge</>
             )}
           </button>
           
           <button
             onClick={handleCopyLink}
-            className="flex items-center justify-center gap-2 text-white transition-all text-xs font-bold uppercase tracking-wider bg-white/10 hover:bg-white/15 px-4 py-3 rounded-xl border border-white/5 shadow-md active:scale-[0.98] select-none"
+            className="flex items-center justify-center gap-2 text-[#b9ff4b] hover:text-white transition-all text-[10px] font-black uppercase tracking-wider bg-[#b9ff4b]/10 hover:bg-[#b9ff4b]/20 px-3 py-2.5 rounded-xl border border-[#b9ff4b]/20 active:scale-[0.98] select-none shadow-md shadow-lime-950/10"
           >
             {copiedLink ? (
-              <><Check className="w-4 h-4 text-emerald-400" /> Copied!</>
+              <><Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!</>
             ) : (
-              <><Share2 className="w-4 h-4 text-indigo-400" /> Share Profile</>
+              <><Share2 className="w-3.5 h-3.5" /> Share Link</>
             )}
           </button>
         </div>
 
-        {/* Row 2: Share on LinkedIn & Share on X */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Row 2: Share on LinkedIn & Share on X (Secondary Actions) */}
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleLinkedInShare}
-            className="flex items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all text-xs font-bold uppercase tracking-wider bg-black/40 hover:bg-black/60 px-4 py-3 rounded-xl border border-white/[0.03] active:scale-[0.98] select-none"
+            className="flex items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all text-[9px] font-extrabold uppercase tracking-wider bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] px-3 py-2 rounded-xl active:scale-[0.98] select-none"
           >
-            <FaLinkedin className="w-4 h-4 text-neutral-500 hover:text-white transition-colors" /> LinkedIn
+            <FaLinkedin className="w-3.5 h-3.5 text-neutral-500 hover:text-white transition-colors" /> LinkedIn
           </button>
           
           <button
             onClick={handleXShare}
-            className="flex items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all text-xs font-bold uppercase tracking-wider bg-black/40 hover:bg-black/60 px-4 py-3 rounded-xl border border-white/[0.03] active:scale-[0.98] select-none"
+            className="flex items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all text-[9px] font-extrabold uppercase tracking-wider bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.05] px-3 py-2 rounded-xl active:scale-[0.98] select-none"
           >
-            <FaXTwitter className="w-4 h-4 text-neutral-500 hover:text-white transition-colors" /> Share on X
+            <FaXTwitter className="w-3.5 h-3.5 text-neutral-500 hover:text-white transition-colors" /> Share on X
           </button>
         </div>
 
         {/* Expand trigger for developers */}
-        <div className="pt-2 flex items-center justify-center">
+        <div className="pt-0.5 flex items-center justify-center">
           <button
             onClick={() => setShowAdvanced(true)}
-            className="text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1.5 py-1.5 px-3 rounded-lg hover:bg-white/[0.02]"
+            className="text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1 py-1 px-2.5 rounded-lg hover:bg-white/[0.02]"
           >
-            Advanced Embed Options <ExternalLink className="w-3 h-3" />
+            Advanced Embed Options <ExternalLink className="w-2.5 h-2.5" />
           </button>
         </div>
       </div>

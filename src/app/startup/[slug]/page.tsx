@@ -14,6 +14,7 @@ import { VerificationStateResult, ConfidenceTier, computeVerificationState } fro
 import { VerificationTimeline } from "@/components/startup/VerificationTimeline";
 import { RevenueCompositionCard } from "@/components/startup/RevenueCompositionCard";
 import { getSiteUrl } from "@/lib/site-url";
+import { formatCurrency, formatGrowth } from "@/lib/formatters";
 
 
 
@@ -147,10 +148,8 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     penaltyCount: Number(startup.penalty_count) || 0
   });
 
+  const isDemo = startup.user_id?.startsWith("00000000-0000-0000-0000-");
   const isVerified = verificationState.confidenceTier === "HIGH_CONFIDENCE" || verificationState.confidenceTier === "REVENUE_VERIFIED" || verificationState.confidenceTier === "PAYMENT_CONNECTED";
-  
-  const formatInr = (value: number) => 
-    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 
   // 4. Compute per-provider revenue breakdown
   const mrrBreakdown = (startup.mrr_breakdown as Record<string, number>) || {};
@@ -231,10 +230,22 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-indigo-500 selection:text-white">
       <Navbar />
 
-      <main className="max-w-6xl mx-auto px-6 pt-32 pb-24">
+      {isDemo && (
+        <div className="bg-[#0f0f11] border-b border-indigo-500/20 px-6 py-4 flex items-center justify-center gap-3 mt-16">
+          <AlertTriangle className="w-4 h-4 text-indigo-400 shrink-0 animate-pulse" />
+          <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+            <strong>Sandbox Demonstration:</strong> This is a sample startup profile containing simulated metrics.
+          </span>
+          <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-black uppercase text-indigo-400 tracking-wider">
+            Example Startup
+          </span>
+        </div>
+      )}
+
+      <main className={`max-w-6xl mx-auto px-6 pb-24 ${isDemo ? 'pt-16' : 'pt-24'}`}>
         
         {/* ─── Premium Header (Founder-Centric) ────────────────────────────────── */}
-        <section className="relative group mb-20">
+        <section className="relative group mb-12">
           <div className="absolute -inset-4 bg-gradient-to-b from-indigo-500/5 to-transparent rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-1000 -z-10" />
           
           <div className="flex flex-col lg:flex-row gap-10 items-start justify-between">
@@ -248,9 +259,14 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                     <div className="text-4xl font-black text-neutral-800">{startup.startup_name[0]}</div>
                   )}
                 </div>
-                  {isVerified && (
+                  {isVerified && !isDemo && (
                     <div className="absolute -bottom-2 -right-2 bg-emerald-500 p-2 rounded-2xl border-4 border-[#050505] shadow-xl">
                       <ShieldCheck className="w-5 h-5 text-neutral-950" />
+                    </div>
+                  )}
+                  {isVerified && isDemo && (
+                    <div className="absolute -bottom-2 -right-2 bg-neutral-600 p-2 rounded-2xl border-4 border-[#050505] shadow-xl" title="Sample Startup">
+                      <Fingerprint className="w-5 h-5 text-white" />
                     </div>
                   )}
                 </div>
@@ -260,7 +276,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                   <h1 className="text-5xl md:text-6xl font-black font-syne tracking-tighter leading-none">
                     {startup.startup_name}
                   </h1>
-                  <TrustBadge tier={verificationState.confidenceTier} showGlow />
+                  <TrustBadge tier={verificationState.confidenceTier} showGlow isDemo={isDemo} />
                 </div>
                 <p className="text-neutral-400 text-sm font-medium mb-6 tracking-tight max-w-xl">
                   {startup.notes ? (startup.notes.length > 80 ? startup.notes.substring(0, 80) + '...' : startup.notes) : `Innovative ${startup.biz_type || 'venture'} scaling with verified metrics.`}
@@ -313,14 +329,14 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                     : "Verified Revenue Baseline"}
                 </p>
                 <div className="flex flex-col gap-1">
-                  <p className="text-5xl font-black text-white font-syne tracking-tighter tabular-nums">
-                    {formatInr(startup.mrr || 0)}
+                  <p className="text-[clamp(1.75rem,4vw,2.75rem)] leading-none font-black text-white font-syne tracking-tighter tabular-nums truncate max-w-full overflow-hidden" title={formatCurrency(startup.mrr || 0, startup.currency || "INR", { compact: false })}>
+                    {formatCurrency(startup.mrr || 0, startup.currency || "INR", { compact: false })}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     {snapshots && snapshots.length >= 2 && verificationState.confidenceTier !== "SELF_REPORTED" ? (
                       <>
                         <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                          {revenueGrowth >= 0 ? '+' : ''}{revenueGrowth.toFixed(1)}% Monthly Growth
+                          {formatGrowth(revenueGrowth, 2)} Monthly Growth
                         </span>
                         <span className="w-1 h-1 rounded-full bg-neutral-700" />
                       </>
@@ -367,6 +383,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                     startupName={startup.startup_name}
                     slug={slug}
                     confidenceTier={verificationState.confidenceTier}
+                    isDemo={isDemo}
                   />
                 </div>
               </div>
@@ -410,21 +427,25 @@ export default async function PublicStartupProfile({ params }: { params: Promise
               totalMrr={startup.mrr || 0}
               growth={revenueGrowth}
               snapshots={snapshots}
+              isDemo={isDemo}
             />
+
+            {/* Revenue Consistency Card (Relocated here for dynamic column balance) */}
+            <RevenueConsistencyCard consistency={verificationState} ownerId={startup.user_id} isDemo={isDemo} />
 
             {/* Revenue Analytics (Momentum & Charts) */}
             {revenue && revenue.length >= 2 && (
               <section className="bg-[#09090b]/30 border border-white/[0.05] p-10 rounded-[3rem] backdrop-blur-md shadow-xl ring-1 ring-white/[0.01]">
                  <div className="flex items-center justify-between mb-8">
                     <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white flex items-center gap-3">
-                      <TrendingUp className="w-5 h-5 text-indigo-500" /> Financial Momentum
+                      <TrendingUp className="w-5 h-5 text-indigo-500" /> {isDemo ? "Simulated Momentum" : "Financial Momentum"}
                     </h3>
                     <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                      Live Provider Stream
+                      {isDemo ? "Simulated Stream" : "Live Provider Stream"}
                     </div>
                  </div>
                  <div className="h-[280px]">
-                    <RevenueChart data={revenue} />
+                    <RevenueChart data={revenue} isDemo={isDemo} />
                  </div>
               </section>
             )}
@@ -434,67 +455,61 @@ export default async function PublicStartupProfile({ params }: { params: Promise
           </div>
 
           {/* SECONDARY SIDEBAR: Verification, Founder, Badge, Status */}
-          <aside className="space-y-8">
+          <aside className="space-y-6 lg:sticky lg:top-24">
             {/* Premium Founder Card (Founder) */}
-            <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-8 rounded-[3rem] shadow-2xl relative overflow-hidden flex flex-col items-center text-center ring-1 ring-white/[0.01]">
-              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none" />
+            <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-5 rounded-[2rem] shadow-2xl relative overflow-hidden flex flex-col items-center text-center ring-1 ring-white/[0.01]">
+              <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none" />
               
-              <div className="relative mb-6">
-                <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-[#09090b] shadow-2xl relative">
+              <div className="relative mb-3">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white/5 shadow-2xl relative">
                   {startup.founder_avatar ? (
                     <img src={startup.founder_avatar} alt={founderName} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900 flex items-center justify-center">
-                      <span className="text-4xl font-black text-neutral-700">{founderName[0]}</span>
+                      <span className="text-xl font-black text-neutral-600">{founderName[0]}</span>
                     </div>
                   )}
                 </div>
                 {isVerified && (
-                  <div className="absolute -bottom-2 -right-2 bg-emerald-500 p-2 rounded-2xl border-4 border-[#050505] shadow-xl">
-                    <Fingerprint className="w-5 h-5 text-neutral-950" />
+                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 p-1.5 rounded-xl border-2 border-[#09090b] shadow-xl">
+                    <Fingerprint className="w-3.5 h-3.5 text-neutral-950" />
                   </div>
                 )}
               </div>
 
               <div className="relative z-10 w-full">
-                <h3 className="text-2xl font-black font-syne text-white mb-1 leading-none">{founderName}</h3>
-                <p className="text-xs font-bold text-indigo-400 uppercase tracking-[0.15em] mb-4">{founderTitle}</p>
+                <h3 className="text-lg font-black font-syne text-white mb-0.5 leading-none">{founderName}</h3>
+                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.15em] mb-2">{founderTitle}</p>
                 
-                <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-6">
-                   <Globe className="w-3.5 h-3.5 text-neutral-700" />
+                <div className="flex items-center justify-center gap-1.5 text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-3">
+                   <Globe className="w-3 h-3 text-neutral-700" />
                    {founderLocation}
                 </div>
 
-                {startup.founder_bio ? (
-                  <div className="bg-black/40 border border-white/[0.03] p-5 rounded-2xl mb-8 text-left">
-                    <p className="text-neutral-400 text-xs leading-relaxed italic line-clamp-4">
-                      &ldquo;{startup.founder_bio}&rdquo;
-                    </p>
-                  </div>
-                ) : (
-                  <div className="bg-black/40 border border-white/[0.03] p-5 rounded-2xl mb-8 text-center">
-                    <p className="text-neutral-500 text-xs uppercase font-bold tracking-wider py-2">
-                      Bio not yet declared
+                {founderBio && (
+                  <div className="bg-black/40 border border-white/[0.03] p-3.5 rounded-xl mb-4 text-left">
+                    <p className="text-neutral-400 text-[11px] leading-relaxed italic line-clamp-3">
+                      &ldquo;{founderBio}&rdquo;
                     </p>
                   </div>
                 )}
 
-                 <div className="flex gap-3 justify-center mb-6">
+                 <div className="flex gap-2.5 justify-center mb-3">
                    {startup.linkedin && (
-                     <a href={startup.linkedin} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-2xl bg-neutral-800/50 border border-white/5 flex items-center justify-center hover:bg-neutral-800 transition-all hover:scale-105 group" title="LinkedIn Profile">
-                       <FaLinkedin className="w-5 h-5 text-neutral-500 group-hover:text-white" />
+                     <a href={startup.linkedin} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-neutral-800/50 border border-white/5 flex items-center justify-center hover:bg-neutral-800 transition-all hover:scale-105 group" title="LinkedIn Profile">
+                       <FaLinkedin className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white" />
                      </a>
                    )}
                    {startup.twitter && (
-                     <a href={startup.twitter} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-2xl bg-neutral-800/50 border border-white/5 flex items-center justify-center hover:bg-neutral-800 transition-all hover:scale-105 group" title="Twitter Profile">
-                       <FaXTwitter className="w-5 h-5 text-neutral-500 group-hover:text-white" />
+                     <a href={startup.twitter} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-neutral-800/50 border border-white/5 flex items-center justify-center hover:bg-neutral-800 transition-all hover:scale-105 group" title="Twitter Profile">
+                       <FaXTwitter className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white" />
                      </a>
                    )}
                  </div>
 
-                <div className="pt-6 border-t border-white/[0.03] flex items-center justify-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
+                <div className="pt-3 border-t border-white/[0.03] flex items-center justify-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest leading-none">
                     Verified Digital Identity
                   </span>
                 </div>
@@ -502,15 +517,12 @@ export default async function PublicStartupProfile({ params }: { params: Promise
             </section>
 
             {/* Verification Metadata Section (Verification & Status) */}
-            <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-6 rounded-[2rem] shadow-2xl relative overflow-hidden ring-1 ring-white/[0.01]">
-              <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-widest flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-400" /> Verification Status
+            <section className="bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md p-5 rounded-[2rem] shadow-2xl relative overflow-hidden ring-1 ring-white/[0.01]">
+              <h3 className="text-xs font-bold text-white mb-3 uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" /> Verification Status
               </h3>
               <VerificationMetadata state={verificationState} showBreakdown={true} />
             </section>
-
-            {/* Revenue Consistency Card (Status) */}
-            <RevenueConsistencyCard consistency={verificationState} ownerId={startup.user_id} />
 
             {/* Badge Embedder Card (Badge) */}
             <BadgeEmbedder startupName={startup.startup_name} slug={slug} />
@@ -524,9 +536,10 @@ export default async function PublicStartupProfile({ params }: { params: Promise
           <ShieldCheck className="w-5 h-5 text-neutral-700" />
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-700">Verification Protocol</span>
         </div>
-        <div className="flex gap-8 text-[10px] font-bold uppercase tracking-wider text-neutral-700">
+        <div className="flex flex-wrap gap-6 text-[10px] font-bold uppercase tracking-wider text-neutral-700">
            <a href="#" className="hover:text-neutral-500 transition-colors">Methods</a>
-           <a href="#" className="hover:text-neutral-500 transition-colors">Privacy</a>
+           <a href="/privacy" className="hover:text-neutral-500 transition-colors">Privacy</a>
+           <a href="/terms" className="hover:text-neutral-500 transition-colors">Terms</a>
            <a href="#" className="hover:text-neutral-500 transition-colors">Identity</a>
         </div>
       </footer>

@@ -3,25 +3,24 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Share2, Link as LinkIcon, Check, ShieldCheck, Globe } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
-import { getSiteUrl } from "@/lib/site-url";
+import { getStartupUrl } from "@/lib/site-url";
 
 interface ShareVerificationButtonProps {
   startupName: string;
   slug: string;
   trustScore?: number;
   confidenceTier?: string;
+  isDemo?: boolean;
 }
 
-export function ShareVerificationButton({ startupName, slug, trustScore, confidenceTier }: ShareVerificationButtonProps) {
+export function ShareVerificationButton({ startupName, slug, trustScore, confidenceTier, isDemo = false }: ShareVerificationButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Generate absolute URL securely on the client to prevent localhost leakage
-    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : getSiteUrl();
-    setShareUrl(`${origin}/startup/${slug}`);
+    setShareUrl(getStartupUrl(slug));
   }, [slug]);
 
   const handleCopy = async () => {
@@ -36,7 +35,9 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
 
   // Resolve active tier name beautifully
   let trustTier = "Self Reported";
-  if (confidenceTier) {
+  if (isDemo) {
+    trustTier = "Sandbox Demo";
+  } else if (confidenceTier) {
     if (confidenceTier === "HIGH_CONFIDENCE") trustTier = "Payment Verified";
     else if (confidenceTier === "REVENUE_VERIFIED") trustTier = "Revenue Verified";
     else if (confidenceTier === "PAYMENT_CONNECTED") trustTier = "Payment Connected";
@@ -48,8 +49,10 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   }
 
   // Dynamic public share copy according to verification status
-  const isVerified = trustTier !== "Self Reported";
-  const shareText = isVerified
+  const isVerified = trustTier !== "Self Reported" && !isDemo;
+  const shareText = isDemo
+    ? `Exploring Verifi's premium trust dashboard sandbox: check out the simulated profile of ${startupName} here!`
+    : isVerified
     ? `Transparency is our strongest signal. We just opened our verified revenue profile on @Verifi — check it out:`
     : `Transparency is our strongest signal. We just opened our startup trust profile on @Verifi — check it out:`;
 
@@ -67,7 +70,8 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
 
   // Resolve dynamic tier status color beautifully for high contrast UI
   let tierColorClass = "text-neutral-400";
-  if (trustTier === "Payment Verified") tierColorClass = "text-emerald-400 font-extrabold";
+  if (isDemo) tierColorClass = "text-neutral-400 font-extrabold";
+  else if (trustTier === "Payment Verified") tierColorClass = "text-emerald-400 font-extrabold";
   else if (trustTier === "Revenue Verified") tierColorClass = "text-indigo-400 font-extrabold";
   else if (trustTier === "Payment Connected") tierColorClass = "text-amber-400 font-extrabold";
 

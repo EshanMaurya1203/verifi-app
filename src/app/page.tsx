@@ -8,6 +8,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
 import { getSiteUrl } from "@/lib/site-url";
 import { safeFetch } from "@/lib/safe-network";
+import { formatCurrency, formatGrowth } from "@/lib/formatters";
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -51,6 +52,7 @@ const fadeUpItem = {
 export default function HomePage() {
   const [stats, setStats] = useState({ count: 0, totalRevenue: 0, activeSyncs: 0 });
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [demoLeaderboard, setDemoLeaderboard] = useState<any[]>([]);
   const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>([]);
   const [trendingData, setTrendingData] = useState<StartupCard[]>([]);
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
@@ -85,13 +87,7 @@ export default function HomePage() {
         setLoading(true);
         setError(null);
 
-        // 1. Fetch real counts securely
-        const countRes = await safeFetch<{ count: number }>("/api/startup-submissions/count");
-        if (countRes.ok && countRes.data?.count) {
-          setStats((prev) => ({ ...prev, count: countRes.data!.count }));
-        }
-
-        // 2. Fetch submissions securely for all modules
+        // Fetch submissions securely for all modules
         const submissionsRes = await safeFetch<{ success: boolean; data: any[] }>("/api/startup-submissions");
         
         if (!submissionsRes.ok || !submissionsRes.data) {
@@ -102,20 +98,24 @@ export default function HomePage() {
 
         const { success, data: list } = submissionsRes.data;
         if (success && list) {
-          // Total Revenue calculation
-          const total = list.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
-          
-          // Calculate active syncs (startups with high confidence or verified)
-          const activeSyncsCount = list.filter((item: any) => item.trust_tier === 'HIGH_CONFIDENCE' || item.trust_tier === 'REVENUE_VERIFIED' || item.trust_tier === 'PAYMENT_CONNECTED').length;
-          
-          setStats((prev) => ({ 
-            ...prev, 
-            totalRevenue: total,
-            activeSyncs: activeSyncsCount || list.length // Fallback if no specific tier is found
-          }));
+          // Split real vs demo startups securely
+          const realList = list.filter((item: any) => !item.user_id?.startsWith("00000000-0000-0000-0000-"));
+          const demoList = list.filter((item: any) => item.user_id?.startsWith("00000000-0000-0000-0000-"));
 
-          // Top 5 for leaderboard (Sorted by mrr/trust)
-          const top5 = list
+          // Total Revenue calculation from real entries only
+          const total = realList.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
+          
+          // Calculate active syncs from real entries only
+          const activeSyncsCount = realList.filter((item: any) => item.trust_tier === 'HIGH_CONFIDENCE' || item.trust_tier === 'REVENUE_VERIFIED' || item.trust_tier === 'PAYMENT_CONNECTED').length;
+          
+          setStats({ 
+            count: realList.length,
+            totalRevenue: total,
+            activeSyncs: activeSyncsCount
+          });
+
+          // Top 5 real startups for main leaderboard
+          const top5 = realList
             .slice()
             .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
             .slice(0, 5)
@@ -124,13 +124,28 @@ export default function HomePage() {
               slug: s.slug || s.id,
               name: s.startup_name,
               founder: s.name || "Anonymous",
-              mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
+              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
               trust_score: s.trust_score || 0,
             }));
           setLeaderboard(top5);
 
-          // Recently listed
-          const recent = list
+          // Top 5 demo startups for sandbox leaderboard preview
+          const top5Demo = demoList
+            .slice()
+            .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
+            .slice(0, 5)
+            .map((s: any, idx: number) => ({
+              rank: idx + 1,
+              slug: s.slug || s.id,
+              name: s.startup_name,
+              founder: s.name || "Anonymous",
+              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
+              trust_score: s.trust_score || 0,
+            }));
+          setDemoLeaderboard(top5Demo);
+
+          // Recently listed (real only)
+          const recent = realList
             .slice()
             .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 4)
@@ -140,14 +155,14 @@ export default function HomePage() {
               slug: s.slug || s.id,
               category: s.biz_type,
               description: s.notes || "No description provided.",
-              mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
-              growth: s.growth ? `+${s.growth}%` : "Stable",
+              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
+              growth: s.growth ? formatGrowth(s.growth, 2) : "Stable",
               badge: s.trust_tier === 'HIGH_CONFIDENCE' ? 'Payment Verified' : s.trust_tier === 'REVENUE_VERIFIED' ? 'Revenue Verified' : s.trust_tier === 'PAYMENT_CONNECTED' ? 'Payment Connected' : 'Self Reported',
             }));
           setRecentlyListedData(recent);
 
-          // Trending (Sorted by growth)
-          const trending = list
+          // Trending (real only, sorted by growth)
+          const trending = realList
             .slice()
             .filter((s: any) => s.growth !== undefined && s.growth > 0)
             .sort((a: any, b: any) => (b.growth || 0) - (a.growth || 0))
@@ -158,21 +173,19 @@ export default function HomePage() {
               slug: s.slug || s.id,
               category: s.biz_type,
               description: s.notes || "No description provided.",
-              mrr: s.mrr ? (s.mrr >= 100000 ? `₹${(s.mrr / 100000).toFixed(1)}L` : `₹${(s.mrr / 1000).toFixed(0)}k`) : "₹0",
-              growth: s.growth ? `+${s.growth}% MoM` : "",
+              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
+              growth: s.growth ? formatGrowth(s.growth, 2) + " MoM" : "",
               badge: "Trending",
             }));
           setTrendingData(trending);
 
-          // Generate lightweight activity events from real data
+          // Generate lightweight activity events from real data only
           const eventStream: ActivityEvent[] = [];
           
-          // Use real created_at and updated_at dates to generate events
-          list.slice(0, 6).forEach((s: any, i: number) => {
+          realList.slice(0, 6).forEach((s: any, i: number) => {
             const updatedAt = new Date(s.updated_at || s.created_at);
             const createdAt = new Date(s.created_at);
             
-            // If recently updated but not newly created, it's a sync event
             if (updatedAt.getTime() - createdAt.getTime() > 86400000) {
               eventStream.push({
                 id: `sync-${s.id}-${i}`,
@@ -191,20 +204,18 @@ export default function HomePage() {
               });
             }
 
-            // Milestone event if MRR is notable
             if (s.mrr && s.mrr > 500000 && i % 3 === 0) {
-              const milestoneTime = new Date(updatedAt.getTime() - 1000 * 60 * 60 * 2); // 2 hours prior
+              const milestoneTime = new Date(updatedAt.getTime() - 1000 * 60 * 60 * 2);
               eventStream.push({
                 id: `mile-${s.id}-${i}`,
                 type: "MILESTONE",
                 startupName: s.startup_name,
                 timestamp: milestoneTime.toISOString(),
-                detail: `Crossed ₹${(s.mrr / 100000).toFixed(1)}L MRR milestone`
+                detail: `Crossed ${formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true })} MRR milestone`
               });
             }
           });
 
-          // Sort by newest first
           eventStream.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           setActivities(eventStream.slice(0, 5));
         }
@@ -221,10 +232,7 @@ export default function HomePage() {
   }, []);
 
   const formatStatsRevenue = (val: number) => {
-    if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`;
-    if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
-    if (val >= 1000) return `₹${(val / 1000).toFixed(0)}k`;
-    return `₹${val}`;
+    return formatCurrency(val, "INR", { compact: true });
   };
 
   const getActivityIcon = (type: string) => {
@@ -607,6 +615,56 @@ export default function HomePage() {
           
         </div>
 
+        {/* Sandbox Sandbox Preview Section */}
+        {demoLeaderboard.length > 0 && (
+          <section className="mt-28">
+            <div className="rounded-3xl border border-white/[0.04] bg-[#09090b]/20 backdrop-blur-md overflow-hidden shadow-2xl p-6 md:p-8">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/[0.04] pb-5 mb-6 gap-4">
+                <div>
+                  <h3 className="font-syne text-base md:text-lg font-black text-neutral-400 uppercase tracking-tight flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-neutral-600 animate-pulse" />
+                    Sandbox Leaderboard Preview
+                  </h3>
+                  <p className="text-[9px] md:text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1">Simulated startups containing mock metrics for demonstration purposes</p>
+                </div>
+                <div className="px-3 py-1 rounded bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-black uppercase text-indigo-400 tracking-wider">
+                  Developer Sandbox Mode
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {demoLeaderboard.map((startup) => (
+                  <Link
+                    href={`/startup/${startup.slug}`}
+                    key={startup.slug}
+                    className="p-5 bg-white/[0.01] hover:bg-white/[0.03] border border-white/[0.04] hover:border-white/10 rounded-2xl transition-all duration-200 group flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex justify-between items-start gap-4">
+                        <h4 className="font-bold text-sm text-neutral-300 group-hover:text-indigo-400 transition-colors truncate">
+                          {startup.name}
+                        </h4>
+                        <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-[8px] font-black uppercase text-neutral-500 tracking-wider">Demo</span>
+                      </div>
+                      <p className="text-xs text-neutral-500 font-medium mt-1">
+                        by {startup.founder}
+                      </p>
+                    </div>
+
+                    <div className="flex justify-between items-end mt-6 pt-3 border-t border-white/[0.03]">
+                      <div>
+                        <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider block">Simulated MRR</span>
+                        <span className="font-syne text-sm font-extrabold text-neutral-400 tabular-nums">{startup.mrr}</span>
+                      </div>
+                      <ArrowUpRight className="w-3.5 h-3.5 text-neutral-700 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Bottom CTA Card */}
         <section className="mt-28">
           <div className="rounded-[3rem] border border-white/[0.08] bg-[#09090b]/50 px-8 py-16 text-center relative overflow-hidden shadow-2xl group ring-1 ring-white/[0.01]">
@@ -628,11 +686,15 @@ export default function HomePage() {
         </section>
 
         {/* Footer */}
-        <footer className="mt-20 border-t border-white/[0.05] pt-6 pb-2">
+        <footer className="mt-20 border-t border-white/[0.05] pt-6 pb-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">© 2026 Verifi</div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">
-              Built for founders worldwide
+            <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-widest text-neutral-600">
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+              <span className="text-neutral-800">•</span>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
+              <span className="text-neutral-800">•</span>
+              <span>Built for founders worldwide</span>
             </div>
           </div>
         </footer>

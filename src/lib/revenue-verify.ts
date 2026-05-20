@@ -1,4 +1,5 @@
 import { getSupabaseServer } from "./supabase-server";
+import { safeFetch } from "./safe-network";
 
 /**
  * Revenue Verification Library
@@ -19,22 +20,15 @@ export async function verifyRazorpayRevenue(keyId: string, keySecret: string): P
     const to = Math.floor(Date.now() / 1000);
 
     const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-    const response = await fetch(
-      `https://api.razorpay.com/v1/payments?from=${from}&to=${to}&count=100`,
-      {
-        headers: {
-          Authorization: `Basic ${auth}`,
-        },
-      }
-    );
+    const { data, ok, error } = await safeFetch<any>(`https://api.razorpay.com/v1/payments?from=${from}&to=${to}&count=100`, {
+      headers: { Authorization: `Basic ${auth}` },
+    });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { success: false, totalAmount: 0, currency: 'INR', error: errorData.error?.description || 'Failed to fetch from Razorpay' };
+    if (!ok) {
+      return { success: false, totalAmount: 0, currency: 'INR', error: error?.message || 'Failed to fetch from Razorpay' };
     }
 
-    const data = await response.json();
-    const total = data.items.reduce((acc: number, item: { status: string; amount: number }) => {
+    const total = (data?.items ?? []).reduce((acc: number, item: { status: string; amount: number }) => {
       // Sum captured payments
       if (item.status === 'captured') {
         return acc + item.amount;
@@ -42,12 +36,12 @@ export async function verifyRazorpayRevenue(keyId: string, keySecret: string): P
       return acc;
     }, 0);
 
-    const filteredItems = data.items.filter((i: { status: string }) => i.status === 'captured');
+    const filteredItems = (data?.items ?? []).filter((i: { status: string }) => i.status === 'captured');
 
     return {
       success: true,
       totalAmount: total / 100, // Razorpay amount is in paise
-      currency: data.items[0]?.currency || 'INR',
+      currency: (data?.items?.[0]?.currency) || 'INR',
       items: filteredItems,
     };
   } catch (error: unknown) {
@@ -60,22 +54,16 @@ export async function verifyStripeRevenue(apiKey: string): Promise<RevenueResult
   try {
     const from = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
 
-    // Using fetch directly to avoid installing stripe package if not needed yet
-    const response = await fetch(
+    const response = await safeFetch<any>(
       `https://api.stripe.com/v1/balance_transactions?created[gte]=${from}&limit=100`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${apiKey}` } }
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
-      return { success: false, totalAmount: 0, currency: 'USD', error: errorData.error?.message || 'Failed to fetch from Stripe' };
+      return { success: false, totalAmount: 0, currency: 'USD', error: response.error?.message || 'Failed to fetch from Stripe' };
     }
 
-    const data = await response.json();
+    const data = response.data;
     const total = data.data.reduce((acc: number, item: { type: string; amount: number }) => {
       // Net amount includes fees, 'amount' is gross. User usually wants MRR (gross).
       if (item.type === 'charge' || item.type === 'payment') {

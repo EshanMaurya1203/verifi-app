@@ -10,6 +10,8 @@ import Stripe from "stripe";
 /**
  * Stripe Verification API (/api/stripe/verify)
  */
+import { verifyStartupOwnership } from "@/lib/auth-server";
+
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
   const { allowed } = checkRateLimit(identifier, 120000, 5);
@@ -22,6 +24,17 @@ export async function POST(req: Request) {
 
     if (!apiKey) {
       return NextResponse.json({ error: "API Key is required" }, { status: 400 });
+    }
+
+    if (startupId) {
+      // Enforce authentication and strict startup ownership validation
+      const { authenticated, owned } = await verifyStartupOwnership(startupId);
+      if (!authenticated) {
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      }
+      if (!owned) {
+        return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
+      }
     }
 
 

@@ -3,11 +3,18 @@ import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import Stripe from "stripe";
 import Razorpay from "razorpay";
 
+import { getAuthenticatedUser } from "@/lib/auth-server";
+
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
   const { allowed } = checkRateLimit(identifier, 120000, 5);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
   try {

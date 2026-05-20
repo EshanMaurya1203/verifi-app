@@ -13,6 +13,7 @@ import {
   Area,
 } from "recharts";
 import { TrendingUp } from "lucide-react";
+import { formatCurrency } from "@/lib/formatters";
 
 interface RevenuePoint {
   timestamp: number;
@@ -21,6 +22,7 @@ interface RevenuePoint {
 
 interface RevenueChartProps {
   data: RevenuePoint[];
+  isDemo?: boolean;
 }
 
 /**
@@ -29,7 +31,7 @@ interface RevenueChartProps {
  * Visualizes startup revenue trends over time using Recharts.
  * Optimized for displaying growth in the 30-90 day range.
  */
-export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
+export const RevenueChart: React.FC<RevenueChartProps> = ({ data, isDemo = false }) => {
   // Format timestamps for display on the X-axis
   const formattedData = [...data]
     .sort((a, b) => a.timestamp - b.timestamp)
@@ -70,7 +72,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#525252", fontSize: 9, fontWeight: 800 }}
-            tickFormatter={(value) => `₹${value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}`}
+            tickFormatter={(value) => formatCurrency(value, "INR", { compact: true })}
           />
           <Tooltip
             contentStyle={{
@@ -82,7 +84,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
             }}
             itemStyle={{ color: "#fff", fontSize: "11px", fontWeight: "900" }}
             labelStyle={{ color: "#525252", fontSize: "9px", fontWeight: "900", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "6px" }}
-            formatter={(value: any) => [`₹${Number(value).toLocaleString()}`, "VERIFIED REVENUE"]}
+            formatter={(value: any) => [formatCurrency(Number(value), "INR", { compact: false }), isDemo ? "ILLUSTRATIVE REVENUE" : "VERIFIED REVENUE"]}
             cursor={{ stroke: "rgba(99, 102, 241, 0.2)", strokeWidth: 2 }}
           />
           <Line

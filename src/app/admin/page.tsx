@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { Navbar } from "@/components/layout/Navbar";
+import { safeFetch } from "@/lib/safe-network";
 
 export default function AdminPage() {
   const [data, setData] = useState<any[]>([]);
@@ -33,7 +34,7 @@ export default function AdminPage() {
       .eq("id", id);
 
     // Recalculate trust score immediately
-    await fetch("/api/trust/calculate", {
+    await safeFetch("/api/trust/calculate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ startup_id: id })

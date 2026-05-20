@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { formatCurrency as formatCurrencyUtil, formatPercentage } from "@/lib/formatters";
 import {
   PieChart,
   TrendingUp,
@@ -12,6 +13,7 @@ import {
   Zap,
   BarChart3,
   Layers,
+  Info,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -48,6 +50,7 @@ interface RevenueCompositionCardProps {
   totalMrr: number;
   growth: number;
   snapshots: RevenueSnapshot[];
+  isDemo?: boolean;
 }
 
 // ─── Provider Styling ───────────────────────────────────────────────────────
@@ -77,28 +80,11 @@ const getStyle = (provider: string) =>
 
 // ─── Currency Formatting ────────────────────────────────────────────────────
 
-function formatCurrency(value: number, currency = "INR"): string {
-  const cur = currency.toUpperCase();
-  if (cur === "USD") {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(value);
-  }
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+const formatCurrency = (value: number, currency = "INR") =>
+  formatCurrencyUtil(value, currency, { compact: false });
 
-function compactCurrency(value: number, currency = "INR"): string {
-  const symbol = currency.toUpperCase() === "USD" ? "$" : "₹";
-  if (value >= 1_00_000) return `${symbol}${(value / 1_00_000).toFixed(1)}L`;
-  if (value >= 1000) return `${symbol}${(value / 1000).toFixed(1)}k`;
-  return `${symbol}${value}`;
-}
+const compactCurrency = (value: number, currency = "INR") =>
+  formatCurrencyUtil(value, currency, { compact: true });
 
 // ─── Donut Chart Component ──────────────────────────────────────────────────
 
@@ -146,7 +132,7 @@ const ProviderDonut = ({ breakdown }: { breakdown: ProviderBreakdown[] }) => {
 
 // ─── Growth Trend Sparkline ─────────────────────────────────────────────────
 
-const GrowthSparkline = ({ snapshots }: { snapshots: RevenueSnapshot[] }) => {
+const GrowthSparkline = ({ snapshots, isDemo = false }: { snapshots: RevenueSnapshot[]; isDemo?: boolean }) => {
   if (snapshots.length < 2) return null;
 
   const chartData = snapshots.slice(-20).map((s) => ({
@@ -199,7 +185,7 @@ const GrowthSparkline = ({ snapshots }: { snapshots: RevenueSnapshot[] }) => {
               letterSpacing: "0.1em",
               marginBottom: "4px",
             }}
-            formatter={(value: any) => [formatCurrency(Number(value)), "VERIFIED MRR"]}
+            formatter={(value: any) => [formatCurrency(Number(value)), isDemo ? "SIMULATED MRR" : "VERIFIED MRR"]}
             cursor={{ stroke: "rgba(99, 102, 241, 0.15)", strokeWidth: 2 }}
           />
           <Area
@@ -319,6 +305,7 @@ export const RevenueCompositionCard = ({
   totalMrr,
   growth,
   snapshots,
+  isDemo = false,
 }: RevenueCompositionCardProps) => {
   const [view, setView] = useState<ViewMode>("composition");
   const [hoveredProvider, setHoveredProvider] = useState<string | null>(null);
@@ -358,7 +345,7 @@ export const RevenueCompositionCard = ({
             <PieChart className="w-5 h-5 text-indigo-400" /> Revenue Breakdown
           </h3>
           <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mt-1">
-            Verified Sources
+            {isDemo ? "Illustrative Metrics" : "Verified Sources"}
           </p>
         </div>
 
@@ -444,16 +431,20 @@ export const RevenueCompositionCard = ({
                             {style.label}
                           </h4>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 translate-y-[-0.5px]" />
+                            {isDemo ? (
+                              <Info className="w-3.5 h-3.5 text-amber-400 translate-y-[-0.5px]" />
+                            ) : (
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 translate-y-[-0.5px]" />
+                            )}
                             <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                              {item.transactionCount} verified txns
+                              {isDemo ? `${item.transactionCount} simulated txns` : `${item.transactionCount} verified txns`}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-white tabular-nums">
+                      <div className="text-right flex-shrink-0 ml-4 max-w-[50%] overflow-hidden">
+                        <div className="text-sm font-bold text-white tabular-nums truncate" title={formatCurrency(item.amount, item.currency)}>
                           {formatCurrency(item.amount, item.currency)}
                         </div>
                         <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mt-0.5">
@@ -498,10 +489,10 @@ export const RevenueCompositionCard = ({
                 <div className="flex items-center gap-4 mb-2">
                   <BarChart3 className="w-4 h-4 text-indigo-400" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                    Verified MRR Over Time
+                    {isDemo ? "Simulated MRR Over Time" : "Verified MRR Over Time"}
                   </span>
                 </div>
-                <GrowthSparkline snapshots={snapshots} />
+                <GrowthSparkline snapshots={snapshots} isDemo={isDemo} />
               </>
             ) : (
               <div className="py-12 text-center">
@@ -562,9 +553,9 @@ export const RevenueCompositionCard = ({
       <div className="mt-10 pt-8 border-t border-white/[0.03] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
         <div>
           <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider mb-1">
-            Total Verified MRR
+            {isDemo ? "Illustrative MRR (Demo)" : "Total Verified MRR"}
           </p>
-          <p className="text-3xl font-extrabold font-syne text-white tracking-tighter tabular-nums">
+          <p className="text-[clamp(1.5rem,3.5vw,1.875rem)] leading-none font-extrabold font-syne text-white tracking-tighter tabular-nums truncate max-w-full overflow-hidden" title={formatCurrency(totalMrr)}>
             {formatCurrency(totalMrr)}
           </p>
         </div>
@@ -583,7 +574,7 @@ export const RevenueCompositionCard = ({
             ) : (
               <ArrowDownRight className="w-3.5 h-3.5 translate-y-[-0.5px]" />
             )}
-            {Math.abs(growth).toFixed(1)}% Momentum
+            {formatPercentage(Math.abs(growth), 2)} Momentum
           </div>
 
           {/* Live indicator */}

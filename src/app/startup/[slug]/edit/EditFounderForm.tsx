@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { safeFetch } from "@/lib/safe-network";
 
 interface EditFounderFormProps {
   startup: any;
@@ -13,6 +15,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     startup_logo: startup.startup_logo || "",
@@ -32,9 +35,10 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
     e.preventDefault();
     setLoading(true);
     setSuccess(false);
+    setErrorMsg(null);
 
     try {
-      const res = await fetch(`/api/startup/${startup.id}/identity`, {
+      const { ok, error } = await safeFetch<any>(`/api/startup/${startup.id}/identity`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -42,7 +46,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error("Failed to update identity");
+      if (!ok) throw error || new Error("Failed to update identity");
       
       setSuccess(true);
       setTimeout(() => {
@@ -50,16 +54,17 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
         router.refresh();
       }, 1500);
       
-    } catch (err) {
-      console.error(err);
-      alert("An error occurred while updating the profile.");
+    } catch (err: any) {
+      setErrorMsg(err.message || "An error occurred while updating the profile.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-6">
+      <ErrorBanner message={errorMsg} onClose={() => setErrorMsg(null)} className="mb-4" />
+      <form onSubmit={handleSubmit} className="space-y-6">
       <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-3xl space-y-4">
         <div>
           <label className="block text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">
@@ -145,6 +150,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
           </span>
         )}
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

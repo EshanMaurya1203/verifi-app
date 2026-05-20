@@ -4,6 +4,8 @@ import Razorpay from "razorpay";
 import { supabaseServer } from "@/lib/supabase-server";
 import { encrypt } from "@/lib/encryption";
 
+import { verifyStartupOwnership } from "@/lib/auth-server";
+
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
   const { allowed } = checkRateLimit(identifier, 120000, 5);
@@ -16,6 +18,15 @@ export async function POST(req: Request) {
 
     if (!key_id || !key_secret || !startup_id) {
       return NextResponse.json({ success: false, error: "Missing keys or startup ID" }, { status: 400 });
+    }
+
+    // Enforce authentication and strict startup ownership validation
+    const { authenticated, owned } = await verifyStartupOwnership(startup_id);
+    if (!authenticated) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (!owned) {
+      return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
     }
 
     const razorpay = new Razorpay({

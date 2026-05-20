@@ -5,6 +5,8 @@ import { ConnectionStatus } from "./ConnectionStatus";
 import { RevenueChart } from "./RevenueChart";
 import { Loader2, AlertCircle, Shield, TrendingUp, Zap } from "lucide-react";
 import { safeFetch } from "@/lib/safe-network";
+import { formatScore } from "@/lib/formatters";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 interface StartupOverview {
   startup: {
@@ -27,6 +29,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -47,10 +50,11 @@ export const StartupDashboard = ({ id }: { id: string }) => {
 
   const handleSync = async () => {
     setSyncing(true);
+    setSyncError(null);
     const { ok, error: syncErr } = await safeFetch(`/api/startup/${id}/sync`, { method: "POST" });
     
     if (!ok) {
-      alert(syncErr?.message || "Manual connection synchronization failed. Please retry.");
+      setSyncError(syncErr?.message || "Manual connection synchronization failed. Please retry.");
     } else {
       await fetchData();
     }
@@ -96,6 +100,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <ErrorBanner message={syncError} onClose={() => setSyncError(null)} className="mb-6" />
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
         
         {/* Left Column: Connection Health */}
@@ -162,7 +167,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
       <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Active Gateways", val: data.connections.filter(c => c.connected).length, icon: Zap, color: "text-amber-400" },
-          { label: "Verification Score", val: `${data.startup.trust_score}%`, icon: Shield, color: "text-indigo-400" },
+          { label: "Verification Score", val: `${formatScore(data.startup.trust_score, 0)}%`, icon: Shield, color: "text-indigo-400" },
         ].map((stat, i) => (
           <div key={i} className="p-4 bg-neutral-900/20 border border-white/5 rounded-2xl flex items-center gap-4">
             <div className={`p-2 bg-neutral-900 rounded-xl ${stat.color}`}>
