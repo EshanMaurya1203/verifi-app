@@ -68,7 +68,9 @@ export function Navbar() {
   const handleAddStartupClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     setIsMobileOpen(false);
-    if (user) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUser = session?.user || user;
+    if (currentUser) {
       router.push("/submit");
     } else {
       await supabase.auth.signInWithOAuth({

@@ -68,11 +68,13 @@ export default function HomePage() {
 
   const handleVerifyClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    if (user) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUser = session?.user || user;
+    if (currentUser) {
       const { data: startups } = await supabase
         .from("startup_submissions")
         .select("slug")
-        .eq("user_id", user.id)
+        .eq("user_id", currentUser.id)
         .order("created_at", { ascending: false });
 
       if (startups && startups.length > 0) {
