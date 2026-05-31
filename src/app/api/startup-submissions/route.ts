@@ -257,48 +257,63 @@ export async function POST(req: Request) {
       trust_summary.push("Potential risk signals detected");
     }
 
-    const { data: insertedData, error: insertError } = await supabaseServer
-      .from("startup_submissions")
-      .insert([
-        {
-          name: data.name.trim(),
-          email: data.email.trim().toLowerCase(),
-          startup_name: data.startup_name.trim(),
-          website: data.website?.trim() || null,
-          biz_type: data.biz_type.trim(),
-          mrr: mrrValue,
-          arr: arrValue,
-          payment_methods: data.payment_methods,
-          twitter: data.twitter?.trim() || null,
-          linkedin: data.linkedin?.trim() || null,
-          city: data.city.trim(),
-          notes: data.notes?.trim() || null,
-          user_id: data.user_id,
-          verification_type: validVerificationType,
-          proof_url: data.proof_url || null,
-          confidence_score: confidenceScore,
-          verification_status,
-          verification_label,
-          verified_revenue: data.verified_revenue || null,
-          verification_source: data.verification_source || null,
-          last_verified_at: data.verified_revenue ? new Date().toISOString() : null,
-          final_score,
-          fraud_score,
-          risk_level,
-          trust_summary,
-          mrr_breakdown: mrr_breakdown,
-          payment_connected: !!data.verified_revenue,
-          slug: `${slugify(data.startup_name.trim())}-${Math.floor(Math.random() * 1000)}`,
-        },
-      ])
-      .select();
+    const baseSlug = slugify(data.startup_name.trim());
+    let slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 10000)}`;
+    let insertedData: { id: number; slug: string | null }[] | null = null;
+    let insertError: { message: string; code?: string } | null = null;
 
-    if (insertError) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: row, error } = await supabaseServer
+        .from("startup_submissions")
+        .insert([
+          {
+            name: data.name.trim(),
+            email: data.email.trim().toLowerCase(),
+            startup_name: data.startup_name.trim(),
+            website: data.website?.trim() || null,
+            biz_type: data.biz_type.trim(),
+            mrr: mrrValue,
+            arr: arrValue,
+            payment_methods: data.payment_methods,
+            twitter: data.twitter?.trim() || null,
+            linkedin: data.linkedin?.trim() || null,
+            city: data.city.trim(),
+            notes: data.notes?.trim() || null,
+            user_id: data.user_id,
+            proof_url: data.proof_url || null,
+            confidence: confidenceScore,
+            verification_status,
+            verified_revenue: data.verified_revenue || null,
+            verification_source: data.verification_source || null,
+            last_verified_at: data.verified_revenue ? new Date().toISOString() : null,
+            trust_score: final_score,
+            mrr_breakdown: mrr_breakdown,
+            payment_connected: !!data.verified_revenue,
+            slug: slugCandidate,
+          },
+        ])
+        .select("id, slug");
+
+      if (!error && row) {
+        insertedData = row;
+        insertError = null;
+        break;
+      }
+
+      insertError = error;
+      if (error?.code === "23505") {
+        slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 100000)}`;
+        continue;
+      }
+      break;
+    }
+
+    if (insertError || !insertedData?.length) {
       console.error("SUPABASE ERROR:", insertError);
       return NextResponse.json(
         {
           success: false,
-          error: insertError.message,
+          error: insertError?.message || "Failed to create startup listing",
           details: insertError,
         },
         { status: 400 }
@@ -318,21 +333,28 @@ export async function POST(req: Request) {
 
     // Save provider connection if verified
     if (startupId && data.verified_revenue && data.verification_source && data.verified_api_key) {
-      let keyId = data.verified_api_key;
-      let keySecret = null;
-      
-      if (data.verification_source === 'razorpay' && data.verified_api_key.includes(':')) {
-        [keyId, keySecret] = data.verified_api_key.split(':');
+      const { encrypt } = await import("@/lib/encryption");
+      let accountId = data.verified_api_key;
+      let encryptedCredential = encrypt(data.verified_api_key);
+
+      if (data.verification_source === "razorpay" && data.verified_api_key.includes(":")) {
+        const [keyId, keySecret] = data.verified_api_key.split(":");
+        accountId = keyId;
+        encryptedCredential = encrypt(keySecret);
       }
 
-      await supabaseServer.from('provider_connections').insert({
-        startup_id: startupId,
-        provider: data.verification_source,
-        key_id: keyId,
-        key_secret: keySecret,
-        last_mrr: Number(data.verified_revenue),
-        is_active: true
-      });
+      await supabaseServer.from("provider_connections").upsert(
+        {
+          startup_id: startupId,
+          provider: data.verification_source,
+          account_id: accountId,
+          api_key_encrypted: encryptedCredential,
+          status: "connected",
+          latest_revenue: Number(data.verified_revenue),
+          last_synced_at: new Date().toISOString(),
+        },
+        { onConflict: "startup_id,provider" }
+      );
     }
 
     const { count, error: countError } = await supabaseServer
@@ -344,7 +366,13 @@ export async function POST(req: Request) {
     }
 
     const slotNumber = typeof count === "number" ? count : null;
-    return NextResponse.json({ success: true, slot_number: slotNumber, data: insertedData });
+    return NextResponse.json({
+      success: true,
+      slot_number: slotNumber,
+      startup_id: startupId,
+      slug: insertedData[0]?.slug ?? null,
+      data: insertedData,
+    });
   } catch (error) {
     console.error("API ERROR:", error);
     return NextResponse.json(
@@ -354,6 +382,9 @@ export async function POST(req: Request) {
   }
 }
 
+const PUBLIC_STARTUP_FIELDS =
+  "id, slug, startup_name, biz_type, mrr, arr, city, website, twitter, linkedin, trust_score, verification_status, payment_connected, mrr_breakdown, created_at, user_id";
+
 export async function GET(req: Request) {
   const identifier = getClientIdentifier(req);
   const { allowed } = checkRateLimit(identifier, 120000, 5);
@@ -361,10 +392,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
   try {
-
     const { data, error } = await supabaseServer
       .from("startup_submissions")
-      .select("*")
+      .select(PUBLIC_STARTUP_FIELDS)
       .order("trust_score", { ascending: false });
 
     if (error) {
@@ -375,7 +405,13 @@ export async function GET(req: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, data });
+    const publicData = (data || []).map((row) => ({
+      ...row,
+      email: undefined,
+      name: undefined,
+    }));
+
+    return NextResponse.json({ success: true, data: publicData });
   } catch (error) {
     console.error("startup submissions GET error", error);
     return NextResponse.json(

@@ -53,7 +53,7 @@ const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; col
   provider_connected: {
     label: "Payment Connected",
     icon: Link,
-    color: "text-indigo-400 bg-indigo-500/10",
+    color: "text-primary bg-primary/10",
     description: (meta) => `Successfully connected to ${meta.provider || 'payment provider'} secure feed.`
   },
   trust_score_updated: {
@@ -71,7 +71,7 @@ const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; col
   listing_created: {
     label: "Profile Created",
     icon: ShieldCheck,
-    color: "text-indigo-400 bg-indigo-500/10",
+    color: "text-primary bg-primary/10",
     description: () => "Startup profile entered Verifi index. Verification protocols initialized."
   }
 };
@@ -133,8 +133,8 @@ export const VerificationTimeline = ({ logs, ownerId }: VerificationTimelineProp
           <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white">Verification Timeline</h3>
           <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1">Verified Activity Log</p>
         </div>
-        <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-          <Clock className="w-5 h-5 text-indigo-400" />
+        <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+          <Clock className="w-5 h-5 text-primary" />
         </div>
       </div>
 

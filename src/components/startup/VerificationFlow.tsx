@@ -246,13 +246,13 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
               <p className="text-sm text-neutral-400 font-medium">{strength.msg}</p>
               <div className="flex flex-wrap gap-4 justify-center md:justify-start">
                 <div className="px-4 py-2 bg-white/5 border border-white/5 rounded-2xl text-[10px] uppercase font-bold text-neutral-500 text-center">
-                  Verification <p className="text-sm font-bold text-indigo-400">{stepsCompleted}/{totalSteps} Steps</p>
+                  Verification <p className="text-sm font-bold text-primary">{stepsCompleted}/{totalSteps} Steps</p>
                 </div>
                 {hasPaymentSource && (
                   <button
                     onClick={handleRefreshRevenue}
                     disabled={isRefreshing}
-                    className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-[10px] uppercase font-bold text-indigo-400 hover:bg-indigo-500/20 transition-all flex items-center gap-2"
+                    className="px-4 py-2 bg-primary/10 border border-primary/20 rounded-2xl text-[10px] uppercase font-bold text-primary hover:bg-primary/20 transition-all flex items-center gap-2"
                   >
                     {isRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                     Refresh Revenue
@@ -280,11 +280,11 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className={`p-5 rounded-3xl border transition-all ${hasStripe ? 'bg-indigo-500/5 border-indigo-500/20 shadow-[0_0_30px_rgba(99,91,255,0.05)]' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
+          <div className={`p-5 rounded-3xl border transition-all ${hasStripe ? 'bg-primary/5 border-primary/20 shadow-[0_0_30px_rgba(99,91,255,0.05)]' : 'bg-neutral-900 border-white/5 hover:border-white/10'}`}>
             <div className="flex justify-between items-start mb-6">
               <div className="flex items-center gap-3">
-                <div className={`p-3 rounded-2xl ${hasStripe ? 'bg-indigo-500/10' : 'bg-white/5'}`}>
-                  <Globe className={`w-6 h-6 ${hasStripe ? 'text-indigo-400' : 'text-neutral-500'}`} />
+                <div className={`p-3 rounded-2xl ${hasStripe ? 'bg-primary/10' : 'bg-white/5'}`}>
+                  <Globe className={`w-6 h-6 ${hasStripe ? 'text-primary' : 'text-neutral-500'}`} />
                 </div>
                 <div>
                   <h4 className="font-bold text-lg">Stripe Global</h4>
@@ -361,7 +361,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
             {activeModal === 'website' && (
               <form onSubmit={async (e) => { e.preventDefault(); await updateStartup({ website: (e.target as any).website.value }, "Website linked!", 10); }} className="space-y-6">
                 <h3 className="text-xl font-bold">Business Website</h3>
-                <input name="website" placeholder="startup.com" defaultValue={startup?.website} required autoFocus className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-indigo-500" />
+                <input name="website" placeholder="startup.com" defaultValue={startup?.website} required autoFocus className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-primary" />
                 <button disabled={loading} className="w-full bg-white text-black py-4 rounded-xl font-bold uppercase tracking-[0.1em]">{loading ? "Saving..." : "Save Website (+10)"}</button>
               </form>
             )}
@@ -378,13 +378,13 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
             {activeModal === 'video' && (
               <form onSubmit={async (e) => { e.preventDefault(); await updateStartup({ video_url: (e.target as any).video.value }, "Founder video linked!", 30); }} className="space-y-6">
                 <div className="text-center space-y-2">
-                  <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/20">
-                    <Video className="w-6 h-6 text-indigo-400" />
+                  <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/20">
+                    <Video className="w-6 h-6 text-primary" />
                   </div>
                   <h3 className="text-xl font-bold">Founder Video Verification</h3>
                   <p className="text-sm text-neutral-500">Provide a Loom or YouTube link of the founder explaining the business for maximum trust (+30).</p>
                 </div>
-                <input name="video" placeholder="loom.com/share/..." required autoFocus className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-indigo-500" />
+                <input name="video" placeholder="loom.com/share/..." required autoFocus className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-primary" />
                 <button disabled={loading} className="w-full bg-white text-black py-4 rounded-xl font-bold uppercase tracking-[0.1em]">{loading ? "Saving..." : "Link founder video (+30)"}</button>
               </form>
             )}
@@ -420,7 +420,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
                           value={stripeKey}
                           onChange={(e) => setStripeKey(e.target.value)}
                           disabled={loading || stripeSuccess}
-                          className={`w-full bg-neutral-950 border p-4 rounded-xl outline-none transition-colors text-sm font-mono ${stripeSuccess ? 'border-green-500/20 text-green-500/50' : 'border-white/5 focus:border-indigo-500'}`}
+                          className={`w-full bg-neutral-950 border p-4 rounded-xl outline-none transition-colors text-sm font-mono ${stripeSuccess ? 'border-green-500/20 text-green-500/50' : 'border-white/5 focus:border-primary'}`}
                           autoFocus
                         />
                       </div>
@@ -490,7 +490,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
                           placeholder="rzp_test_..."
                           value={keyId}
                           onChange={(e) => setKeyId(e.target.value)}
-                          className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-indigo-500 transition-colors text-sm font-mono"
+                          className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-primary transition-colors text-sm font-mono"
                           autoFocus
                         />
                       </div>
@@ -502,7 +502,7 @@ export default function VerificationFlow({ initialStartup, id }: VerificationFlo
                           placeholder="••••••••••••••••"
                           value={keySecret}
                           onChange={(e) => setKeySecret(e.target.value)}
-                          className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-indigo-500 transition-colors text-sm font-mono"
+                          className="w-full bg-neutral-950 border border-white/5 p-4 rounded-xl outline-none focus:border-primary transition-colors text-sm font-mono"
                         />
                       </div>
                       <div className="space-y-2">

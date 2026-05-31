@@ -1,6 +1,11 @@
 import { supabaseServer } from "@/lib/supabase-server";
 import { decrypt } from "@/lib/encryption";
 import { safeFetch } from "@/lib/safe-network";
+import { getPlatformStripe, isStripeConnectAccountId } from "@/lib/stripe";
+import {
+  createRazorpayClient,
+  fetchRazorpayCapturedPayments,
+} from "@/lib/razorpay-sync";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -22,6 +27,50 @@ export type AggregatedRevenue = {
 };
 
 // ─── Provider Fetchers ─────────────────────────────────────────────────
+
+/**
+ * Fetches last-30-day revenue from a Stripe Connect account (platform credentials).
+ */
+export async function getStripeConnectRevenue(
+  stripeAccountId: string
+): Promise<ProviderRevenue> {
+  try {
+    const thirtyDaysAgo = Math.floor(
+      (Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000
+    );
+    const stripe = getPlatformStripe();
+    const page = await stripe.balanceTransactions.list(
+      { created: { gte: thirtyDaysAgo }, limit: 100 },
+      { stripeAccount: stripeAccountId }
+    );
+
+    const charges = page.data.filter(
+      (t) => t.type === "charge" || t.type === "payment"
+    );
+    const totalCents = charges.reduce(
+      (sum, t) => sum + (t.amount || 0),
+      0
+    );
+
+    return {
+      provider: "stripe",
+      revenue: totalCents / 100,
+      currency: (charges[0]?.currency || "usd").toUpperCase(),
+      transactionCount: charges.length,
+      success: true,
+    };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    return {
+      provider: "stripe",
+      revenue: 0,
+      currency: "USD",
+      transactionCount: 0,
+      success: false,
+      error: errorMsg,
+    };
+  }
+}
 
 /**
  * Fetches last-30-day revenue from Stripe via balance_transactions.
@@ -87,42 +136,14 @@ export async function getRazorpayRevenue(
   keySecret: string
 ): Promise<ProviderRevenue> {
   try {
-    const thirtyDaysAgo = Math.floor(
-      (Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000
-    );
-    const now = Math.floor(Date.now() / 1000);
-    const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-
-    const res = await safeFetch<any>(
-      `https://api.razorpay.com/v1/payments?from=${thirtyDaysAgo}&to=${now}&count=100`,
-      { headers: { Authorization: `Basic ${auth}` } }
-    );
-
-    if (!res.ok) {
-      return {
-        provider: "razorpay",
-        revenue: 0,
-        currency: "INR",
-        transactionCount: 0,
-        success: false,
-        error:
-          res.error?.message || `Razorpay API error: ${res.status}`,
-      };
-    }
-
-    const data = res.data;
-    const captured = (data.items || []).filter(
-      (p: { status: string }) => p.status === "captured"
-    );
-    const totalPaise = captured.reduce(
-      (sum: number, p: { amount?: number }) => sum + (p.amount || 0),
-      0
-    );
+    const razorpay = createRazorpayClient(keyId, keySecret);
+    const captured = await fetchRazorpayCapturedPayments(razorpay);
+    const totalPaise = captured.reduce((sum, p) => sum + p.amount, 0);
 
     return {
       provider: "razorpay",
       revenue: totalPaise / 100,
-      currency: "INR",
+      currency: (captured[0]?.currency || "INR").toUpperCase(),
       transactionCount: captured.length,
       success: true,
     };
@@ -186,6 +207,9 @@ export async function getAggregatedRevenue(
 
       switch (conn.provider) {
         case "stripe":
+          if (isStripeConnectAccountId(conn.account_id)) {
+            return getStripeConnectRevenue(conn.account_id);
+          }
           return getStripeRevenue(decryptedKey);
 
         case "razorpay":

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { supabaseServer } from "@/lib/supabase-server";
+import { verifyStartupOwnership } from "@/lib/auth-server";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const identifier = getClientIdentifier(req);
@@ -12,6 +13,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const { id } = await params;
     const startupId = id;
+
+    const { authenticated, owned, isDemo } = await verifyStartupOwnership(startupId);
+
+    if (!authenticated) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    if (!owned && !isDemo) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Fetch active connections
     const { data: connections } = await supabaseServer

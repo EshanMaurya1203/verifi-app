@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import { verifyStartupOwnership } from "@/lib/auth-server";
+import { resyncExistingRazorpayConnection } from "@/lib/razorpay-sync";
 import { supabaseServer } from "@/lib/supabase-server";
-import { decrypt } from "@/lib/encryption";
-import Razorpay from "razorpay";
-import { computeTrustScore } from "@/lib/scoring";
-import { analyzeRevenueConsistency } from "@/lib/revenue-consistency";
 
-
+/**
+ * Re-sync revenue for an existing Razorpay connection.
+ * POST /api/razorpay/sync  { startup_id }
+ */
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
   const { allowed } = checkRateLimit(identifier, 120000, 5);
@@ -16,112 +17,51 @@ export async function POST(req: Request) {
 
   try {
     const { startup_id } = await req.json();
+    const startupId = Number(startup_id);
 
-    if (!startup_id) {
-      return NextResponse.json({ success: false, error: "Missing startup_id" }, { status: 400 });
+    if (!Number.isFinite(startupId)) {
+      return NextResponse.json(
+        { success: false, error: "Missing startup_id" },
+        { status: 400 }
+      );
     }
 
-    // 1. Fetch connection details (Service Role only)
-    const { data: connection, error: connError } = await supabaseServer
-      .from("provider_connections")
-      .select("*")
-      .eq("startup_id", startup_id)
-      .eq("provider", "razorpay")
-      .eq("status", "connected")
-      .single();
-
-    if (connError || !connection) {
-      return NextResponse.json({ success: false, error: "No active Razorpay connection found" }, { status: 404 });
+    const { authenticated, owned } = await verifyStartupOwnership(startupId);
+    if (!authenticated) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (!owned) {
+      return NextResponse.json(
+        { error: "Unauthorized startup ownership check failed" },
+        { status: 403 }
+      );
     }
 
-    // 2. Initialize Razorpay Client with Decrypted Keys
-    const key_secret = decrypt(connection.api_key_encrypted);
-    const razorpay = new Razorpay({
-      key_id: connection.account_id,
-      key_secret: key_secret,
+    const result = await resyncExistingRazorpayConnection(startupId);
+
+    return NextResponse.json({
+      success: true,
+      mrr: result.revenue,
+      breakdown: result.breakdown,
+      currency: result.currency,
+      total_transactions: result.total_transactions,
     });
-
-    // 3. Sync Payments (Last 30 Days)
-    const fromDate = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
-    const payments = await razorpay.payments.all({ 
-      from: fromDate,
-      count: 100 
-    });
-
-    interface SyncPayment {
-      status: string;
-      amount: string | number;
-    }
-
-    const totalPaise = (payments.items as SyncPayment[])
-      .filter((p: SyncPayment) => p.status === "captured")
-      .reduce((sum: number, p: SyncPayment) => sum + Number(p.amount), 0);
-
-    const mrrAmount = totalPaise / 100;
-
-    // 4. Store Snapshots (Aggregate for the period)
-    const { error: snapshotError } = await supabaseServer.from("revenue_transactions").insert({
-      startup_id,
-      provider: "razorpay",
-      amount: mrrAmount,
-      source: "api",
-      period_start: new Date(fromDate * 1000).toISOString().split('T')[0],
-      period_end: new Date().toISOString().split('T')[0],
-    });
-
-    if (snapshotError) throw snapshotError;
-    
-    const { getAggregatedRevenue } = await import("@/lib/revenue-aggregation");
-    const aggregated = await getAggregatedRevenue(startup_id);
-
-    // 5. Log Success
-    await supabaseServer.from("verification_logs").insert({
-      startup_id,
-      event: "razorpay_sync_success",
-      metadata: { mrr: mrrAmount, count: payments.items.length }
-    });
-
-    // 7. Calculate Advanced Metrics
-    const consistency = analyzeRevenueConsistency(
-      (payments.items as any[]).map((p: any) => ({
-        amount: Number(p.amount) / 100,
-        timestamp: Number(p.created_at) * 1000,
-      }))
-    );
-    
-    // Fetch startup meta for scoring
-    const { data: startup } = await supabaseServer
-      .from("startup_submissions")
-      .select("website, founder_name, founder_twitter, founder_linkedin")
-      .eq("id", startup_id)
-      .single();
-
-    // 9. Update Startup Profile with New Scores (handled by engine)
-    await computeTrustScore(startup_id);
-
-    return NextResponse.json({ 
-      success: true, 
-      mrr: aggregated.totalRevenue,
-      breakdown: aggregated.breakdown
-    });
-
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Failed to sync revenue";
-    console.error("Razorpay Sync Error:", err);
-    
-    // Log Failure
-    const body = await req.clone().json();
+    const message = err instanceof Error ? err.message : "Failed to sync revenue";
+    console.error("[Razorpay Sync] Error:", err);
+
+    const body = await req.clone().json().catch(() => ({}));
     if (body.startup_id) {
       await supabaseServer.from("verification_logs").insert({
-        startup_id: body.startup_id,
+        startup_id: Number(body.startup_id),
         event: "razorpay_sync_failure",
-        metadata: { error: errorMsg }
+        metadata: { error: message },
       });
     }
 
-    return NextResponse.json({ 
-      success: false, 
-      error: errorMsg 
-    }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: message.includes("No active") ? 404 : 500 }
+    );
   }
 }

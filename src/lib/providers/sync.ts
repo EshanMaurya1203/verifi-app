@@ -11,6 +11,8 @@ export async function runProviderSync(
   provider: RevenueProvider,
   credentials: {
     stripeApiKey?: string;
+    stripeConnectAccountId?: string;
+    stripeRefreshToken?: string;
     razorpayKeyId?: string;
     razorpayKeySecret?: string;
   }
@@ -74,8 +76,11 @@ export async function runProviderSync(
   let accountId = "";
   let encryptedKey = "";
 
-  if (providerName === "stripe" && credentials.stripeApiKey) {
-    accountId = "sk_manual"; // In a real app we might fetch account details via Stripe API
+  if (providerName === "stripe" && credentials.stripeConnectAccountId) {
+    accountId = credentials.stripeConnectAccountId;
+    encryptedKey = encrypt(credentials.stripeRefreshToken || "stripe_connect");
+  } else if (providerName === "stripe" && credentials.stripeApiKey) {
+    accountId = "sk_manual";
     encryptedKey = encrypt(credentials.stripeApiKey);
   } else if (providerName === "razorpay" && credentials.razorpayKeyId && credentials.razorpayKeySecret) {
     accountId = credentials.razorpayKeyId;

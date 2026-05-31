@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 
 export default function Loading() {
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-primary selection:text-[#080808]">
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 pt-24 pb-24">
         {/* Header Skeleton */}

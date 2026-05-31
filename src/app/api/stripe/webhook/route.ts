@@ -3,10 +3,8 @@ import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import Stripe from "stripe";
 import { supabaseServer } from "@/lib/supabase-server";
 import { updateRevenueAndSnapshot } from "@/lib/webhook-handler";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-03-25.dahlia" as any,
-});
+import { getPlatformStripe } from "@/lib/stripe";
+import { encrypt } from "@/lib/encryption";
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -23,6 +21,7 @@ export async function POST(req: Request) {
   let event: Stripe.Event;
 
   try {
+    const stripe = getPlatformStripe();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
@@ -69,18 +68,6 @@ export async function POST(req: Request) {
           return NextResponse.json({ received: true, skipped: "no_startup_id" });
         }
 
-        // Also record the raw transaction
-        await supabaseServer.from("revenue_transactions").upsert({
-          startup_id: startupId,
-          provider: "stripe",
-          amount: payment.amount, // stored in smallest unit (cents/paise)
-          currency: (payment.currency || "usd").toUpperCase(),
-          status: payment.status,
-          external_id: payment.id,
-          created_at: new Date(payment.created * 1000).toISOString(),
-        }, { onConflict: "external_id" });
-
-        // 🔥 Real-time revenue + snapshot + trust update
         await updateRevenueAndSnapshot(startupId, amount, "stripe", payment.id);
         break;
       }
@@ -88,18 +75,33 @@ export async function POST(req: Request) {
       // ─── Legacy: account onboarding ──────────────────────────
       case "account.updated": {
         const account = event.data.object as Stripe.Account;
-        const startupId = account.metadata?.startupId;
+        const startupIdMeta =
+          account.metadata?.startupId ?? account.metadata?.startup_id;
 
-        if (startupId && account.details_submitted) {
-          await supabaseServer
-            .from("startup_submissions")
-            .update({
-              verification_status: "stripe_connected",
-              verification_label: "Stripe Verified",
-            })
-            .eq("id", startupId);
+        if (startupIdMeta && account.details_submitted) {
+          const startupId = Number(startupIdMeta);
+          if (Number.isFinite(startupId)) {
+            await supabaseServer.from("provider_connections").upsert(
+              {
+                startup_id: startupId,
+                provider: "stripe",
+                account_id: account.id,
+                api_key_encrypted: encrypt("stripe_connect"),
+                status: "connected",
+                last_synced_at: new Date().toISOString(),
+              },
+              { onConflict: "startup_id,provider" }
+            );
 
-          console.log(`[Stripe Webhook] Startup ${startupId} onboarded via account ${account.id}`);
+            await supabaseServer
+              .from("startup_submissions")
+              .update({
+                stripe_account_id: account.id,
+                payment_connected: true,
+                verification_status: "stripe_connected",
+              })
+              .eq("id", startupId);
+          }
         }
         break;
       }
@@ -117,15 +119,13 @@ export async function POST(req: Request) {
           .single();
 
         if (connection?.startup_id) {
-          await supabaseServer.from("revenue_transactions").upsert({
-            startup_id: connection.startup_id,
-            provider: "stripe",
-            amount: charge.amount,
-            currency: charge.currency.toUpperCase(),
-            status: charge.status,
-            external_id: charge.id,
-            created_at: new Date(charge.created * 1000).toISOString(),
-          }, { onConflict: "external_id" });
+          const chargeAmount = charge.amount / 100;
+          await updateRevenueAndSnapshot(
+            connection.startup_id,
+            chargeAmount,
+            "stripe",
+            charge.id
+          );
         }
         break;
       }

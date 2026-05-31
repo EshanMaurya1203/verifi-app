@@ -1,7 +1,9 @@
 import { verifyStartupOwnership } from "@/lib/auth-server";
 import { FounderVerificationFlow } from "@/components/startup/FounderVerificationFlow";
 import { Navbar } from "@/components/layout/Navbar";
+import { VerifyLoginPrompt } from "@/components/auth/VerifyLoginPrompt";
 import { AlertTriangle, Lock } from "lucide-react";
+import Link from "next/link";
 
 export default async function VerifyPage({
   params,
@@ -28,11 +30,15 @@ export default async function VerifyPage({
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
         <Navbar />
-        <Lock className="w-12 h-12 text-indigo-500 mb-4" />
+        <Lock className="w-12 h-12 text-primary mb-4" />
         <h1 className="text-2xl font-bold mb-2">Authentication Required</h1>
         <p className="text-neutral-400 text-sm mb-6 max-w-md text-center">
           You must be logged in to execute verification actions for this company.
         </p>
+        <VerifyLoginPrompt slug={slug} />
+        <Link href="/" className="mt-6 text-xs font-bold uppercase tracking-wider text-neutral-500 hover:text-white">
+          Back to home
+        </Link>
       </div>
     );
   }
@@ -57,7 +63,7 @@ export default async function VerifyPage({
       <Navbar />
 
       {isDemo && (
-        <div className="bg-[#0f0f11] border-b border-indigo-500/20 px-6 py-4 flex items-center justify-center gap-3 mt-16">
+        <div className="bg-[#0f0f11] border-b border-primary/20 px-6 py-4 flex items-center justify-center gap-3 mt-16">
           <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
             <strong>Sandbox Demonstration:</strong> Pre-verifying simulated example startup.
           </span>
@@ -66,7 +72,7 @@ export default async function VerifyPage({
 
       <main className="flex-1 flex flex-col items-center justify-center p-6 mt-20">
         <div className="w-full max-w-2xl text-center mb-12">
-          <p className="text-indigo-400 font-bold uppercase tracking-widest text-xs mb-3">Revenue Verification</p>
+          <p className="text-primary font-bold uppercase tracking-widest text-xs mb-3">Revenue Verification</p>
           <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">
             Audit {startup.startup_name}
           </h1>

@@ -38,8 +38,7 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   if (isDemo) {
     trustTier = "Sandbox Demo";
   } else if (confidenceTier) {
-    if (confidenceTier === "HIGH_CONFIDENCE") trustTier = "Payment Verified";
-    else if (confidenceTier === "REVENUE_VERIFIED") trustTier = "Revenue Verified";
+    if (confidenceTier === "REVENUE_VERIFIED") trustTier = "Revenue Verified";
     else if (confidenceTier === "PAYMENT_CONNECTED") trustTier = "Payment Connected";
     else trustTier = "Self Reported";
   } else if (trustScore !== undefined) {
@@ -49,7 +48,7 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   }
 
   // Dynamic public share copy according to verification status
-  const isVerified = trustTier !== "Self Reported" && !isDemo;
+  const isVerified = confidenceTier === "REVENUE_VERIFIED" && !isDemo;
   const shareText = isDemo
     ? `Exploring Verifi's premium trust dashboard sandbox: check out the simulated profile of ${startupName} here!`
     : isVerified
@@ -72,7 +71,7 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   let tierColorClass = "text-neutral-400";
   if (isDemo) tierColorClass = "text-neutral-400 font-extrabold";
   else if (trustTier === "Payment Verified") tierColorClass = "text-emerald-400 font-extrabold";
-  else if (trustTier === "Revenue Verified") tierColorClass = "text-indigo-400 font-extrabold";
+  else if (trustTier === "Revenue Verified") tierColorClass = "text-primary font-extrabold";
   else if (trustTier === "Payment Connected") tierColorClass = "text-amber-400 font-extrabold";
 
   return (
@@ -96,7 +95,7 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
           >
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4 px-2">
-                <Share2 className="w-4 h-4 text-indigo-400" />
+                <Share2 className="w-4 h-4 text-primary" />
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white">
                   Share Public Link
                 </p>
@@ -108,7 +107,7 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
                   className="w-full flex items-center justify-between px-4 py-3.5 bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] rounded-xl text-[11px] font-bold text-neutral-300 transition-all group"
                 >
                   <div className="flex items-center gap-3">
-                    <LinkIcon className={`w-4 h-4 ${copied ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-indigo-400 transition-colors'}`} />
+                    <LinkIcon className={`w-4 h-4 ${copied ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-primary transition-colors'}`} />
                     <span>{copied ? "Copied to clipboard" : "Copy Profile Link"}</span>
                   </div>
                   {copied && <Check className="w-3.5 h-3.5 text-emerald-400" />}

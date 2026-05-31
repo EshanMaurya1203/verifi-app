@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowUpRight, BadgeCheck, BarChart3, Eye, Activity, RefreshCw, Zap, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, Activity, RefreshCw, Zap, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
-import { getSiteUrl } from "@/lib/site-url";
+import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 import { safeFetch } from "@/lib/safe-network";
 import { formatCurrency, formatGrowth } from "@/lib/formatters";
 
@@ -50,7 +50,6 @@ const fadeUpItem = {
 };
 
 export default function HomePage() {
-  const [stats, setStats] = useState({ count: 0, totalRevenue: 0, activeSyncs: 0 });
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [demoLeaderboard, setDemoLeaderboard] = useState<any[]>([]);
   const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>([]);
@@ -75,7 +74,7 @@ export default function HomePage() {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getSiteUrl()}/submit`,
+          redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/submit")}`,
         },
       });
     }
@@ -101,18 +100,6 @@ export default function HomePage() {
           // Split real vs demo startups securely
           const realList = list.filter((item: any) => !item.user_id?.startsWith("00000000-0000-0000-0000-"));
           const demoList = list.filter((item: any) => item.user_id?.startsWith("00000000-0000-0000-0000-"));
-
-          // Total Revenue calculation from real entries only
-          const total = realList.reduce((acc: number, item: any) => acc + (Number(item.mrr) || 0), 0);
-          
-          // Calculate active syncs from real entries only
-          const activeSyncsCount = realList.filter((item: any) => item.trust_tier === 'HIGH_CONFIDENCE' || item.trust_tier === 'REVENUE_VERIFIED' || item.trust_tier === 'PAYMENT_CONNECTED').length;
-          
-          setStats({ 
-            count: realList.length,
-            totalRevenue: total,
-            activeSyncs: activeSyncsCount
-          });
 
           // Top 5 real startups for main leaderboard
           const top5 = realList
@@ -157,7 +144,7 @@ export default function HomePage() {
               description: s.notes || "No description provided.",
               mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
               growth: s.growth ? formatGrowth(s.growth, 2) : "Stable",
-              badge: s.trust_tier === 'HIGH_CONFIDENCE' ? 'Payment Verified' : s.trust_tier === 'REVENUE_VERIFIED' ? 'Revenue Verified' : s.trust_tier === 'PAYMENT_CONNECTED' ? 'Payment Connected' : 'Self Reported',
+              badge: s.payment_connected ? 'Payment Connected' : 'Self Reported',
             }));
           setRecentlyListedData(recent);
 
@@ -231,10 +218,6 @@ export default function HomePage() {
     loadHomepageData();
   }, []);
 
-  const formatStatsRevenue = (val: number) => {
-    return formatCurrency(val, "INR", { compact: true });
-  };
-
   const getActivityIcon = (type: string) => {
     switch (type) {
       case "VERIFIED": return <ShieldCheck className="w-3 h-3 text-emerald-400" />;
@@ -274,7 +257,7 @@ export default function HomePage() {
               className="font-syne text-[36px] md:text-[56px] lg:text-[64px] font-black leading-[1.05] tracking-[-1.5px] sm:tracking-[-2px] text-white"
             >
               Verified startup revenue. <br />
-              <span className="bg-gradient-to-r from-indigo-400 to-[#b9ff4b] bg-clip-text text-transparent">
+              <span className="text-primary">
                 Backed by payment data.
               </span>
             </motion.h1>
@@ -306,40 +289,6 @@ export default function HomePage() {
                 Explore Leaderboard
               </Link>
             </motion.div>
-
-            {/* Lightweight Ecosystem Stats */}
-            <motion.div
-              variants={fadeUpItem}
-              className="mt-14 grid w-full grid-cols-1 sm:grid-cols-3 gap-4"
-            >
-              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-5 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/[0.01] to-transparent pointer-events-none" />
-                <div className="font-syne text-2xl md:text-3xl font-extrabold text-white leading-none tracking-tight">
-                  {stats.count}
-                </div>
-                <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
-                  Verified Startups
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-5 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
-                <div className="absolute inset-0 bg-gradient-to-b from-[#b9ff4b]/[0.02] to-transparent pointer-events-none" />
-                <div className="font-syne text-2xl md:text-3xl font-extrabold bg-gradient-to-r from-indigo-400 to-[#b9ff4b] bg-clip-text text-transparent leading-none tracking-tight">
-                  {formatStatsRevenue(stats.totalRevenue)}
-                </div>
-                <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
-                  Combined MRR
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f]/50 backdrop-blur-md p-5 text-center relative overflow-hidden group shadow-lg ring-1 ring-white/[0.02] transition-all duration-300 hover:border-[#b9ff4b]/20">
-                <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/[0.02] to-transparent pointer-events-none" />
-                <div className="font-syne text-2xl md:text-3xl font-extrabold text-white leading-none tracking-tight">
-                  {stats.activeSyncs}
-                </div>
-                <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-[0.2em] mt-2">
-                  Active API Syncs
-                </div>
-              </div>
-            </motion.div>
           </motion.div>
         </section>
 
@@ -361,7 +310,7 @@ export default function HomePage() {
                   </div>
                   <Link
                     href="/leaderboard"
-                    className="text-[10px] md:text-xs font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-wider transition-colors px-4 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20"
+                    className="text-[10px] md:text-xs font-bold text-primary hover:text-primary/80 uppercase tracking-wider transition-colors px-4 py-2 rounded-xl bg-primary/10 border border-primary/20"
                   >
                     View full list
                   </Link>
@@ -403,7 +352,7 @@ export default function HomePage() {
                             #{startup.rank}
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-white tracking-wide leading-none group-hover:text-indigo-400 transition-colors">
+                            <p className="truncate text-sm font-bold text-white tracking-wide leading-none group-hover:text-primary transition-colors">
                               {startup.name}
                             </p>
                             <p className="truncate text-xs text-neutral-500 font-medium mt-1.5">
@@ -515,7 +464,7 @@ export default function HomePage() {
                           {s.initials}
                         </div>
                         <div>
-                          <div className="text-sm font-bold text-white tracking-wide group-hover:text-indigo-400 transition-colors">
+                          <div className="text-sm font-bold text-white tracking-wide group-hover:text-primary transition-colors">
                             {s.name}
                           </div>
                           <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-0.5">
@@ -548,7 +497,7 @@ export default function HomePage() {
               <div className="rounded-3xl border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md overflow-hidden shadow-xl ring-1 ring-white/[0.02]">
                 <div className="border-b border-white/[0.05] px-6 py-5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-indigo-400" />
+                    <Activity className="w-4 h-4 text-primary" />
                     <h3 className="font-syne text-sm font-black text-white uppercase tracking-tight">
                       Live Feed
                     </h3>
@@ -599,9 +548,9 @@ export default function HomePage() {
               </div>
               
               {/* Feature Box Sidebar */}
-              <div className="mt-6 rounded-3xl border border-white/[0.05] bg-indigo-500/[0.02] p-6 backdrop-blur-sm group hover:border-indigo-500/20 transition-all duration-300">
-                <div className="inline-flex rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 mb-4">
-                  <BadgeCheck className="h-4 w-4 text-indigo-400" />
+              <div className="mt-6 rounded-3xl border border-white/[0.05] bg-primary/[0.02] p-6 backdrop-blur-sm group hover:border-primary/20 transition-all duration-300">
+                <div className="inline-flex rounded-xl bg-primary/10 border border-primary/20 p-2.5 mb-4">
+                  <BadgeCheck className="h-4 w-4 text-primary" />
                 </div>
                 <h3 className="text-[11px] font-extrabold uppercase tracking-[0.15em] text-white">
                   Payment-Backed Proof
@@ -627,7 +576,7 @@ export default function HomePage() {
                   </h3>
                   <p className="text-[9px] md:text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1">Simulated startups containing mock metrics for demonstration purposes</p>
                 </div>
-                <div className="px-3 py-1 rounded bg-indigo-500/10 border border-indigo-500/20 text-[9px] font-black uppercase text-indigo-400 tracking-wider">
+                <div className="px-3 py-1 rounded bg-primary/10 border border-primary/20 text-[9px] font-black uppercase text-primary tracking-wider">
                   Developer Sandbox Mode
                 </div>
               </div>
@@ -641,7 +590,7 @@ export default function HomePage() {
                   >
                     <div>
                       <div className="flex justify-between items-start gap-4">
-                        <h4 className="font-bold text-sm text-neutral-300 group-hover:text-indigo-400 transition-colors truncate">
+                        <h4 className="font-bold text-sm text-neutral-300 group-hover:text-primary transition-colors truncate">
                           {startup.name}
                         </h4>
                         <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-[8px] font-black uppercase text-neutral-500 tracking-wider">Demo</span>
@@ -668,7 +617,7 @@ export default function HomePage() {
         {/* Bottom CTA Card */}
         <section className="mt-28">
           <div className="rounded-[3rem] border border-white/[0.08] bg-[#09090b]/50 px-8 py-16 text-center relative overflow-hidden shadow-2xl group ring-1 ring-white/[0.01]">
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none" />
+            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
             <h2 className="font-syne text-[28px] md:text-[36px] font-black leading-tight text-white uppercase tracking-tight">
               Ready to verify your revenue?
             </h2>
@@ -678,7 +627,7 @@ export default function HomePage() {
             <Link
               href="/submit"
               onClick={handleVerifyClick}
-              className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-8 text-xs font-bold uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(99,102,241,0.2)]"
+              className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-8 text-xs font-bold uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(185,255,75,0.2)]"
             >
               Verify your startup
             </Link>

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <div className="min-h-screen bg-[#050507] text-white font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-[#050507] text-white font-sans selection:bg-primary selection:text-[#080808]">
       <Navbar />
 
       <main className="max-w-4xl mx-auto px-6 pt-32 pb-24">
@@ -25,10 +25,10 @@ export default function TermsOfServicePage() {
 
         {/* Hero Section */}
         <section className="relative mb-16">
-          <div className="absolute -top-16 -left-16 w-48 h-48 bg-indigo-500/5 blur-[80px] rounded-full pointer-events-none" />
+          <div className="absolute -top-16 -left-16 w-48 h-48 bg-primary/5 blur-[80px] rounded-full pointer-events-none" />
           <div className="flex items-center gap-3 mb-4">
-            <Scale className="w-5 h-5 text-indigo-400" />
-            <span className="text-xs font-bold uppercase tracking-[0.25em] text-indigo-400">Legal Operating Protocol</span>
+            <Scale className="w-5 h-5 text-primary" />
+            <span className="text-xs font-bold uppercase tracking-[0.25em] text-primary">Legal Operating Protocol</span>
           </div>
           <h1 className="text-4xl md:text-5xl font-black font-syne uppercase tracking-tight text-white mb-6">
             Terms of Service
@@ -40,8 +40,8 @@ export default function TermsOfServicePage() {
         </section>
 
         {/* Agreement Card */}
-        <section className="bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 border border-indigo-500/20 backdrop-blur-md rounded-3xl p-8 mb-16 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 blur-[40px] rounded-full" />
+        <section className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 backdrop-blur-md rounded-3xl p-8 mb-16 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 blur-[40px] rounded-full" />
           <h2 className="text-lg font-black uppercase tracking-wider text-white mb-4 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-emerald-400" /> Agreement to Terms
           </h2>
@@ -58,7 +58,7 @@ export default function TermsOfServicePage() {
           {/* Section 1 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">01.</span> Platform Usage & Credentials
+              <span className="text-primary">01.</span> Platform Usage & Credentials
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               Verifi provides a decentralized web platform designed to analyze, verify, and publicly audit startup financial metrics (such as Monthly Recurring Revenue and growth consistency). To use the platform:
@@ -73,7 +73,7 @@ export default function TermsOfServicePage() {
           {/* Section 2 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">02.</span> Startup Submissions
+              <span className="text-primary">02.</span> Startup Submissions
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               When submitting startup listings, assets, descriptions, and gateway integrations to Verifi:
@@ -88,7 +88,7 @@ export default function TermsOfServicePage() {
           {/* Section 3 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">03.</span> Verification Limitations & Trust Ratings
+              <span className="text-primary">03.</span> Verification Limitations & Trust Ratings
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               Our automated scoring engine processes transactional datasets to calculate trust scores and assign Verification Tiers. You acknowledge and agree that:
@@ -103,7 +103,7 @@ export default function TermsOfServicePage() {
           {/* Section 4 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">04.</span> Account Ownership & Termination
+              <span className="text-primary">04.</span> Account Ownership & Termination
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               Verification profiles belong to the authorized founder holding domain/ownership verification. We reserve the absolute right to suspend, terminate, or unlist any company profile that violates these terms, fails pattern checks, or registers deceptive financial parameters. Founders may request profile termination and an atomic database credentials wipe at any point.
@@ -113,7 +113,7 @@ export default function TermsOfServicePage() {
           {/* Section 5 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">05.</span> Prohibited Conduct
+              <span className="text-primary">05.</span> Prohibited Conduct
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               You agree not to engage in any of the following prohibited behaviors:
@@ -129,7 +129,7 @@ export default function TermsOfServicePage() {
           {/* Section 6 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">06.</span> Liability Limitations
+              <span className="text-primary">06.</span> Liability Limitations
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               TO THE MAXIMUM EXTENT PERMITTED BY LAW, VERIFI AND ITS OPERATORS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, OR EXEMPLARY DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF REVENUE, PROFITS, BUSINESS REPUTATION, OR INVESTOR TRUST ARISING OUT OF OR IN CONNECTION WITH ACCURACY BENCHMARKS, ALGORITHMIC METRICS FLAGS, PUBLIC DIRECTORIES, LEADERBOARD RANKINGS, OR BADGE EMBEDS.
@@ -139,7 +139,7 @@ export default function TermsOfServicePage() {
           {/* Section 7 */}
           <section className="space-y-4">
             <h3 className="text-lg font-black font-syne uppercase tracking-wide text-white flex items-center gap-3">
-              <span className="text-indigo-400">07.</span> Dispute Handling & Jurisdictional Scope
+              <span className="text-primary">07.</span> Dispute Handling & Jurisdictional Scope
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
               Any dispute, claim, or controversy arising out of these terms shall be settled through binding, confidential arbitration. The governing law of these terms shall be resolved under standard corporate arbitration jurisdictions, without regard to its conflict of law provisions.
@@ -155,7 +155,7 @@ export default function TermsOfServicePage() {
               </div>
               <a 
                 href="mailto:legal@verifi.app" 
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-xs font-bold uppercase tracking-wider text-indigo-300"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-xs font-bold uppercase tracking-wider text-primary/80"
               >
                 <Mail className="w-3.5 h-3.5" />
                 legal@verifi.app

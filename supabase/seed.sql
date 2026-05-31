@@ -1,0 +1,6 @@
+-- DEMO DATA — NOT FOR PRODUCTION DISPLAY
+--
+-- Sandbox startups for UI preview use user_id values starting with:
+--   00000000-0000-0000-0000-
+-- They are filtered out of homepage stats and labeled on leaderboard/profile.
+-- Load or maintain demo rows via Supabase SQL editor or your own seed script below.

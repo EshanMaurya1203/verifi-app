@@ -1,10 +1,14 @@
 import { getSupabaseServer } from "@/lib/supabase-server";
-import Razorpay from "razorpay";
-import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
 import { computeTrustScore } from "@/lib/scoring";
 import { decrypt } from "@/lib/encryption";
+import { getPlatformStripe, getStripeForSecretKey, isStripeConnectAccountId } from "@/lib/stripe";
+import {
+  createRazorpayClient,
+  upsertRazorpayPayments,
+  fetchRazorpayCapturedPayments,
+} from "@/lib/razorpay-sync";
 
 import { verifyStartupOwnership } from "@/lib/auth-server";
 
@@ -44,39 +48,26 @@ export async function POST(
       const decryptedKey = decrypt(conn.api_key_encrypted);
 
       if (conn.provider === "razorpay") {
-        const razorpay = new Razorpay({
-          key_id: conn.account_id,
-          key_secret: decryptedKey,
-        });
+        const razorpay = createRazorpayClient(conn.account_id, decryptedKey);
+        const payments = await fetchRazorpayCapturedPayments(razorpay);
+        snapshotsSynced += await upsertRazorpayPayments(Number(id), payments);
 
-        const payments = await razorpay.payments.all({ count: 50 });
-        for (const p of payments.items) {
-          if (p.status !== "captured") continue;
-          const { error: upsertError } = await supabase
-            .from("revenue_transactions")
-            .upsert(
-              {
-                startup_id: id,
-                provider: "razorpay",
-                amount: p.amount,
-                currency: p.currency,
-                status: p.status,
-                external_id: p.id,
-                created_at: new Date(p.created_at * 1000).toISOString(),
-              },
-              { onConflict: "external_id" }
-            );
-          if (!upsertError) snapshotsSynced++;
-        }
+        await supabase
+          .from("provider_connections")
+          .update({ last_synced_at: new Date().toISOString() })
+          .eq("id", conn.id);
       } else if (conn.provider === "stripe") {
-        const stripe = new Stripe(decryptedKey, {
-          apiVersion: "2024-04-10" as any,
-        });
+        const stripe = isStripeConnectAccountId(conn.account_id)
+          ? getPlatformStripe()
+          : getStripeForSecretKey(decryptedKey);
         const from = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
-        const bTxns = await stripe.balanceTransactions.list({
-          created: { gte: from },
-          limit: 100,
-        });
+        const requestOptions = isStripeConnectAccountId(conn.account_id)
+          ? { stripeAccount: conn.account_id }
+          : undefined;
+        const bTxns = await stripe.balanceTransactions.list(
+          { created: { gte: from }, limit: 100 },
+          requestOptions
+        );
 
         for (const tx of bTxns.data) {
           if (tx.type === "charge" || tx.type === "payment") {
@@ -86,10 +77,11 @@ export async function POST(
                 {
                   startup_id: id,
                   provider: "stripe",
-                  amount: tx.amount,
+                  amount: tx.amount / 100,
                   currency: tx.currency?.toUpperCase() || "USD",
                   status: "captured",
                   external_id: tx.id,
+                  payment_id: tx.id,
                   created_at: new Date(tx.created * 1000).toISOString(),
                 },
                 { onConflict: "external_id" }

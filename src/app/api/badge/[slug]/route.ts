@@ -1,5 +1,9 @@
 import { supabaseServer } from "@/lib/supabase-server";
-import { computeVerificationState } from "@/lib/verification-state";
+import {
+  buildVerificationStateInput,
+  computeVerificationState,
+} from "@/lib/verification-state";
+import { isDemoStartupUserId } from "@/lib/verification-data";
 
 export async function GET(
   request: Request,
@@ -42,17 +46,17 @@ export async function GET(
       .eq("status", "connected")
   ]);
 
-  const revenue = (revenueRes.data || []).map(event => ({
-    timestamp: new Date(event.created_at).getTime(),
-    amount: Number(event.amount) || 0
-  }));
-
-  const verificationState = computeVerificationState({
-    revenueTransactions: revenue,
-    providerConnections: providerRes.data || [],
-    fraudSignals: fraudRes.data || [],
-    penaltyCount: Number(startup.penalty_count) || 0
-  });
+  const verificationState = computeVerificationState(
+    buildVerificationStateInput({
+      revenueTransactions: revenueRes.data || [],
+      providerConnections: providerRes.data || [],
+      fraudSignals: fraudRes.data || [],
+      penaltyCount: Number(startup.penalty_count) || 0,
+      isDemoProfile: isDemoStartupUserId(startup.user_id),
+      verificationType: startup.verification_type,
+      hasProofUpload: !!startup.proof_url,
+    })
+  );
 
   // 3. Determine colors and labels
   const isDark = theme === "dark";
@@ -64,12 +68,9 @@ export async function GET(
   let tierLabel = "Self Reported";
   let tierColor = "#71717a"; // Neutral-500
   const tier = verificationState.confidenceTier;
-  if (tier === "HIGH_CONFIDENCE") {
-    tierLabel = "Payment Verified";
-    tierColor = "#10b981"; // Emerald
-  } else if (tier === "REVENUE_VERIFIED") {
+  if (tier === "REVENUE_VERIFIED") {
     tierLabel = "Revenue Verified";
-    tierColor = "#6366f1"; // Indigo
+    tierColor = "#b9ff4b";
   } else if (tier === "PAYMENT_CONNECTED") {
     tierLabel = "Payment Connected";
     tierColor = "#f59e0b"; // Amber
@@ -87,8 +88,8 @@ export async function GET(
       <rect x="0.5" y="0.5" width="299" height="79" rx="15.5" stroke="${borderColor}"/>
       
       <!-- Verifi Icon (centered & premium checkmark) -->
-      <rect x="18" y="18" width="44" height="44" rx="11" fill="#6366f1"/>
-      <path d="M28 40 L34 46 L45 32" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <rect x="18" y="18" width="44" height="44" rx="11" fill="#b9ff4b"/>
+      <path d="M28 40 L34 46 L45 32" stroke="#080808" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       
       <!-- Content -->
       <text x="72" y="34" font-family="Inter, sans-serif" font-size="${nameFontSize}" font-weight="800" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startupName}</text>

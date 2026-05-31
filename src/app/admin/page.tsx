@@ -1,28 +1,61 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Navbar } from "@/components/layout/Navbar";
 import { safeFetch } from "@/lib/safe-network";
+import { isAdmin } from "@/lib/isAdmin";
+import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 
 export default function AdminPage() {
+  const router = useRouter();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const fetchData = useCallback(async () => {
-    const { data } = await supabase
+    const { data: rows } = await supabase
       .from("startup_submissions")
-      .select("*")
+      .select(
+        "id, startup_name, website, verification_status, trust_score, mrr, created_at, slug"
+      )
       .in("verification_status", ["pending", "syncing", "unverified", "reviewing", "proof_submitted", "api_verified", "SELF_REPORTED", "PAYMENT_CONNECTED", "REVENUE_VERIFIED", "HIGH_CONFIDENCE"])
       .order("created_at", { ascending: false });
 
-    setData(data || []);
+    setData(rows || []);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+
+    async function init() {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user || !isAdmin(auth.user.email)) {
+        if (!cancelled) {
+          setAccessDenied(true);
+          setLoading(false);
+        }
+        return;
+      }
+      await fetchData();
+    }
+
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, [fetchData]);
+
+  const handleAdminLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/admin")}`,
+      },
+    });
+  };
 
   const updateStatus = async (id: number, status: string) => {
     // Optimistic UI update
@@ -51,7 +84,20 @@ export default function AdminPage() {
             Verification Integration Control
           </h1>
 
-          {loading ? (
+          {accessDenied ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-12 text-center">
+              <p className="text-muted-foreground mb-4">
+                Admin access requires signing in with an authorized account.
+              </p>
+              <button
+                type="button"
+                onClick={handleAdminLogin}
+                className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground"
+              >
+                Sign in with Google
+              </button>
+            </div>
+          ) : loading ? (
             <div className="flex h-32 items-center justify-center rounded-2xl border border-border bg-card">
               <p className="text-muted-foreground">Loading queue...</p>
             </div>

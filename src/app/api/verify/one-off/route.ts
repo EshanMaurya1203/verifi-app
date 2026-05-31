@@ -49,17 +49,15 @@ export async function POST(req: Request) {
     }
 
     if (provider === "razorpay") {
-      if (!keyId || !keySecret) return NextResponse.json({ error: "Missing Razorpay credentials" }, { status: 400 });
-      const rzp = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      
-      const payments = await rzp.payments.all({
-        from: Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60),
-        count: 100,
-      });
-
-      const total = payments.items
-        .filter((p: any) => p.status === "captured")
-        .reduce((sum: number, p: any) => sum + (p.amount / 100), 0);
+      if (!keyId || !keySecret) {
+        return NextResponse.json({ error: "Missing Razorpay credentials" }, { status: 400 });
+      }
+      const { createRazorpayClient, fetchRazorpayCapturedPayments } = await import(
+        "@/lib/razorpay-sync"
+      );
+      const rzp = createRazorpayClient(keyId, keySecret);
+      const captured = await fetchRazorpayCapturedPayments(rzp);
+      const total = captured.reduce((sum, p) => sum + p.amount / 100, 0);
 
       return NextResponse.json({ success: true, revenue: total, currency: "INR" });
     }

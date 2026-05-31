@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
-import { RazorpayProvider } from "@/lib/providers/razorpay";
-import { runProviderSync } from "@/lib/providers/sync";
-
 import { verifyStartupOwnership } from "@/lib/auth-server";
+import {
+  resyncExistingRazorpayConnection,
+  verifyRazorpayApiKeys,
+} from "@/lib/razorpay-sync";
 
+/**
+ * Revenue Sync API (/api/sync/razorpay)
+ */
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
   const { allowed } = checkRateLimit(identifier, 120000, 5);
@@ -13,45 +17,57 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { key_id, key_secret, startup_id } = await req.json();
+    const body = await req.json();
+    const startupId = Number(body.startup_id ?? body.startupId);
+    const key_id = body.key_id as string | undefined;
+    const key_secret = body.key_secret as string | undefined;
 
-    if (!key_id || !key_secret || !startup_id) {
-      return NextResponse.json({ success: false, error: "Missing keys or startup ID" }, { status: 400 });
+    if (!Number.isFinite(startupId)) {
+      return NextResponse.json(
+        { success: false, error: "startup_id is required" },
+        { status: 400 }
+      );
     }
 
-    // Enforce authentication and strict startup ownership validation
-    const { authenticated, owned } = await verifyStartupOwnership(startup_id);
+    const { authenticated, owned } = await verifyStartupOwnership(startupId);
     if (!authenticated) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
     if (!owned) {
-      return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Unauthorized startup ownership check failed" },
+        { status: 403 }
+      );
     }
 
-    const provider = new RazorpayProvider(key_id, key_secret);
-    
-    // Test API call implicitly happens in runProviderSync or we can do it explicitly
-    // but fetchPayments will throw if keys are invalid.
-
-    const result = await runProviderSync(startup_id, "razorpay", provider, {
-      razorpayKeyId: key_id,
-      razorpayKeySecret: key_secret
-    });
+    const result =
+      key_id && key_secret
+        ? await verifyRazorpayApiKeys({
+            keyId: key_id,
+            keySecret: key_secret,
+            startupId,
+          })
+        : await resyncExistingRazorpayConnection(startupId);
 
     return NextResponse.json({
       success: true,
-      message: "Razorpay connected and initial sync complete",
+      message: "Razorpay connected and revenue sync complete",
       revenue: result.revenue,
       breakdown: result.breakdown,
       currency: result.currency,
-      total_transactions: result.total_transactions
+      total_transactions: result.total_transactions,
     });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Razorpay sync failed";
+    const isClientError =
+      message.includes("No revenue") ||
+      message.includes("No active Razorpay") ||
+      message.includes("Invalid");
 
-  } catch (err: any) {
-    console.error("Razorpay sync error:", err);
-    return NextResponse.json({
-      success: false,
-      error: err.message || "Connection failed"
-    }, { status: 400 });
+    console.error("[SyncRazorpay] Error:", err);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: isClientError ? 400 : 500 }
+    );
   }
 }

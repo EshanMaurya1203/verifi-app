@@ -18,7 +18,11 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-import { VerificationStateResult, ConfidenceTier } from "@/lib/verification-state";
+import {
+  VerificationStateResult,
+  ConfidenceTier,
+  formatLastSyncRelative,
+} from "@/lib/verification-state";
 import { supabase } from "@/lib/supabase";
 import { isAdmin } from "@/lib/isAdmin";
 
@@ -65,24 +69,13 @@ const TIER_CONFIG: Record<ConfidenceTier, {
   REVENUE_VERIFIED: {
     icon: ShieldCheck,
     label: "Revenue Verified",
-    color: "text-blue-400",
-    bg: "bg-blue-500/12",
-    border: "border-blue-500/25",
-    glow: "bg-blue-500",
-    ringColor: "stroke-blue-500",
-    trackColor: "stroke-blue-500/15",
-    description: "Consistent revenue confirmed",
-  },
-  HIGH_CONFIDENCE: {
-    icon: ShieldCheck,
-    label: "High Confidence",
     color: "text-emerald-400",
     bg: "bg-emerald-500/12",
     border: "border-emerald-500/25",
     glow: "bg-emerald-500",
     ringColor: "stroke-emerald-500",
     trackColor: "stroke-emerald-500/15",
-    description: "Multi-signal verification complete",
+    description: "Provider-backed revenue with a recent sync",
   },
 };
 
@@ -93,21 +86,6 @@ const FRAUD_STATUS_CONFIG = {
 } as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function formatSyncTime(iso: string | null): string {
-  if (!iso) return "Never";
-  const date = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
 
 function getProviderDisplayName(provider: string): string {
   const names: Record<string, string> = {
@@ -202,14 +180,14 @@ const VerificationDepth = ({ level }: { level: number }) => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Verification Depth</span>
-        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Level {level}/4</span>
+        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Level {level}/4</span>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
         {steps.map((step, idx) => (
           <div key={idx} className="space-y-2">
-            <div className={`h-1 rounded-full transition-all duration-1000 ${idx < level ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'bg-neutral-800'}`} />
+            <div className={`h-1 rounded-full transition-all duration-1000 ${idx < level ? 'bg-primary shadow-[0_0_8px_rgba(185,255,75,0.4)]' : 'bg-neutral-800'}`} />
             <div className="flex flex-col items-center">
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${idx < level ? 'text-indigo-300' : 'text-neutral-700'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${idx < level ? 'text-primary/80' : 'text-neutral-700'}`}>
                 {step.label}
               </span>
             </div>
@@ -267,6 +245,9 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
     hasConnectedProviders,
     providersConnected,
     lastSyncAt,
+    verificationMethodLabel,
+    dataSourceLabel,
+    hasVerificationEvidence: evidenceBacked,
   } = verification;
 
   const statusConfig = TIER_CONFIG[confidenceTier];
@@ -342,7 +323,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
                     {getProviderDisplayName(provider)}
                   </span>
                   <span className="text-[10px] font-bold text-neutral-600">
-                    Verified
+                    {evidenceBacked ? "Ledger-backed" : "Linked"}
                   </span>
                 </div>
               ))}
@@ -357,10 +338,15 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
             </div>
 
             {/* Last sync */}
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-neutral-600 translate-y-[-0.5px]" />
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-neutral-600 translate-y-[-0.5px]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-600">
+                  Last sync: {formatLastSyncRelative(lastSyncAt)}
+                </span>
+              </div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-600">
-                Last sync: {formatSyncTime(lastSyncAt)}
+                Method: {verificationMethodLabel} · Source: {dataSourceLabel} · {verificationConfidence}% conf.
               </span>
             </div>
           </div>
@@ -383,7 +369,7 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
               icon={FileCheck2}
               label="Verified Transactions"
               value={transactionCount.toLocaleString()}
-              iconColor="text-indigo-400/70"
+              iconColor="text-primary/70"
             />
             <MetricRow
               icon={Copy}
@@ -452,11 +438,11 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
                 </div>
               ))}
               <div className="flex items-start gap-3 group">
-                <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 ring-4 ring-indigo-500/10" />
+                <div className="mt-1 w-1.5 h-1.5 rounded-full bg-primary ring-4 ring-primary/10" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-neutral-300">Verification Recalculated</span>
-                    <span className="text-[10px] font-bold text-indigo-400">Stable</span>
+                    <span className="text-[10px] font-bold text-primary">Stable</span>
                   </div>
                   <p className="text-[10px] text-neutral-500 mt-0.5">Verification recalculated from connected activity.</p>
                 </div>
@@ -472,11 +458,15 @@ export const VerificationTransparencyCard: React.FC<VerificationTransparencyCard
           {/* ── Public Verified Info Explainer ─────────────── */}
           <div className="px-6 py-5 relative z-10">
             <div className="flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 text-indigo-400 mt-0.5 shrink-0" />
+              <ShieldCheck className="w-5 h-5 text-primary mt-0.5 shrink-0" />
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-white">Direct Ledger Sync</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                  {evidenceBacked ? "Direct Ledger Sync" : "Verification In Progress"}
+                </h4>
                 <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                  Financial figures are automatically reconciled and synchronized directly from verified API channels.
+                  {evidenceBacked
+                    ? `Revenue is reconciled from ${dataSourceLabel}. Last sync ${formatLastSyncRelative(lastSyncAt)} (${verificationConfidence}% confidence).`
+                    : `Method: ${verificationMethodLabel}. Source: ${dataSourceLabel}. Connect and sync a payment provider for ledger-backed verification.`}
                 </p>
               </div>
             </div>

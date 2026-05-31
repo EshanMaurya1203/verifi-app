@@ -57,10 +57,10 @@ interface RevenueCompositionCardProps {
 
 const PROVIDER_STYLES: Record<string, { color: string; gradient: string; label: string; ring: string }> = {
   stripe: {
-    color: "#6366f1",
-    gradient: "from-indigo-500/20 to-indigo-600/5",
+    color: "#b9ff4b",
+    gradient: "from-primary/20 to-primary/5",
     label: "Stripe",
-    ring: "ring-indigo-500/30",
+    ring: "ring-primary/30",
   },
   razorpay: {
     color: "#3b82f6",
@@ -149,8 +149,8 @@ const GrowthSparkline = ({ snapshots, isDemo = false }: { snapshots: RevenueSnap
         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -30, bottom: 0 }}>
           <defs>
             <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+              <stop offset="0%" stopColor="#b9ff4b" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#b9ff4b" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="rgba(255,255,255,0.03)" />
@@ -191,15 +191,15 @@ const GrowthSparkline = ({ snapshots, isDemo = false }: { snapshots: RevenueSnap
           <Area
             type="monotone"
             dataKey="revenue"
-            stroke="#6366f1"
+            stroke="#b9ff4b"
             strokeWidth={2.5}
             fill="url(#revGrad)"
             dot={false}
             activeDot={{
               r: 5,
               strokeWidth: 0,
-              fill: "#6366f1",
-              style: { filter: "drop-shadow(0 0 6px rgba(99,102,241,0.5))" },
+              fill: "#b9ff4b",
+              style: { filter: "drop-shadow(0 0 6px rgba(185,255,75,0.5))" },
             }}
             animationDuration={1800}
           />
@@ -317,7 +317,7 @@ export const RevenueCompositionCard = ({
   if (!breakdown || breakdown.length === 0) {
     return (
       <div className="bg-neutral-900/30 border border-white/[0.05] rounded-[3rem] p-8 md:p-10 text-center relative overflow-hidden group">
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 via-transparent to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent pointer-events-none" />
         <div className="flex flex-col items-center justify-center py-4">
           <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4">
             <PieChart className="w-5 h-5 text-neutral-500" />
@@ -336,13 +336,13 @@ export const RevenueCompositionCard = ({
   return (
     <div className="bg-neutral-900/30 border border-white/[0.05] rounded-[3rem] p-8 lg:p-10 relative overflow-hidden group">
       {/* Background Glow */}
-      <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/5 blur-[100px] rounded-full group-hover:bg-indigo-500/8 transition-colors duration-1000 pointer-events-none" />
+      <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/5 blur-[100px] rounded-full group-hover:bg-primary/8 transition-colors duration-1000 pointer-events-none" />
 
       {/* ─── Header ──────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 relative z-10 gap-4">
         <div>
           <h3 className="text-xl font-black font-syne uppercase tracking-tight text-white flex items-center gap-3">
-            <PieChart className="w-5 h-5 text-indigo-400" /> Revenue Breakdown
+            <PieChart className="w-5 h-5 text-primary" /> Revenue Breakdown
           </h3>
           <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mt-1">
             {isDemo ? "Illustrative Metrics" : "Verified Sources"}
@@ -363,7 +363,7 @@ export const RevenueCompositionCard = ({
               onClick={() => setView(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${
                 view === tab.key
-                  ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/20"
+                  ? "bg-primary/15 text-primary border border-primary/20"
                   : "text-neutral-600 hover:text-neutral-400"
               }`}
             >
@@ -487,7 +487,7 @@ export const RevenueCompositionCard = ({
             {snapshots.length >= 2 ? (
               <>
                 <div className="flex items-center gap-4 mb-2">
-                  <BarChart3 className="w-4 h-4 text-indigo-400" />
+                  <BarChart3 className="w-4 h-4 text-primary" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
                     {isDemo ? "Simulated MRR Over Time" : "Verified MRR Over Time"}
                   </span>
@@ -517,7 +517,7 @@ export const RevenueCompositionCard = ({
             {snapshots.length >= 2 && hasMultipleProviders ? (
               <>
                 <div className="flex items-center gap-4 mb-2">
-                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <Layers className="w-4 h-4 text-primary" />
                   <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
                     Stacked Provider Revenue
                   </span>
@@ -578,9 +578,9 @@ export const RevenueCompositionCard = ({
           </div>
 
           {/* Live indicator */}
-          <div className="bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-indigo-400 translate-y-[-0.5px]" />
-            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+          <div className="bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
+            <Zap className="w-3.5 h-3.5 text-primary translate-y-[-0.5px]" />
+            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
               Live
             </span>
           </div>

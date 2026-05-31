@@ -7,12 +7,15 @@ interface FreshnessIndicatorProps {
   lastSyncAt: string | null;
   className?: string;
   isDemo?: boolean;
+  /** When false, sync time is informational only (not evidence-backed). */
+  evidenceBacked?: boolean;
 }
 
 export const FreshnessIndicator: React.FC<FreshnessIndicatorProps> = ({ 
   lastSyncAt,
   className = "",
-  isDemo = false
+  isDemo = false,
+  evidenceBacked = false,
 }) => {
   if (!lastSyncAt) {
     return (
@@ -46,11 +49,19 @@ export const FreshnessIndicator: React.FC<FreshnessIndicatorProps> = ({
     }
   }
 
+  const showVerifiedFreshness = evidenceBacked && !isStale && !isDemo;
+
   return (
     <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/[0.02] border border-white/[0.04] backdrop-blur-md ${className}`}>
-      <Clock className={`w-3 h-3 ${isStale || isDemo ? "text-amber-500" : "text-emerald-500"}`} />
-      <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${isStale || isDemo ? "text-amber-500" : "text-emerald-500"}`}>
-        {isDemo ? `Simulated ${timeString}` : `Updated ${timeString}`}
+      <Clock className={`w-3 h-3 ${showVerifiedFreshness ? "text-emerald-500" : "text-amber-500"}`} />
+      <span className={`text-[9px] font-bold uppercase tracking-wider leading-none ${showVerifiedFreshness ? "text-emerald-500" : "text-amber-500"}`}>
+        {isDemo
+          ? `Simulated ${timeString}`
+          : evidenceBacked
+            ? `Synced ${timeString}`
+            : lastSyncAt
+              ? `Last sync ${timeString}`
+              : "Sync pending"}
       </span>
     </div>
   );

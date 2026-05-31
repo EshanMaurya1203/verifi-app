@@ -55,34 +55,6 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
     return STEPS.findIndex(s => s.id === step);
   };
 
-  // Sandbox demo simulation flows
-  useEffect(() => {
-    if (isDemo && currentStep === "connect" && provider) {
-      setStartTime(Date.now());
-      setCurrentStep("syncing");
-      setTimeLeft(3);
-    }
-  }, [provider, isDemo, currentStep]);
-
-  useEffect(() => {
-    if (isDemo && currentStep === "syncing" && timeLeft === 0) {
-      setCurrentStep("analyzing");
-      setTimeLeft(2);
-    }
-  }, [timeLeft, currentStep, isDemo]);
-
-  useEffect(() => {
-    if (isDemo && currentStep === "analyzing" && timeLeft === 0) {
-      setOverviewData({
-        startup: { trust_score: 98 },
-        authenticity: { level: "Organic" },
-        verification: { verification_confidence: 100 }
-      });
-      setCurrentStep("summary");
-      setAutoForwardSeconds(8);
-    }
-  }, [timeLeft, currentStep, isDemo]);
-
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if ((currentStep === "syncing" || currentStep === "analyzing") && timeLeft > 0) {
@@ -115,7 +87,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
         syncResult = await safeFetch<any>("/api/sync/stripe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey: stripeKey, startupId })
+          body: JSON.stringify({ apiKey: stripeKey, startup_id: startupId }),
         });
       } else if (provider === "razorpay") {
         syncResult = await safeFetch<any>("/api/sync/razorpay", {
@@ -226,14 +198,27 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
               </div>
             )}
 
-            {!provider ? (
+            {isDemo ? (
+              <div className="space-y-4 text-center">
+                <p className="text-sm text-neutral-400">
+                  This is a sandbox profile. Payment connection is not required for the demo.
+                </p>
+                <button
+                  type="button"
+                  onClick={handlePublish}
+                  className="w-full bg-white text-black py-4 rounded-xl font-black uppercase tracking-[0.15em] text-[11px] hover:bg-neutral-200 transition-colors"
+                >
+                  View public profile
+                </button>
+              </div>
+            ) : !provider ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button 
                   onClick={() => setProvider("stripe")}
-                  className="p-6 bg-neutral-900/80 border border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/5 rounded-2xl flex flex-col items-center gap-4 transition-all group"
+                  className="p-6 bg-neutral-900/80 border border-white/5 hover:border-primary/50 hover:bg-primary/5 rounded-2xl flex flex-col items-center gap-4 transition-all group"
                 >
-                  <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-indigo-500/10 transition-colors">
-                    <Globe className="w-8 h-8 text-neutral-400 group-hover:text-indigo-400 transition-colors" />
+                  <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-primary/10 transition-colors">
+                    <Globe className="w-8 h-8 text-neutral-400 group-hover:text-primary transition-colors" />
                   </div>
                   <span className="font-bold text-lg">Stripe</span>
                 </button>
@@ -267,7 +252,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
                       placeholder="sk_live_..." 
                       value={stripeKey}
                       onChange={(e) => setStripeKey(e.target.value)}
-                      className="w-full bg-black border border-white/10 p-4 rounded-xl outline-none focus:border-indigo-500 font-mono text-sm"
+                      className="w-full bg-black border border-white/10 p-4 rounded-xl outline-none focus:border-primary font-mono text-sm"
                     />
                   </div>
                 )}
@@ -364,7 +349,7 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               {/* Verification Score */}
               <div className="bg-black/50 border border-white/5 p-5 rounded-2xl flex flex-col items-center text-center">
-                <ShieldCheck className="w-5 h-5 text-indigo-400 mb-3" />
+                <ShieldCheck className="w-5 h-5 text-primary mb-3" />
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-1">Verification Score</span>
                 <span className="text-3xl font-black tabular-nums text-white">{formatScore(overviewData.startup.trust_score, 0)}<span className="text-sm text-neutral-600">/100</span></span>
               </div>

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
 import { safeFetch, safeSupabaseQuery } from "@/lib/safe-network";
-import { getSiteUrl } from "@/lib/site-url";
+import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 type PaymentMethod = {
@@ -82,6 +83,7 @@ function badgeClassName(type: PaymentMethod["badge"]) {
 }
 
 export default function SubmitPage() {
+  const router = useRouter();
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -151,7 +153,7 @@ export default function SubmitPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${getSiteUrl()}/submit`,
+        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/submit")}`,
       },
     });
   };
@@ -242,6 +244,9 @@ export default function SubmitPage() {
     if (!form.paymentMethods.length) {
       nextErrors.paymentMethods = "Select at least one payment method";
     }
+    if (form.verificationType === "proof" && !proofFile) {
+      nextErrors.verificationType = "Upload proof of revenue before submitting";
+    }
     return nextErrors;
   };
 
@@ -266,6 +271,9 @@ export default function SubmitPage() {
       if (!form.verificationType) nextErrors.verificationType = "Please select a verification method";
       if (!form.paymentMethods.length) {
         nextErrors.paymentMethods = "Select at least one payment method";
+      }
+      if (form.verificationType === "proof" && !proofFile) {
+        nextErrors.verificationType = "Upload proof of revenue to continue";
       }
     }
 
@@ -393,8 +401,15 @@ export default function SubmitPage() {
         return;
       }
 
-      setSuccessMessage("Startup submitted successfully!");
+      const created = result.data?.[0] ?? result.data;
+      const slug = result.slug ?? created?.slug;
 
+      if (slug) {
+        router.push(`/startup/${encodeURIComponent(slug)}/verify`);
+        return;
+      }
+
+      setSuccessMessage("Startup submitted successfully!");
       setIsSuccess(true);
       if (typeof result.slot_number === "number") {
         setSlotNumber(result.slot_number);
@@ -429,7 +444,7 @@ export default function SubmitPage() {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-[#040406] px-6 text-white">
         <div className="w-full max-w-[400px] p-8 rounded-[2rem] bg-neutral-900/40 border border-white/5 relative overflow-hidden backdrop-blur-xl shadow-2xl">
-          <div className="absolute -top-20 -left-20 w-40 h-40 rounded-full opacity-[0.05] bg-indigo-500 blur-3xl pointer-events-none" />
+          <div className="absolute -top-20 -left-20 w-40 h-40 rounded-full opacity-[0.05] bg-primary blur-3xl pointer-events-none" />
           
           <div className="text-center relative z-10">
             <h2 className="font-syne text-2xl font-black tracking-[-1px] text-white mb-2">
@@ -518,16 +533,18 @@ export default function SubmitPage() {
                 Founding Member #{slotNumber ?? claimedCount + 1}
               </div>
               <p className="mt-4 max-w-[520px] text-[14px] text-muted-foreground">
-                Your startup account has been created. We are securely connecting to your 
-                payment provider to verify your revenue data.
+                Your startup was created. Continue to connect your payment provider and
+                complete verification.
               </p>
-              <Link
-                href={twitterShareUrl}
-                target="_blank"
-                className="mt-6 rounded-xl border border-border bg-[#161616] px-4 py-2 text-sm text-foreground transition-colors hover:border-border"
-              >
-                Share on Twitter
-              </Link>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href={twitterShareUrl}
+                  target="_blank"
+                  className="rounded-xl border border-border bg-[#161616] px-4 py-2 text-sm text-foreground transition-colors hover:border-border"
+                >
+                  Share on Twitter
+                </Link>
+              </div>
             </motion.div>
           ) : (
             <form onSubmit={onSubmit} noValidate>

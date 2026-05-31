@@ -24,7 +24,7 @@ export default async function EditStartupProfile({ params }: { params: Promise<{
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
         <Navbar />
-        <Lock className="w-12 h-12 text-indigo-500 mb-4" />
+        <Lock className="w-12 h-12 text-primary mb-4" />
         <h1 className="text-2xl font-bold mb-2">Authentication Required</h1>
         <p className="text-neutral-400 text-sm mb-6 max-w-md text-center">
           You must be logged in to modify the public identity of this company.

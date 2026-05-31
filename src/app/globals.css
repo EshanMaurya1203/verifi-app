@@ -4,6 +4,8 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Design system: bg #080808, surface #0f0f0f, primary #b9ff4b, heading Syne, body DM Sans */
+
 :root {
   --bg: #080808;
   --bg-2: #0f0f0f;
@@ -61,12 +63,16 @@
 body {
   background: radial-gradient(circle at 50% 0px, rgba(185, 255, 75, 0.04) 0%, #080808 60%);
   color: var(--text);
-  font-family: var(--font-sans), sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", var(--font-sans), sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 .font-syne {
   font-family: "Syne", var(--font-syne), sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-dm-sans), "DM Sans", var(--font-sans), sans-serif;
 }
 
 @theme inline {

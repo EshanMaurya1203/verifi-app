@@ -104,25 +104,14 @@ export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ 
 
   const { consistencyScore: score, consistencyLevel, consistencyFlags: flags } = consistency;
   
-  const level = isDemo
-    ? (consistencyLevel === "Consistent" ? "Simulated Patterns" : "Simulated/Illustrative")
-    : (consistencyLevel === "Consistent" ? "Verified Patterns" : "Refining");
+  const level =
+    consistencyLevel === "Consistent" && consistency.hasVerificationEvidence
+      ? "Verified Patterns"
+      : "Refining";
   
-  const demoConfig = {
-    icon: ShieldQuestion,
-    gradient: "from-amber-500/10 to-amber-900/5",
-    border: "border-amber-500/20",
-    textColor: "text-amber-400",
-    badgeBg: "bg-amber-500/15",
-    badgeText: "text-amber-300",
-    barColor: "bg-amber-500",
-    barGlow: "shadow-amber-500/40",
-    description: "Illustrative simulation dataset",
-  };
-  
-  const config = isDemo
-    ? demoConfig
-    : (LEVEL_CONFIG[level as "Refining" | "Verified Patterns"] || LEVEL_CONFIG["Refining"]);
+  const config =
+    LEVEL_CONFIG[level as "Refining" | "Verified Patterns"] ||
+    LEVEL_CONFIG["Refining"];
   const LevelIcon = config.icon;
 
   return (

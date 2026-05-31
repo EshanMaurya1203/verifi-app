@@ -1,6 +1,10 @@
 import { ImageResponse } from "next/og";
 import { supabaseServer } from "@/lib/supabase-server";
-import { computeVerificationState } from "@/lib/verification-state";
+import {
+  buildVerificationStateInput,
+  computeVerificationState,
+} from "@/lib/verification-state";
+import { isDemoStartupUserId } from "@/lib/verification-data";
 
 export const runtime = "edge";
 
@@ -30,7 +34,7 @@ export async function GET(
       // 1. Fetch startup basic info
       const { data: startup, error: startupError } = await supabaseServer
         .from("startup_submissions")
-        .select("*")
+        .select("id, startup_name, mrr, penalty_count, user_id, verification_type, proof_url")
         .eq("slug", slug)
         .maybeSingle();
 
@@ -57,28 +61,27 @@ export async function GET(
       ]);
 
       // 3. Compute the full verification state
-      const state = computeVerificationState({
-        revenueTransactions: (revenueRes.data || []).map(t => ({
-          amount: t.amount,
-          timestamp: new Date(t.created_at).getTime(),
-        })),
-        providerConnections: providerRes.data || [],
-        fraudSignals: fraudRes.data || [],
-        penaltyCount: 0, // Fallback
-      });
+      const state = computeVerificationState(
+        buildVerificationStateInput({
+          revenueTransactions: revenueRes.data || [],
+          providerConnections: providerRes.data || [],
+          fraudSignals: fraudRes.data || [],
+          penaltyCount: Number(startup.penalty_count) || 0,
+          isDemoProfile: isDemoStartupUserId(startup.user_id),
+          verificationType: startup.verification_type,
+          hasProofUpload: !!startup.proof_url,
+        })
+      );
 
       mrr = Math.round(state.providerBreakdown.reduce((acc, p) => acc + p.amount, 0) || startup.mrr || 0);
       
       const tier = state.confidenceTier;
-      isVerified = tier !== "SELF_REPORTED";
+      isVerified = state.hasVerificationEvidence;
 
       trustTier = "Self Reported";
       tierColor = "#a1a1aa"; // slate-400 for high-contrast neutral
 
-      if (tier === "HIGH_CONFIDENCE") {
-        trustTier = "Payment Verified";
-        tierColor = "#b9ff4b"; // Standard neon lime-green
-      } else if (tier === "REVENUE_VERIFIED") {
+      if (tier === "REVENUE_VERIFIED") {
         trustTier = "Revenue Verified";
         tierColor = "#b9ff4b"; // Standard neon lime-green
       } else if (tier === "PAYMENT_CONNECTED") {

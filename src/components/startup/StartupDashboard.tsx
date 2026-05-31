@@ -65,9 +65,9 @@ export const StartupDashboard = ({ id }: { id: string }) => {
     return (
       <div className="min-h-[400px] flex flex-col items-center justify-center space-y-6 bg-neutral-900/20 border border-white/5 rounded-[2rem]">
         <div className="relative">
-          <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+          <Loader2 className="w-12 h-12 text-primary animate-spin" />
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
+            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
           </div>
         </div>
         <div className="text-center space-y-1">
@@ -107,8 +107,8 @@ export const StartupDashboard = ({ id }: { id: string }) => {
         <div className="xl:col-span-5 space-y-6">
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-500/10 rounded-lg">
-                <Shield className="w-4 h-4 text-indigo-400" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Shield className="w-4 h-4 text-primary" />
               </div>
               <h3 className="text-xs font-black uppercase tracking-[0.3em] text-neutral-400">Infrastructure</h3>
             </div>
@@ -124,7 +124,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
                 <button 
                   onClick={handleSync}
                   disabled={syncing}
-                  className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-indigo-400 transition-all flex items-center gap-2 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-primary transition-all flex items-center gap-2 disabled:opacity-50"
                 >
                   {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
                   {syncing ? "Syncing..." : "Sync Now"}
@@ -167,7 +167,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
       <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Active Gateways", val: data.connections.filter(c => c.connected).length, icon: Zap, color: "text-amber-400" },
-          { label: "Verification Score", val: `${formatScore(data.startup.trust_score, 0)}%`, icon: Shield, color: "text-indigo-400" },
+          { label: "Verification Score", val: `${formatScore(data.startup.trust_score, 0)}%`, icon: Shield, color: "text-primary" },
         ].map((stat, i) => (
           <div key={i} className="p-4 bg-neutral-900/20 border border-white/5 rounded-2xl flex items-center gap-4">
             <div className={`p-2 bg-neutral-900 rounded-xl ${stat.color}`}>

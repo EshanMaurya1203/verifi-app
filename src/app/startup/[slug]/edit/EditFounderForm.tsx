@@ -76,7 +76,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
             value={formData.startup_logo}
             onChange={handleChange}
             placeholder="https://example.com/logo.png"
-            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-colors"
           />
         </div>
 
@@ -90,7 +90,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
             value={formData.founder_name}
             onChange={handleChange}
             placeholder="Jane Doe"
-            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-colors"
           />
         </div>
 
@@ -104,7 +104,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
             value={formData.founder_avatar}
             onChange={handleChange}
             placeholder="https://example.com/avatar.png"
-            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-colors"
           />
         </div>
 
@@ -118,7 +118,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
             onChange={handleChange}
             placeholder="Tell us about your journey..."
             rows={4}
-            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+            className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-colors resize-none"
           />
         </div>
       </div>
@@ -127,7 +127,7 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="px-6 py-3 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-500/50 text-white rounded-xl text-sm font-bold tracking-widest uppercase transition-colors flex items-center justify-center min-w-[140px]"
+          className="px-6 py-3 bg-primary hover:bg-[#a8e630] disabled:bg-primary/50 text-primary-foreground rounded-xl text-sm font-bold tracking-widest uppercase transition-colors flex items-center justify-center min-w-[140px]"
         >
           {loading ? (
             <Loader2 className="w-5 h-5 animate-spin" />

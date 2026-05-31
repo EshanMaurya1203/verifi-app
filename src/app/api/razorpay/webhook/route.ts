@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { supabaseServer } from "@/lib/supabase-server";
 import { updateRevenueAndSnapshot } from "@/lib/webhook-handler";
+import { resolveStartupIdFromRazorpayPaymentNotes } from "@/lib/razorpay-sync";
 import crypto from "crypto";
 
 /**
@@ -76,12 +77,12 @@ interface RazorpayWebhookPayload {
     if (!payment) {
       return new Response("No payment entity in refund", { status: 400 });
     }
-    const startupId = Number(payment.notes?.startup_id);
+    const startupId = resolveStartupIdFromRazorpayPaymentNotes(payment.notes);
     const amount = payment.amount / 100;
     const paymentId = payment.id;
 
     if (!startupId) {
-      console.warn("[Razorpay Webhook] Refund missing startup_id:", paymentId);
+      console.warn("[Razorpay Webhook] Refund missing notes.startup_id:", paymentId);
       return new Response("No startup_id", { status: 200 });
     }
 
@@ -170,52 +171,16 @@ interface RazorpayWebhookPayload {
       return new Response("Ignored micro payment", { status: 200 });
     }
 
-    // Try notes first, then fall back to provider_connections lookup
-    let startupId = payment.notes?.startup_id
-      ? Number(payment.notes.startup_id)
-      : null;
+    const startupId = resolveStartupIdFromRazorpayPaymentNotes(payment.notes);
 
     if (!startupId) {
-      // Fall back: find the most recently connected Razorpay account
-      const { data: connection } = await supabaseServer
-        .from("provider_connections")
-        .select("startup_id")
-        .eq("provider", "razorpay")
-        .order("last_synced_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (connection) {
-        startupId = connection.startup_id;
-        console.log("[Razorpay Webhook] Mapped to startup via fallback:", startupId);
-      }
-    }
-
-    if (!startupId) {
-      console.warn("[Razorpay Webhook] No startup_id found for payment:", payment.id);
+      console.warn(
+        "[Razorpay Webhook] Missing notes.startup_id for payment:",
+        payment.id
+      );
       return NextResponse.json({ received: true, skipped: "no_startup_id" });
     }
 
-    const createdAt = payment.created_at
-      ? new Date(payment.created_at * 1000).toISOString()
-      : new Date().toISOString();
-
-    if (!payment.created_at) {
-      console.warn("Missing created_at in webhook, using current time");
-    }
-
-    // Record raw transaction
-    await supabaseServer.from("revenue_transactions").upsert({
-      startup_id: startupId,
-      provider: "razorpay",
-      amount: payment.amount, // stored in paise
-      currency: (payment.currency || "INR").toUpperCase(),
-      status: payment.status,
-      external_id: payment.id,
-      created_at: createdAt,
-    }, { onConflict: "external_id" });
-
-    // 🔥 Real-time revenue + snapshot + trust update
     await updateRevenueAndSnapshot(startupId, amount, "razorpay", payment.id);
 
     return NextResponse.json({ received: true });

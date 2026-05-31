@@ -7,7 +7,10 @@ import { getStartupMetrics } from "@/lib/revenue-aggregation";
 import { formatCurrency, formatGrowth, formatRank } from "@/lib/formatters";
 import type { Metadata } from "next";
 import { TrustBadge } from "@/components/startup/TrustBadge";
-import { ConfidenceTier } from "@/lib/verification-state";
+import {
+  ConfidenceTier,
+} from "@/lib/verification-state";
+import { computeVerificationStatesForStartups } from "@/lib/verification-data";
 
 export const metadata: Metadata = {
   title: "Leaderboard",
@@ -15,25 +18,6 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/leaderboard",
   },
-};
-
-const getConfidenceTier = (tier: string, status: string): ConfidenceTier => {
-  if (status === "flagged") return "SELF_REPORTED";
-  
-  const normalizedTier = tier.toLowerCase();
-  const map: Record<string, ConfidenceTier> = {
-    high_confidence: "HIGH_CONFIDENCE",
-    verified: "HIGH_CONFIDENCE",
-    revenue_verified: "REVENUE_VERIFIED",
-    trusted: "REVENUE_VERIFIED",
-    payment_connected: "PAYMENT_CONNECTED",
-    emerging: "PAYMENT_CONNECTED",
-    self_reported: "SELF_REPORTED",
-    unverified: "SELF_REPORTED",
-    flagged: "SELF_REPORTED"
-  };
-  
-  return map[normalizedTier] || "SELF_REPORTED";
 };
 
 export default async function LeaderboardPage() {
@@ -74,6 +58,13 @@ export default async function LeaderboardPage() {
     return (b.growth || 0) - (a.growth || 0);
   });
 
+  const startupIds = sortedData.map((s) => Number(s.id)).filter(Number.isFinite);
+  const demoUserIds = new Map<number, string | null>();
+  const verificationByStartup = await computeVerificationStatesForStartups(
+    startupIds,
+    demoUserIds
+  );
+
   const realStartups = sortedData.filter(s => !s.user_id?.startsWith("00000000-0000-0000-0000-"));
   const demoStartups = sortedData.filter(s => s.user_id?.startsWith("00000000-0000-0000-0000-"));
 
@@ -100,7 +91,7 @@ export default async function LeaderboardPage() {
         <section className="bg-[#0a0a0c]/60 border border-white/[0.06] rounded-[2rem] p-6 mb-12 shadow-2xl ring-1 ring-white/[0.02] backdrop-blur-xl flex flex-col md:flex-row gap-8">
           <div className="md:w-1/3 border-b md:border-b-0 md:border-r border-white/[0.06] pb-6 md:pb-0 md:pr-8">
             <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2 mb-3">
-              <Info className="w-4 h-4 text-indigo-400" />
+              <Info className="w-4 h-4 text-primary" />
               Ranking Methodology
             </h2>
             <p className="text-xs text-neutral-400 leading-relaxed">
@@ -117,7 +108,7 @@ export default async function LeaderboardPage() {
               </p>
             </div>
             <div className="flex flex-col gap-2">
-              <h3 className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
+              <h3 className="text-[10px] font-bold text-primary uppercase tracking-[0.2em] flex items-center gap-1.5">
                 <Activity className="w-3 h-3" /> Data Freshness
               </h3>
               <p className="text-xs text-neutral-500 leading-relaxed">
@@ -139,8 +130,12 @@ export default async function LeaderboardPage() {
           <div className="divide-y divide-white/[0.04]">
             {realStartups.map((row, i) => {
               const isFlagged = row.verification_status === "flagged";
-              const confidenceTier = getConfidenceTier(row.trust_tier || "unverified", row.verification_status || "unverified");
-              const isVerified = confidenceTier === "HIGH_CONFIDENCE" || confidenceTier === "REVENUE_VERIFIED" || confidenceTier === "PAYMENT_CONNECTED";
+              const confidenceTier =
+                verificationByStartup.get(Number(row.id))?.confidenceTier ||
+                "SELF_REPORTED";
+              const isVerified =
+                verificationByStartup.get(Number(row.id))?.hasVerificationEvidence ??
+                false;
               const isSelfReported = confidenceTier === "SELF_REPORTED" || isFlagged;
               
               return (
@@ -156,7 +151,7 @@ export default async function LeaderboardPage() {
                   </div>
                   
                   <div className="col-span-6 md:col-span-4 space-y-1.5">
-                    <p className={`font-bold text-sm md:text-lg tracking-tight transition-colors leading-none ${isVerified ? "text-white group-hover:text-indigo-400" : "text-neutral-400"}`}>
+                    <p className={`font-bold text-sm md:text-lg tracking-tight transition-colors leading-none ${isVerified ? "text-white group-hover:text-primary" : "text-neutral-400"}`}>
                       {row.startup_name || row.name}
                     </p>
                     <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
@@ -195,7 +190,7 @@ export default async function LeaderboardPage() {
                   </div>
 
                   <div className="col-span-1 hidden md:flex justify-end">
-                    <div className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-lg ${isVerified ? "bg-neutral-900 border-white/10 group-hover:border-indigo-500/50" : "bg-neutral-950 border-white/5"}`}>
+                    <div className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-lg ${isVerified ? "bg-neutral-900 border-white/10 group-hover:border-primary/50" : "bg-neutral-950 border-white/5"}`}>
                        <ChevronRight className={`w-4 h-4 transition-all transform group-hover:translate-x-0.5 ${isVerified ? "text-neutral-500 group-hover:text-white" : "text-neutral-700 group-hover:text-neutral-500"}`} />
                     </div>
                   </div>
@@ -248,7 +243,9 @@ export default async function LeaderboardPage() {
 
               <div className="divide-y divide-white/[0.03]">
                 {demoStartups.map((row, i) => {
-                  const confidenceTier = getConfidenceTier(row.trust_tier || "unverified", row.verification_status || "unverified");
+                  const confidenceTier =
+                    verificationByStartup.get(Number(row.id))?.confidenceTier ||
+                    "SELF_REPORTED";
                   return (
                     <Link 
                       href={`/startup/${row.slug}`} 
@@ -261,7 +258,7 @@ export default async function LeaderboardPage() {
                       
                       <div className="col-span-6 md:col-span-4 space-y-1">
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm tracking-tight text-neutral-400 group-hover:text-indigo-400 transition-colors leading-none">
+                          <p className="font-bold text-sm tracking-tight text-neutral-400 group-hover:text-primary transition-colors leading-none">
                             {row.startup_name || row.name}
                           </p>
                           <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-[8px] font-black uppercase text-neutral-500 tracking-wider">Demo</span>

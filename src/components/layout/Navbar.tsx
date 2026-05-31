@@ -2,21 +2,33 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Menu } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Menu, LogOut, LayoutDashboard, Settings, Rocket } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { getSiteUrl } from "@/lib/site-url";
+import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 
 export function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const router = useRouter();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsMobileOpen(false);
+      if (e.key === "Escape") {
+        setIsMobileOpen(false);
+        setIsDropdownOpen(false);
+      }
     };
+    const onClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onClickOutside);
 
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
@@ -28,9 +40,30 @@ export function Navbar() {
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onClickOutside);
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  const handleSignIn = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsMobileOpen(false);
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/")}`,
+      },
+    });
+  };
+
+  const handleSignOut = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDropdownOpen(false);
+    setIsMobileOpen(false);
+    await supabase.auth.signOut();
+    setUser(null);
+    router.push("/");
+  };
 
   const handleAddStartupClick = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -41,10 +74,21 @@ export function Navbar() {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getSiteUrl()}/submit`,
+          redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/submit")}`,
         },
       });
     }
+  };
+
+  const getAvatarInitials = () => {
+    if (user?.user_metadata?.full_name) {
+      return user.user_metadata.full_name.charAt(0).toUpperCase();
+    }
+    return user?.email?.charAt(0).toUpperCase() || "U";
+  };
+
+  const getAvatarUrl = () => {
+    return user?.user_metadata?.avatar_url;
   };
 
   return (
@@ -67,6 +111,7 @@ export function Navbar() {
           >
             Leaderboard
           </Link>
+          
           <Link
             href="/submit"
             onClick={handleAddStartupClick}
@@ -74,6 +119,73 @@ export function Navbar() {
           >
             Add your startup
           </Link>
+
+          {!user ? (
+            <button
+              onClick={handleSignIn}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Sign In
+            </button>
+          ) : (
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
+              >
+                {getAvatarUrl() ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={getAvatarUrl()} alt="Avatar" className="h-full w-full object-cover" />
+                ) : (
+                  getAvatarInitials()
+                )}
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-xl border border-border bg-card p-1 shadow-xl outline-none animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95">
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    Signed in as <br />
+                    <span className="font-medium text-foreground truncate block max-w-full">
+                      {user.email}
+                    </span>
+                  </div>
+                  <div className="h-px w-full bg-border my-1" />
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/my-startups"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Rocket className="h-4 w-4" />
+                    My Startups
+                  </Link>
+                  <Link
+                    href="/settings"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Link>
+                  <div className="h-px w-full bg-border my-1" />
+                  <button
+                    onClick={handleSignOut}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-500 transition-colors hover:bg-red-500/10"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         <button
@@ -89,7 +201,7 @@ export function Navbar() {
 
       <div
         className={`sm:hidden overflow-hidden border-b border-neutral-800 bg-background/92 backdrop-blur-xl transition-all duration-200 ${
-          isMobileOpen ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
+          isMobileOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="mx-auto max-w-6xl px-4 py-3">
@@ -101,6 +213,7 @@ export function Navbar() {
             >
               Leaderboard
             </Link>
+            
             <Link
               href="/submit"
               onClick={handleAddStartupClick}
@@ -108,6 +221,53 @@ export function Navbar() {
             >
               Add your startup
             </Link>
+
+            {!user ? (
+              <button
+                onClick={handleSignIn}
+                className="text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Sign In
+              </button>
+            ) : (
+              <>
+                <div className="h-px w-full bg-border my-1" />
+                <div className="text-xs text-muted-foreground">
+                  Signed in as <span className="font-medium text-foreground">{user.email}</span>
+                </div>
+                <Link
+                  href="/dashboard"
+                  onClick={() => setIsMobileOpen(false)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Dashboard
+                </Link>
+                <Link
+                  href="/my-startups"
+                  onClick={() => setIsMobileOpen(false)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Rocket className="h-4 w-4" />
+                  My Startups
+                </Link>
+                <Link
+                  href="/settings"
+                  onClick={() => setIsMobileOpen(false)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2 text-left text-sm text-red-500 transition-colors hover:text-red-400"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

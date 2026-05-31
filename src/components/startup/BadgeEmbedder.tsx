@@ -91,7 +91,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
       {/* Header */}
       <div className="p-5 border-b border-white/[0.05]">
         <h3 className="text-xs font-bold text-white mb-1 uppercase tracking-widest flex items-center gap-2">
-          <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+          <Share2 className="w-3.5 h-3.5 text-primary" />
           Share & Badge Verification
         </h3>
         <p className="text-neutral-500 text-[10px]">Verify your metrics publicly and share your verified status.</p>
@@ -126,7 +126,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleCopyBadge}
-            className="flex items-center justify-center gap-2 text-indigo-400 hover:text-white transition-all text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-2.5 rounded-xl border border-indigo-500/20 active:scale-[0.98] select-none shadow-md shadow-indigo-950/20"
+            className="flex items-center justify-center gap-2 text-primary hover:text-[#080808] transition-all text-[10px] font-black uppercase tracking-wider bg-primary/10 hover:bg-primary px-3 py-2.5 rounded-xl border border-primary/20 active:scale-[0.98] select-none shadow-md shadow-black/20"
           >
             {copiedBadge ? (
               <><Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!</>
@@ -184,7 +184,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
             <div className="p-6 border-b border-white/[0.05] flex items-center justify-between">
               <div>
                 <h4 className="text-sm font-black uppercase tracking-widest text-white flex items-center gap-2">
-                  <Code className="w-4 h-4 text-indigo-400" />
+                  <Code className="w-4 h-4 text-primary" />
                   Advanced Embed Options
                 </h4>
                 <p className="text-neutral-500 text-[10px] mt-1">Copy and embed the dynamic status badge in your frontend app or docs.</p>
@@ -229,7 +229,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
                   <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-500">HTML Embed Code</span>
                   <button
                     onClick={handleCopyBadge}
-                    className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors text-[9px] font-black uppercase tracking-widest bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/20"
+                    className="flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors text-[9px] font-black uppercase tracking-widest bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-lg border border-primary/20"
                   >
                     {copiedBadge ? (
                       <><Check className="w-3.5 h-3.5" /> Copied</>
@@ -258,7 +258,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
             <div className="p-4 bg-black/40 border-t border-white/[0.05] flex justify-end">
               <button
                 onClick={() => setShowAdvanced(false)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors shadow-lg active:scale-95"
+                className="px-4 py-2 bg-primary hover:bg-[#a8e630] text-primary-foreground rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors shadow-lg active:scale-95"
               >
                 Close
               </button>
