@@ -185,6 +185,21 @@ export default function SubmitPage() {
         const { data: { user: currentUser } } = await supabase.auth.getUser();
         if (isMounted) {
           setUser(currentUser);
+          
+          // If we are logged in and action=verify is requested, check if we have a startup and redirect
+          const searchParams = new URLSearchParams(window.location.search);
+          if (currentUser && searchParams.get("action") === "verify") {
+            const { data: startups } = await supabase
+              .from("startup_submissions")
+              .select("slug")
+              .eq("user_id", currentUser.id)
+              .order("created_at", { ascending: false });
+
+            if (startups && startups.length > 0) {
+              router.push(`/startup/${encodeURIComponent(startups[0].slug)}/verify`);
+              return;
+            }
+          }
         }
       } catch (err) {
         if (process.env.NODE_ENV === "development") {
@@ -205,10 +220,27 @@ export default function SubmitPage() {
     initAuthAndData();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (event, session) => {
         if (isMounted) {
           setUser(session?.user ?? null);
-          setIsLoading(false);
+          if (session?.user) {
+            const searchParams = new URLSearchParams(window.location.search);
+            if (searchParams.get("action") === "verify") {
+              const { data: startups } = await supabase
+                .from("startup_submissions")
+                .select("slug")
+                .eq("user_id", session.user.id)
+                .order("created_at", { ascending: false });
+
+              if (startups && startups.length > 0) {
+                router.push(`/startup/${encodeURIComponent(startups[0].slug)}/verify`);
+                return;
+              }
+            }
+            setIsLoading(false);
+          } else if (event === "SIGNED_OUT") {
+            setIsLoading(false);
+          }
         }
       }
     );
