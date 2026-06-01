@@ -100,7 +100,7 @@ export async function GET(
           provider: row.provider,
           status: row.status,
           last_synced_at: row.last_synced_at,
-          last_mrr: row.latest_revenue,
+          latest_revenue: row.latest_revenue,
         })),
         fraudSignals: fraudRes.data || [],
         penaltyCount: Number(startupRes.data.penalty_count) || 0,

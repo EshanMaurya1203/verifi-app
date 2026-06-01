@@ -29,7 +29,7 @@ export interface VerificationStateInput {
     provider: string;
     status: string;
     last_synced_at: string | null;
-    last_mrr?: number;
+    latest_revenue?: number;
   }[];
   fraudSignals: { signal_type: string }[];
   penaltyCount: number;
@@ -365,7 +365,7 @@ export function computeVerificationState(
       .filter((p) => p.status === "connected")
       .map((p) => ({
         provider: p.provider,
-        amount: Number(p.last_mrr) || 0,
+        amount: Number(p.latest_revenue) || 0,
         percentage: 0,
       })),
     verificationDepth: depthMap[confidenceTier],

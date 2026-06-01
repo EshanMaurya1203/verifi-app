@@ -161,7 +161,7 @@ export function Navbar() {
                     Dashboard
                   </Link>
                   <Link
-                    href="/my-startups"
+                    href="/dashboard"
                     onClick={() => setIsDropdownOpen(false)}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -169,7 +169,7 @@ export function Navbar() {
                     My Startups
                   </Link>
                   <Link
-                    href="/settings"
+                    href="/dashboard"
                     onClick={() => setIsDropdownOpen(false)}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -246,7 +246,7 @@ export function Navbar() {
                   Dashboard
                 </Link>
                 <Link
-                  href="/my-startups"
+                  href="/dashboard"
                   onClick={() => setIsMobileOpen(false)}
                   className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
@@ -254,7 +254,7 @@ export function Navbar() {
                   My Startups
                 </Link>
                 <Link
-                  href="/settings"
+                  href="/dashboard"
                   onClick={() => setIsMobileOpen(false)}
                   className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >

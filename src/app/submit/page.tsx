@@ -150,10 +150,12 @@ export default function SubmitPage() {
   }, [successMessage]);
 
   const handleGoogleLogin = async () => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const nextParam = searchParams.get("next") || `${window.location.pathname}${window.location.search}`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/submit")}`,
+        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent(nextParam)}`,
       },
     });
   };
@@ -183,12 +185,14 @@ export default function SubmitPage() {
     const initAuthAndData = async () => {
       try {
         const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (isMounted) {
+        if (!isMounted) return;
+
+        if (currentUser) {
           setUser(currentUser);
           
-          // If we are logged in and action=verify is requested, check if we have a startup and redirect
+          // Check action=verify redirect
           const searchParams = new URLSearchParams(window.location.search);
-          if (currentUser && searchParams.get("action") === "verify") {
+          if (searchParams.get("action") === "verify") {
             const { data: startups } = await supabase
               .from("startup_submissions")
               .select("slug")
@@ -200,12 +204,15 @@ export default function SubmitPage() {
               return;
             }
           }
+          setIsLoading(false);
+        } else {
+          // Unauthenticated user - trigger automatic Google OAuth redirection
+          await handleGoogleLogin();
         }
       } catch (err) {
         if (process.env.NODE_ENV === "development") {
           console.warn("[Auth] Current user verification deferred or interrupted:", err);
         }
-      } finally {
         if (isMounted) {
           setIsLoading(false);
         }
@@ -221,26 +228,12 @@ export default function SubmitPage() {
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (isMounted) {
-          setUser(session?.user ?? null);
-          if (session?.user) {
-            const searchParams = new URLSearchParams(window.location.search);
-            if (searchParams.get("action") === "verify") {
-              const { data: startups } = await supabase
-                .from("startup_submissions")
-                .select("slug")
-                .eq("user_id", session.user.id)
-                .order("created_at", { ascending: false });
-
-              if (startups && startups.length > 0) {
-                router.push(`/startup/${encodeURIComponent(startups[0].slug)}/verify`);
-                return;
-              }
-            }
-            setIsLoading(false);
-          } else if (event === "SIGNED_OUT") {
-            setIsLoading(false);
-          }
+        if (!isMounted) return;
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          setIsLoading(false);
+        } else if (event === "SIGNED_OUT") {
+          setIsLoading(false);
         }
       }
     );

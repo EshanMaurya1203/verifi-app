@@ -2,12 +2,18 @@ import { verifyStartupOwnership } from "@/lib/auth-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { EditFounderForm } from "./EditFounderForm";
 import { AlertTriangle, Lock } from "lucide-react";
+import { redirect } from "next/navigation";
 
 export default async function EditStartupProfile({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
   const slug = decodeURIComponent(resolvedParams.slug);
 
   const { authenticated, owned, startup, isDemo } = await verifyStartupOwnership(slug);
+
+  if (!authenticated) {
+    const nextUrl = `/startup/${encodeURIComponent(slug)}/edit`;
+    redirect(`/submit?next=${encodeURIComponent(nextUrl)}`);
+  }
 
   if (!startup) {
     return (
@@ -16,19 +22,6 @@ export default async function EditStartupProfile({ params }: { params: Promise<{
         <AlertTriangle className="w-12 h-12 text-neutral-600 mb-4" />
         <h1 className="text-2xl font-bold mb-2">Profile Not Found</h1>
         <p className="text-neutral-400">The requested startup profile could not be located.</p>
-      </div>
-    );
-  }
-
-  if (!authenticated) {
-    return (
-      <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
-        <Navbar />
-        <Lock className="w-12 h-12 text-primary mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Authentication Required</h1>
-        <p className="text-neutral-400 text-sm mb-6 max-w-md text-center">
-          You must be logged in to modify the public identity of this company.
-        </p>
       </div>
     );
   }

@@ -22,7 +22,7 @@ export async function computeVerificationStateForStartup(
       .limit(200),
     supabaseServer
       .from("provider_connections")
-      .select("provider, status, last_synced_at, last_mrr")
+      .select("provider, status, last_synced_at, latest_revenue")
       .eq("startup_id", startupId),
     supabaseServer
       .from("fraud_signals")
@@ -67,7 +67,7 @@ export async function computeVerificationStatesForStartups(
       .order("created_at", { ascending: true }),
     supabaseServer
       .from("provider_connections")
-      .select("startup_id, provider, status, last_synced_at, last_mrr")
+      .select("startup_id, provider, status, last_synced_at, latest_revenue")
       .in("startup_id", startupIds),
     supabaseServer
       .from("fraud_signals")
@@ -88,7 +88,7 @@ export async function computeVerificationStatesForStartups(
 
   const providersByStartup = new Map<
     number,
-    { provider: string; status: string; last_synced_at: string | null; last_mrr?: number }[]
+    { provider: string; status: string; last_synced_at: string | null; latest_revenue?: number }[]
   >();
   for (const row of providerRes.data || []) {
     const list = providersByStartup.get(row.startup_id) || [];
@@ -96,7 +96,7 @@ export async function computeVerificationStatesForStartups(
       provider: row.provider,
       status: row.status,
       last_synced_at: row.last_synced_at,
-      last_mrr: row.last_mrr,
+      latest_revenue: row.latest_revenue,
     });
     providersByStartup.set(row.startup_id, list);
   }

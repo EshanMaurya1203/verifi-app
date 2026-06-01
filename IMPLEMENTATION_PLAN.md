@@ -1,6 +1,6 @@
 # Verifi — Implementation Plan
 
-> **Last updated:** 2026-05-31  
+> **Last updated:** 2026-05-31 (Post-Auth & Dashboard Integration)  
 > **Source of truth:** Reflects the **actual** codebase after production-readiness, trust-system, payment-integration, and first-customer audits.
 
 ---
@@ -31,6 +31,8 @@ Sign in (Google) → /submit (create startup) → /startup/{slug}/verify (connec
 | OAuth redirect helper | `src/lib/oauth-redirect.ts` | Uses `window.location.origin` in browser; falls back to `NEXT_PUBLIC_SITE_URL` |
 | Server auth | `src/lib/auth-server.ts` | Bearer token or cookie session; `verifyStartupOwnership()` |
 | Verify-page login | `src/components/auth/VerifyLoginPrompt.tsx` | Google sign-in when unauthenticated on `/verify` |
+| Navbar state & Sign-Out | `src/components/layout/Navbar.tsx` | Dynamic user session parsing, initials avatar display, dropdown access, and functional sign-out flow |
+| Safe login click handlers | `src/app/page.tsx` | Directly retrieves active session on user action to prevent premature redirects |
 
 **OAuth entry points:** Navbar, homepage CTA, `/submit`, `/admin`, verify page — all redirect through `/auth/callback?next=...`.
 
@@ -126,7 +128,17 @@ Sign in (Google) → /submit (create startup) → /startup/{slug}/verify (connec
 
 ---
 
-### 1.6 Aggregation, webhooks & data layer
+### 1.6 Protected Founder Dashboard
+
+| Feature | Path | Notes |
+|---------|------|-------|
+| Protected Dashboard | `src/app/dashboard/page.tsx` | Secure route rendering all startups owned by the logged-in founder |
+| Owned Startup Queries | `src/app/dashboard/page.tsx` | Dynamically fetches database listings for the authenticated `user_id` |
+| Startup Operations Grid | `src/app/dashboard/page.tsx` | Provides quick links to manage credentials, sync connections, and view public pages |
+
+---
+
+### 1.7 Aggregation, webhooks & data layer
 
 | System | Path |
 |--------|------|
@@ -140,7 +152,7 @@ Sign in (Google) → /submit (create startup) → /startup/{slug}/verify (connec
 
 ---
 
-### 1.7 Marketing & discovery pages
+### 1.8 Marketing & discovery pages
 
 | Page | Path |
 |------|------|
@@ -227,6 +239,15 @@ Sitemap, robots, OG routes, premium copy pass (eliminated sci-fi cyberpunk termi
 | G8 | Admin gate | `admin/page.tsx` | Requires `isAdmin()` session; limited select columns |
 | G9 | Proof validation | `submit/page.tsx` | Proof file required when verification type = proof |
 
+### Phase H — Authentication & Dashboard Integration ✅ (2026-05-31)
+| # | Task | Files | Outcome |
+|---|------|-------|---------|
+| H1 | Navbar session dropdown | `Navbar.tsx` | Dynamic user profile visualization (emails + avatar) with structured access controls |
+| H2 | Dynamic sign-out flow | `Navbar.tsx` | Implemented secure Supabase Auth signOut handler |
+| H3 | Protected founder dashboard | `dashboard/page.tsx` | Created a protected route that maps database items precisely to owner `user_id` |
+| H4 | Pre-emptive login guards | `page.tsx`, `Navbar.tsx` | Checked active Supabase sessions inside click handlers directly, preventing redundant Google redirect loops |
+| H5 | Onboarding UX fixes | `submit/page.tsx`, `page.tsx` | Handled custom routing queries (`action=verify`) to return logged-in users straight to their startup configurations |
+
 ---
 
 ## 4. Environment variables
@@ -259,7 +280,6 @@ Sitemap, robots, OG routes, premium copy pass (eliminated sci-fi cyberpunk termi
 | **Connections API** | `GET /api/startup/[id]/connections` is public | Add ownership check or redact |
 | **Rate limits** | In-memory per instance | Upstash/Redis for production |
 | **Proof storage** | Public URLs possible | Private bucket + signed URLs |
-| **Logout** | No `signOut` in Navbar | Add sign-out control |
 | **`.env.example`** | Missing | Add documented template |
 | **OG currency** | OG route may show ₹ for all | Use provider currency from breakdown |
 | **Dead code** | `VerificationFlow.tsx` unused | Remove or consolidate |
@@ -297,7 +317,6 @@ Sitemap, robots, OG routes, premium copy pass (eliminated sci-fi cyberpunk termi
 
 - [x] Confidence tier type-safety across profile, leaderboard, OG, badge.
 - [x] Remove duplicate `supabase-client.ts` (merged into `src/lib/supabase.ts`).
-- [x] Escape unescaped entities in JSX files (resolved `react/no-unescaped-entities` error in `privacy/page.tsx`).
 - [ ] Remove unused imports (`VerificationTransparencyCard`, `sync.ts`, etc.).
 - [ ] Replace `any` in provider integrations with typed payloads.
 - [ ] Distributed rate limiting for production traffic.

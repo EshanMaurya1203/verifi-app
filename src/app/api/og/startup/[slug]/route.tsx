@@ -56,7 +56,7 @@ export async function GET(
           .eq("startup_id", startupId),
         supabaseServer
           .from("provider_connections")
-          .select("provider, status, last_synced_at, last_mrr")
+          .select("provider, status, last_synced_at, latest_revenue")
           .eq("startup_id", startupId)
       ]);
 

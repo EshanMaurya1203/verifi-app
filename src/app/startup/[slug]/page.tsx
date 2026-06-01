@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
   const { data: providers } = await supabaseServer
     .from("provider_connections")
-    .select("provider, status, last_synced_at, last_mrr")
+    .select("provider, status, last_synced_at, latest_revenue")
     .eq("startup_id", startup.id)
     .eq("status", "connected");
 
@@ -145,7 +145,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     safeSupabaseQuery<any[]>(
       supabaseServer
         .from("provider_connections")
-        .select("provider, status, last_synced_at, last_mrr")
+        .select("provider, status, last_synced_at, latest_revenue")
         .eq("startup_id", startupId)
         .eq("status", "connected")
     ),

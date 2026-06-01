@@ -4,6 +4,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { VerifyLoginPrompt } from "@/components/auth/VerifyLoginPrompt";
 import { AlertTriangle, Lock } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function VerifyPage({
   params,
@@ -15,6 +16,11 @@ export default async function VerifyPage({
 
   const { authenticated, owned, startup, isDemo } = await verifyStartupOwnership(slug);
 
+  if (!authenticated) {
+    const nextUrl = `/startup/${encodeURIComponent(slug)}/verify`;
+    redirect(`/submit?next=${encodeURIComponent(nextUrl)}`);
+  }
+
   if (!startup) {
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
@@ -22,23 +28,6 @@ export default async function VerifyPage({
         <AlertTriangle className="w-12 h-12 text-neutral-600 mb-4" />
         <h1 className="text-2xl font-bold mb-2">Profile Not Found</h1>
         <p className="text-neutral-400">The requested startup profile could not be located.</p>
-      </div>
-    );
-  }
-
-  if (!authenticated) {
-    return (
-      <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
-        <Navbar />
-        <Lock className="w-12 h-12 text-primary mb-4" />
-        <h1 className="text-2xl font-bold mb-2">Authentication Required</h1>
-        <p className="text-neutral-400 text-sm mb-6 max-w-md text-center">
-          You must be logged in to execute verification actions for this company.
-        </p>
-        <VerifyLoginPrompt slug={slug} />
-        <Link href="/" className="mt-6 text-xs font-bold uppercase tracking-wider text-neutral-500 hover:text-white">
-          Back to home
-        </Link>
       </div>
     );
   }

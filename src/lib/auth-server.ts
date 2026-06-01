@@ -12,8 +12,8 @@ export async function getAuthenticatedUser(): Promise<User | null> {
       const token = authHeader.replace("Bearer ", "");
       if (token) {
         const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key"
         );
         const { data: { user } } = await supabase.auth.getUser(token);
         if (user) return user;
@@ -23,8 +23,8 @@ export async function getAuthenticatedUser(): Promise<User | null> {
     // 2. Fallback to browser cookies
     const cookieStore = await cookies();
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key",
       {
         cookies: {
           getAll() {
