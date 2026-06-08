@@ -24,12 +24,12 @@ export async function GET(
     let providersConnected: string[] = [];
 
     if (slug === "default") {
-      startupName = "Verifi Platform";
+      startupName = "Verifii Platform";
       isVerified = true;
       trustTier = "Payment Verified";
       tierColor = "#b9ff4b";
       mrr = 57428000; // ₹5.7 Cr collective verification volume
-      providersConnected = ["stripe", "razorpay", "paddle"];
+      providersConnected = ["stripe", "razorpay"];
     } else {
       // 1. Fetch startup basic info
       const { data: startup, error: startupError } = await supabaseServer
@@ -136,7 +136,7 @@ export async function GET(
               position: "relative",
             }}
           >
-            {/* Verifi Logo Top Right */}
+            {/* Verifii Logo Top Right */}
             <div
               style={{
                 position: "absolute",
@@ -148,7 +148,7 @@ export async function GET(
               }}
             >
               <div style={{ width: "24px", height: "24px", borderRadius: "6px", backgroundColor: "#b9ff4b", display: "flex" }} />
-              <span style={{ fontSize: "20px", fontWeight: "900", color: "#fff", letterSpacing: "-0.5px" }}>Verifi</span>
+              <span style={{ fontSize: "20px", fontWeight: "900", color: "#fff", letterSpacing: "-0.5px" }}>verifii</span>
             </div>
 
             {/* Content Body */}

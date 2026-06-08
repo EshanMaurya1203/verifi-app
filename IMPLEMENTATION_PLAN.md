@@ -1,7 +1,7 @@
-# Verifi — Implementation Plan
+# Verifii — Implementation Plan
 
-> **Last updated:** 2026-05-31 (Post-Auth & Dashboard Integration)  
-> **Source of truth:** Reflects the **actual** codebase after production-readiness, trust-system, payment-integration, and first-customer audits.
+> **Last updated:** 2026-06-06 (Branding Migration to Verifii)  
+> **Source of truth:** Reflects the **actual** codebase after production-readiness, trust-system, payment-integration, database fixes, currency standardization audits, and branding migration.
 
 ---
 
@@ -33,6 +33,8 @@ Sign in (Google) → /submit (create startup) → /startup/{slug}/verify (connec
 | Verify-page login | `src/components/auth/VerifyLoginPrompt.tsx` | Google sign-in when unauthenticated on `/verify` |
 | Navbar state & Sign-Out | `src/components/layout/Navbar.tsx` | Dynamic user session parsing, initials avatar display, dropdown access, and functional sign-out flow |
 | Safe login click handlers | `src/app/page.tsx` | Directly retrieves active session on user action to prevent premature redirects |
+| Auth routing guards & redirects | `src/app/startup/[slug]/verify/page.tsx`, `src/app/startup/[slug]/edit/page.tsx` | Redirects unauthenticated page views to `/submit?next=...` instead of lock screens |
+| Google OAuth redirect parameters | `src/app/submit/page.tsx` | Extracts `next` query parameter and forwards to Google OAuth callback to return users to their original routes |
 
 **OAuth entry points:** Navbar, homepage CTA, `/submit`, `/admin`, verify page — all redirect through `/auth/callback?next=...`.
 
@@ -140,15 +142,16 @@ Sign in (Google) → /submit (create startup) → /startup/{slug}/verify (connec
 
 ### 1.7 Aggregation, webhooks & data layer
 
-| System | Path |
-|--------|------|
-| Unified MRR aggregation | `src/lib/revenue-aggregation.ts` |
-| Revenue snapshots / transactions | `revenue_snapshots`, `revenue_transactions` tables |
-| Provider connections | `supabase/migrations/20240416000011_provider_connections.sql` |
-| Fraud signals | `src/lib/fraud.ts`, `fraud_signals` table |
-| Verification logs | `verification_logs` table |
-| Rate limiting | `src/lib/rate-limit.ts` (in-memory; serverless caveat) |
-| Safe client fetch | `src/lib/safe-network.ts` (8s timeout) |
+| System | Path | Notes |
+|--------|------|-------|
+| Unified MRR aggregation | `src/lib/revenue-aggregation.ts` | Normalizes and aggregates multi-currency provider revenues (Stripe USD to INR via static exchange rate `83.50`, Razorpay INR) |
+| Provider currency display | `src/app/startup/[slug]/page.tsx` | Converts normalized database INR values back to provider-native currency (USD/INR) for public compositions display |
+| Revenue snapshots / transactions | `revenue_snapshots`, `revenue_transactions` tables | Stores aggregated revenue history and granular payment events |
+| Provider connections | `supabase/migrations/20240416000011_provider_connections.sql` | Stores connected provider meta, credentials, sync status, and `latest_revenue` (aligned from `last_mrr`) |
+| Fraud signals | `src/lib/fraud.ts`, `fraud_signals` table | Analyzes anomalies and penalizes trust scores |
+| Verification logs | `verification_logs` table | System audit trail logs |
+| Rate limiting | `src/lib/rate-limit.ts` | In-memory API access limits (serverless caveat) |
+| Safe client fetch | `src/lib/safe-network.ts` | Network request helper with 8s timeouts |
 
 ---
 
@@ -247,6 +250,23 @@ Sitemap, robots, OG routes, premium copy pass (eliminated sci-fi cyberpunk termi
 | H3 | Protected founder dashboard | `dashboard/page.tsx` | Created a protected route that maps database items precisely to owner `user_id` |
 | H4 | Pre-emptive login guards | `page.tsx`, `Navbar.tsx` | Checked active Supabase sessions inside click handlers directly, preventing redundant Google redirect loops |
 | H5 | Onboarding UX fixes | `submit/page.tsx`, `page.tsx` | Handled custom routing queries (`action=verify`) to return logged-in users straight to their startup configurations |
+
+### Phase I — Database Alignment, Authentication Robustness & Currency Normalization ✅ (2026-06-02)
+| # | Task | Files | Outcome |
+|---|------|-------|---------|
+| I1 | Fix database schema mismatch | `verification-data.ts`, `overview/route.ts` | Changed queries from deprecated/non-existent `last_mrr` to `latest_revenue` on `provider_connections` table |
+| I2 | Build-time env resilience | `supabase.ts`, `auth-server.ts`, `supabase-server.ts` | Configured fallback placeholders to prevent Next.js build-time errors when env variables are not present |
+| I3 | Auth routing & OAuth callback parameters | `verify/page.tsx`, `edit/page.tsx`, `submit/page.tsx` | Unauthenticated users redirect to `/submit?next=...` and get returned to their original destination after login |
+| I4 | Multi-currency revenue normalization | `revenue-aggregation.ts` | Introduced static conversion factor (`USD_TO_INR = 83.50`) and normalized provider revenues to INR in database/scoring while tracking `originalRevenue`/`originalCurrency` |
+| I5 | Public profile display currency | `startup/[slug]/page.tsx` | Decoupled normalized database currency from UI; converted breakdown displays back to native provider currencies (USD for Stripe) |
+
+### Phase J — Branding Migration ✅ (2026-06-06)
+Replaced all user-facing instances of "Verifi" with "Verifii" across the application while preserving backend references.
+
+| # | Task | Files | Outcome |
+|---|------|-------|---------|
+| J1 | App-wide rebranding | Navbar, Footer, Page content, Meta tags | Updated "Verifi" to "Verifii" in all user-facing text, logos, terms of service, and privacy policy |
+| J2 | Infrastructure preservation | API routes, DB schema, Env vars | Maintained original `verifi` references in database schemas, environment variables, API endpoints, and support email addresses |
 
 ---
 

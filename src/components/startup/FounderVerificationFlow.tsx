@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { safeFetch } from "@/lib/safe-network";
 import { 
   ShieldCheck, 
@@ -13,9 +13,11 @@ import {
   ArrowRight,
   Fingerprint,
   ScanSearch,
-  Activity
+  Activity,
+  KeyRound
 } from "lucide-react";
 import { formatScore } from "@/lib/formatters";
+import { RazorpayOnboarding } from "./RazorpayOnboarding";
 
 type VerificationStep = "connect" | "syncing" | "analyzing" | "summary" | "incomplete";
 
@@ -25,11 +27,14 @@ interface FounderVerificationFlowProps {
   isDemo?: boolean;
 }
 
-export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = ({ startupId, slug, isDemo = false }) => {
+const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ startupId, slug, isDemo = false }) => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const stripeStatus = searchParams?.get("stripe");
   
   const [currentStep, setCurrentStep] = useState<VerificationStep>("connect");
   const [provider, setProvider] = useState<"stripe" | "razorpay" | null>(null);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   
   // Form State
   const [stripeKey, setStripeKey] = useState("");
@@ -73,31 +78,32 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
     return () => clearInterval(timer);
   }, [currentStep, autoForwardSeconds]);
 
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isDemo) return;
+  // Handle Stripe Connect OAuth Redirect Status
+  useEffect(() => {
+    if (stripeStatus === "error" && !errorMsg) {
+      setErrorMsg("Stripe connection failed or was cancelled.");
+      router.replace(`/startup/${slug}/verify`, { scroll: false });
+    } else if (stripeStatus === "success" && currentStep === "connect" && !isAutoSyncing) {
+      setIsAutoSyncing(true);
+      router.replace(`/startup/${slug}/verify`, { scroll: false });
+      handleAutoSync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stripeStatus, currentStep, isAutoSyncing]);
+
+  const runSyncProcess = async (bodyPayload: any) => {
     setErrorMsg(null);
     setStartTime(Date.now());
     setCurrentStep("syncing");
     setTimeLeft(45);
 
     try {
-      let syncResult;
-      if (provider === "stripe") {
-        syncResult = await safeFetch<any>("/api/sync/stripe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey: stripeKey, startup_id: startupId }),
-        });
-      } else if (provider === "razorpay") {
-        syncResult = await safeFetch<any>("/api/sync/razorpay", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key_id: rzpKeyId, key_secret: rzpKeySecret, startup_id: startupId })
-        });
-      } else {
-        throw new Error("No provider selected");
-      }
+      const endpoint = bodyPayload.key_id ? "/api/sync/razorpay" : "/api/sync/stripe";
+      const syncResult = await safeFetch<any>(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyPayload),
+      });
 
       if (!syncResult.ok || !syncResult.data) {
         throw new Error(syncResult.error?.message || "Verification connection failed.");
@@ -133,7 +139,24 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
       
       setErrorMsg(friendlyError);
       setCurrentStep("incomplete");
+      setIsAutoSyncing(false);
     }
+  };
+
+  const handleAutoSync = () => {
+    if (isDemo) return;
+    runSyncProcess({ startup_id: startupId });
+  };
+
+  const handleConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isDemo) return;
+    
+    const bodyPayload = provider === "stripe" 
+      ? { apiKey: stripeKey, startup_id: startupId }
+      : { key_id: rzpKeyId, key_secret: rzpKeySecret, startup_id: startupId };
+
+    await runSyncProcess(bodyPayload);
   };
 
   const handlePublish = () => {
@@ -212,27 +235,52 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
                 </button>
               </div>
             ) : !provider ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-6">
+                {/* Primary OAuth CTA */}
                 <button 
-                  onClick={() => setProvider("stripe")}
-                  className="p-6 bg-neutral-900/80 border border-white/5 hover:border-primary/50 hover:bg-primary/5 rounded-2xl flex flex-col items-center gap-4 transition-all group"
+                  onClick={() => window.location.href = `/api/stripe/connect?startup_id=${startupId}`}
+                  className="w-full bg-[#635BFF] text-white py-4 px-6 rounded-xl font-black uppercase tracking-widest text-[12px] hover:bg-[#5851E5] transition-colors flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(99,91,255,0.3)] hover:shadow-[0_0_30px_rgba(99,91,255,0.5)]"
                 >
-                  <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-primary/10 transition-colors">
-                    <Globe className="w-8 h-8 text-neutral-400 group-hover:text-primary transition-colors" />
-                  </div>
-                  <span className="font-bold text-lg">Stripe</span>
+                  <Globe className="w-5 h-5" /> Connect with Stripe
                 </button>
+                
+                <div className="flex items-center gap-4 w-full">
+                  <div className="h-px bg-white/10 flex-1" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Or use manual keys</span>
+                  <div className="h-px bg-white/10 flex-1" />
+                </div>
 
-                <button 
-                  onClick={() => setProvider("razorpay")}
-                  className="p-6 bg-neutral-900/80 border border-white/5 hover:border-blue-500/50 hover:bg-blue-500/5 rounded-2xl flex flex-col items-center gap-4 transition-all group"
-                >
-                  <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-blue-500/10 transition-colors">
-                    <CreditCard className="w-8 h-8 text-neutral-400 group-hover:text-blue-400 transition-colors" />
-                  </div>
-                  <span className="font-bold text-lg">Razorpay</span>
-                </button>
+                {/* Manual Fallbacks */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => setProvider("stripe")}
+                    className="p-4 bg-neutral-900/80 border border-white/5 hover:border-white/20 hover:bg-white/5 rounded-xl flex flex-col items-center gap-3 transition-all group"
+                  >
+                    <span className="font-bold text-sm text-neutral-400 group-hover:text-white transition-colors">Stripe (Manual Key)</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setProvider("razorpay")}
+                    className="p-4 bg-neutral-900/80 border border-white/5 hover:border-[#2D81F7]/50 hover:bg-[#2D81F7]/5 rounded-xl flex flex-col items-center gap-3 transition-all group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#2D81F7]/10 flex items-center justify-center">
+                      <KeyRound className="w-4 h-4 text-[#2D81F7]/60 group-hover:text-[#2D81F7] transition-colors" />
+                    </div>
+                    <span className="font-bold text-sm text-neutral-400 group-hover:text-[#2D81F7] transition-colors">Razorpay Keys</span>
+                    <span className="text-[10px] text-neutral-600 group-hover:text-neutral-400 transition-colors">Key ID + Key Secret</span>
+                  </button>
+                </div>
               </div>
+            ) : provider === "razorpay" ? (
+              <RazorpayOnboarding
+                rzpKeyId={rzpKeyId}
+                rzpKeySecret={rzpKeySecret}
+                onKeyIdChange={setRzpKeyId}
+                onKeySecretChange={setRzpKeySecret}
+                onSubmit={handleConnect}
+                onBack={() => setProvider(null)}
+                errorMsg={errorMsg}
+              />
             ) : (
               <form onSubmit={handleConnect} className="space-y-6">
                 <button 
@@ -254,33 +302,6 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
                       onChange={(e) => setStripeKey(e.target.value)}
                       className="w-full bg-black border border-white/10 p-4 rounded-xl outline-none focus:border-primary font-mono text-sm"
                     />
-                  </div>
-                )}
-
-                {provider === "razorpay" && (
-                  <div className="space-y-4">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Razorpay Key ID</label>
-                      <input 
-                        required 
-                        type="text" 
-                        placeholder="rzp_live_..." 
-                        value={rzpKeyId}
-                        onChange={(e) => setRzpKeyId(e.target.value)}
-                        className="w-full bg-black border border-white/10 p-4 rounded-xl outline-none focus:border-blue-500 font-mono text-sm"
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Razorpay Key Secret</label>
-                      <input 
-                        required 
-                        type="password" 
-                        placeholder="••••••••••••••••" 
-                        value={rzpKeySecret}
-                        onChange={(e) => setRzpKeySecret(e.target.value)}
-                        className="w-full bg-black border border-white/10 p-4 rounded-xl outline-none focus:border-blue-500 font-mono text-sm"
-                      />
-                    </div>
                   </div>
                 )}
 
@@ -386,5 +407,17 @@ export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (
 
       </div>
     </div>
+  );
+};
+
+export const FounderVerificationFlow: React.FC<FounderVerificationFlowProps> = (props) => {
+  return (
+    <Suspense fallback={
+      <div className="w-full max-w-2xl mx-auto flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-neutral-400 animate-spin" />
+      </div>
+    }>
+      <FounderVerificationFlowInner {...props} />
+    </Suspense>
   );
 };

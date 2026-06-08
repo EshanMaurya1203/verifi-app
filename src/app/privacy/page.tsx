@@ -4,14 +4,40 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Verifi",
-  description: "Learn how Verifi protects, verifies, and secures your startup's financial data with read-only integrations.",
+  title: "Privacy Policy",
+  description: "Learn how Verifii protects, verifies, and secures your startup's financial data with read-only integrations.",
+  alternates: {
+    canonical: "https://www.verifii.in/privacy/",
+  }
+};
+
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://www.verifii.in/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Privacy Policy",
+      "item": "https://www.verifii.in/privacy/"
+    }
+  ]
 };
 
 export default function PrivacyPolicyPage() {
   return (
     <div className="min-h-screen bg-[#050507] text-white font-sans selection:bg-primary selection:text-[#080808]">
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
 
       <main className="max-w-4xl mx-auto px-6 pt-32 pb-24">
         {/* Back Link */}
@@ -43,10 +69,10 @@ export default function PrivacyPolicyPage() {
         <section className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 backdrop-blur-md rounded-3xl p-8 mb-16 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 blur-[40px] rounded-full" />
           <h2 className="text-lg font-black uppercase tracking-wider text-white mb-4 flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" /> The Verifi Commitment
+            <ShieldCheck className="w-5 h-5 text-emerald-400" /> The Verifii Commitment
           </h2>
           <p className="text-neutral-300 text-sm leading-relaxed mb-4">
-            Verifi is built to bring ultimate clarity and trust to the startup ecosystem. To achieve this, security and privacy are native architectural features of our platform. We strictly access financial logs through secure, read-only authorized API channels and verify startup metrics with zero modification permissions.
+            Verifii is built to bring ultimate clarity and trust to the startup ecosystem. To achieve this, security and privacy are native architectural features of our platform. We strictly access financial logs through secure, read-only authorized API channels and verify startup metrics with zero modification permissions.
           </p>
           <p className="text-neutral-400 text-xs font-semibold leading-relaxed">
             We never sell, rent, or distribute your transaction lists or proprietary revenue metrics to data brokers or third-party advertisers. All telemetry, credential handling, and audit parameters are encrypted at rest and in transit.
@@ -61,7 +87,7 @@ export default function PrivacyPolicyPage() {
               <span className="text-primary">01.</span> Collected Information
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
-              When registering a startup profile on Verifi, we collect key metadata necessary to identify your business entity and establish verified records:
+              When registering a startup profile on Verifii, we collect key metadata necessary to identify your business entity and establish verified records:
             </p>
             <ul className="list-disc pl-5 text-neutral-400 text-sm space-y-2 leading-relaxed">
               <li><strong className="text-white">Founder Details:</strong> Full name, verified business email, social profile links (LinkedIn/Twitter), title, and biographic profile parameters.</li>
@@ -79,7 +105,7 @@ export default function PrivacyPolicyPage() {
               To verify startup revenue with zero synthetic bias, we integrate directly with standard payment processing gateways (Stripe, Razorpay) using secure API authorization tokens:
             </p>
             <ul className="list-disc pl-5 text-neutral-400 text-sm space-y-2 leading-relaxed">
-              <li><strong className="text-white">Read-Only Authority:</strong> Every payment credential connected to Verifi operates under isolated, strictly read-only execution roles. Verifi is architecturally blocked from creating charges, issuing refunds, modifying billing profiles, or moving customer balances.</li>
+              <li><strong className="text-white">Read-Only Authority:</strong> Every payment credential connected to Verifii operates under isolated, strictly read-only execution roles. Verifii is architecturally blocked from creating charges, issuing refunds, modifying billing profiles, or moving customer balances.</li>
               <li><strong className="text-white">Encrypted Vault Storage:</strong> Connected gateway tokens are encrypted in our database using dynamic AES-256 encryption keys to safeguard against unauthorized database access.</li>
               <li><strong className="text-white">Dynamic Snapshot Engine:</strong> Transactions are synced silently in the background to calculate MRR (Monthly Recurring Revenue), growth momentum, and transaction authenticity statistics.</li>
             </ul>
@@ -101,7 +127,7 @@ export default function PrivacyPolicyPage() {
               <span className="text-primary">04.</span> Information Retention & Vaulting
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
-              We retain account data and aggregated financial snapshots as long as your profile remains registered on the platform. If a founder decides to offboard, they can trigger an atomic credentials wipe. This wipes connected payment access tokens, historical raw transactions, and calculated snapshots from Verifi&apos;s database, leaving zero trailing residual logs.
+              We retain account data and aggregated financial snapshots as long as your profile remains registered on the platform. If a founder decides to offboard, they can trigger an atomic credentials wipe. This wipes connected payment access tokens, historical raw transactions, and calculated snapshots from Verifii&apos;s database, leaving zero trailing residual logs.
             </p>
           </section>
 
@@ -138,11 +164,11 @@ export default function PrivacyPolicyPage() {
                 <p className="text-neutral-500 text-xs">For access key inquiries, cryptographic wipes, or data audits.</p>
               </div>
               <a 
-                href="mailto:privacy@verifi.app" 
+                href="mailto:privacy@verifii.in" 
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-xs font-bold uppercase tracking-wider text-primary/80"
               >
                 <Mail className="w-3.5 h-3.5" />
-                privacy@verifi.app
+                privacy@verifii.in
               </a>
             </div>
           </section>

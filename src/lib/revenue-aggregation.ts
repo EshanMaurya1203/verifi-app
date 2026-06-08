@@ -9,11 +9,19 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
+/** 
+ * Static FX rate for simplicity. 
+ * In production, this could be fetched dynamically from an exchange rate API.
+ */
+export const USD_TO_INR = 83.50;
+
 /** Normalized revenue result from any single provider */
 export type ProviderRevenue = {
   provider: string;
-  revenue: number;         // base currency (rupees / dollars)
-  currency: string;        // normalized to "INR"
+  originalRevenue: number; // The exact amount in source currency
+  originalCurrency: string; // The source currency (e.g. USD, INR)
+  revenue: number;         // Normalized to INR
+  currency: string;        // Always "INR"
   transactionCount: number;
   success: boolean;
   error?: string;
@@ -52,10 +60,15 @@ export async function getStripeConnectRevenue(
       0
     );
 
+    const originalRevenue = totalCents / 100;
+    const originalCurrency = (charges[0]?.currency || "usd").toUpperCase();
+
     return {
       provider: "stripe",
-      revenue: totalCents / 100,
-      currency: (charges[0]?.currency || "usd").toUpperCase(),
+      originalRevenue,
+      originalCurrency,
+      revenue: originalCurrency === "USD" ? originalRevenue * USD_TO_INR : originalRevenue,
+      currency: "INR",
       transactionCount: charges.length,
       success: true,
     };
@@ -63,8 +76,10 @@ export async function getStripeConnectRevenue(
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
     return {
       provider: "stripe",
+      originalRevenue: 0,
+      originalCurrency: "USD",
       revenue: 0,
-      currency: "USD",
+      currency: "INR",
       transactionCount: 0,
       success: false,
       error: errorMsg,
@@ -90,6 +105,8 @@ export async function getStripeRevenue(apiKey: string): Promise<ProviderRevenue>
     if (!res.ok) {
       return {
         provider: "stripe",
+        originalRevenue: 0,
+        originalCurrency: "USD",
         revenue: 0,
         currency: "INR",
         transactionCount: 0,
@@ -107,9 +124,15 @@ export async function getStripeRevenue(apiKey: string): Promise<ProviderRevenue>
       0
     );
 
+    const originalRevenue = totalCents / 100;
+    // Defaulting to USD since this is standard Stripe API without explicit filtering
+    const originalCurrency = (charges[0]?.currency || "usd").toUpperCase();
+
     return {
       provider: "stripe",
-      revenue: totalCents / 100,
+      originalRevenue,
+      originalCurrency,
+      revenue: originalCurrency === "USD" ? originalRevenue * USD_TO_INR : originalRevenue,
       currency: "INR",
       transactionCount: charges.length,
       success: true,
@@ -118,6 +141,8 @@ export async function getStripeRevenue(apiKey: string): Promise<ProviderRevenue>
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
     return {
       provider: "stripe",
+      originalRevenue: 0,
+      originalCurrency: "USD",
       revenue: 0,
       currency: "INR",
       transactionCount: 0,
@@ -140,10 +165,15 @@ export async function getRazorpayRevenue(
     const captured = await fetchRazorpayCapturedPayments(razorpay);
     const totalPaise = captured.reduce((sum, p) => sum + p.amount, 0);
 
+    const originalRevenue = totalPaise / 100;
+    const originalCurrency = (captured[0]?.currency || "INR").toUpperCase();
+
     return {
       provider: "razorpay",
-      revenue: totalPaise / 100,
-      currency: (captured[0]?.currency || "INR").toUpperCase(),
+      originalRevenue,
+      originalCurrency,
+      revenue: originalRevenue, // Razorpay is already in INR
+      currency: "INR",
       transactionCount: captured.length,
       success: true,
     };
@@ -151,6 +181,8 @@ export async function getRazorpayRevenue(
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
     return {
       provider: "razorpay",
+      originalRevenue: 0,
+      originalCurrency: "INR",
       revenue: 0,
       currency: "INR",
       transactionCount: 0,

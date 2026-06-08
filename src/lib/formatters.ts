@@ -1,5 +1,5 @@
 /**
- * Centralized, Premium Reusable Numeric Formatting Utilities for Verifi
+ * Centralized, Premium Reusable Numeric Formatting Utilities for Verifii
  */
 
 /**

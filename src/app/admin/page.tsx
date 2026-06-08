@@ -18,7 +18,7 @@ export default function AdminPage() {
     const { data: rows } = await supabase
       .from("startup_submissions")
       .select(
-        "id, startup_name, website, verification_status, trust_score, mrr, created_at, slug"
+        "id, startup_name, website, verification_status, trust_score, mrr, created_at, slug, proof_url"
       )
       .in("verification_status", ["pending", "syncing", "unverified", "reviewing", "proof_submitted", "api_verified", "SELF_REPORTED", "PAYMENT_CONNECTED", "REVENUE_VERIFIED", "HIGH_CONFIDENCE"])
       .order("created_at", { ascending: false });
@@ -160,9 +160,19 @@ export default function AdminPage() {
                       >
                         Revoke
                       </button>
+                      {item.proof_url && (
+                        <a 
+                          href={`/api/startup/${item.id}/proof`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-5 py-2 rounded-lg border border-border bg-[#1A1A1C] text-sm font-semibold transition-colors hover:bg-white/10 flex items-center justify-center whitespace-nowrap"
+                        >
+                          View Proof
+                        </a>
+                      )}
                       <button 
                         onClick={() => updateStatus(item.id, "verified")}
-                        className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-bold transition-all hover:shadow-[0_0_20px_rgba(185,255,75,0.4)]"
+                        className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-bold transition-all hover:shadow-[0_0_20px_rgba(185,255,75,0.4)] whitespace-nowrap"
                       >
                         Validate
                       </button>

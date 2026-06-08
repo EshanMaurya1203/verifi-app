@@ -12,7 +12,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .neq('verification_status', 'flagged')
 
   const startupUrls = (startups || []).map((s) => ({
-    url: `${baseUrl}/startup/${s.slug}`,
+    url: `${baseUrl}/startup/${s.slug}/`,
     lastModified: s.last_verified_at ? new Date(s.last_verified_at) : (s.updated_at ? new Date(s.updated_at) : new Date()),
     changeFrequency: 'weekly' as const,
     priority: 0.8,
@@ -20,19 +20,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     {
-      url: baseUrl,
+      url: `${baseUrl}/`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 1,
     },
     {
-      url: `${baseUrl}/leaderboard`,
+      url: `${baseUrl}/leaderboard/`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/submit`,
+      url: `${baseUrl}/submit/`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.7,

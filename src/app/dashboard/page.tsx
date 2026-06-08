@@ -4,6 +4,34 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { FolderKanban, CheckCircle2, Eye, Pencil, ShieldCheck, Clock, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "Manage your verified startup identities and integrations on Verifii.",
+  alternates: {
+    canonical: "https://www.verifii.in/dashboard/",
+  }
+};
+
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://www.verifii.in/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Dashboard",
+      "item": "https://www.verifii.in/dashboard/"
+    }
+  ]
+};
 
 function getStatusConfig(status: string | null): { label: string; color: string; bg: string } {
   switch (status) {
@@ -64,6 +92,10 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <main className="mx-auto max-w-6xl px-4 pt-24 pb-12">
         <div className="mb-10">
           <h1 className="font-syne text-[32px] sm:text-[40px] font-extrabold tracking-[-1px]">
@@ -122,7 +154,7 @@ export default async function DashboardPage() {
               </div>
               <h3 className="font-syne text-xl font-bold mb-2">No startups yet</h3>
               <p className="text-muted-foreground mb-6 max-w-sm">
-                You haven&apos;t added any startups to Verifi. Get started by submitting your first company for verification.
+                You haven&apos;t added any startups to Verifii. Get started by submitting your first company for verification.
               </p>
               <Link
                 href="/submit"

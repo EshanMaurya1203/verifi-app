@@ -45,7 +45,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const profileUrl = getStartupUrl(slug);
   
   const embedCode = `<a href="${profileUrl}" target="_blank">
-  <img src="${badgeEmbedUrl}" alt="${startupName} is Verified on Verifi" width="300" height="80" />
+  <img src="${badgeEmbedUrl}" alt="${startupName} is Verified on Verifii" width="300" height="80" />
 </a>`;
 
   const handleCopyBadge = async () => {
@@ -68,7 +68,7 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
     }
   };
 
-  const shareText = `Check out ${startupName}'s live verified revenue & metrics on Verifi. Verified data directly from billing source!`;
+  const shareText = `Check out ${startupName}'s live verified revenue & metrics on Verifii. Verified data directly from billing source!`;
 
   const handleLinkedInShare = () => {
     const shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`;

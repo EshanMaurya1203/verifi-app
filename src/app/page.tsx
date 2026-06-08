@@ -279,7 +279,7 @@ export default function HomePage() {
               variants={fadeUpItem}
               className="mt-6 max-w-[580px] text-sm md:text-base font-normal leading-relaxed text-neutral-400"
             >
-              Verifi connects securely to Stripe and Razorpay to verify your actual revenue. No self-reported charts. Just real, verified financial data.
+              Verifii connects securely to Stripe and Razorpay to verify your actual revenue. No self-reported charts. Just real, verified financial data.
             </motion.p>
 
             {/* CTA Hierarchy */}
@@ -568,7 +568,7 @@ export default function HomePage() {
                   Payment-Backed Proof
                 </h3>
                 <p className="mt-2 text-[11px] leading-relaxed text-[#8f8f97] font-medium">
-                  Verifi connects securely to Stripe and Razorpay. Every profile uses raw API payment streams for authentic, high-confidence verification.
+                  Verifii connects securely to Stripe and Razorpay. Every profile uses raw API payment streams for authentic, high-confidence verification.
                 </p>
               </div>
             </section>
@@ -634,7 +634,7 @@ export default function HomePage() {
               Ready to verify your revenue?
             </h2>
             <p className="mx-auto mt-4 max-w-[500px] text-xs md:text-sm leading-relaxed text-[#8f8f97] font-medium">
-              Join Verifi today and build public trust in minutes with real-time, payment-backed verification streams.
+              Join Verifii today and build public trust in minutes with real-time, payment-backed verification streams.
             </p>
             <Link
               href="/submit"
@@ -649,7 +649,7 @@ export default function HomePage() {
         {/* Footer */}
         <footer className="mt-20 border-t border-white/[0.05] pt-6 pb-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">© 2026 Verifi</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">© 2026 Verifii</div>
             <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-widest text-neutral-600">
               <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
               <span className="text-neutral-800">•</span>

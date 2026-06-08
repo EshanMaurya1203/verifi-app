@@ -37,6 +37,15 @@ export async function GET(req: Request) {
       );
     }
 
+    const { getUserPlan } = await import("@/lib/subscriptions");
+    const plan = await getUserPlan(user.id);
+    if (plan.plan_code === "viewer") {
+      return NextResponse.json(
+        { error: "Subscription required to connect integration" },
+        { status: 403 }
+      );
+    }
+
     const state = signStripeOAuthState({ startupId, userId: user.id });
     const authorizeUrl = buildStripeConnectAuthorizeUrl(state);
 

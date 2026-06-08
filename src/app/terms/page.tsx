@@ -4,14 +4,40 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms of Service | Verifi",
-  description: "Terms of Service governing the use of Verifi's startup revenue verification platform.",
+  title: "Terms of Service",
+  description: "Terms of Service governing the use of Verifii's startup revenue verification platform.",
+  alternates: {
+    canonical: "https://www.verifii.in/terms/",
+  }
+};
+
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://www.verifii.in/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Terms of Service",
+      "item": "https://www.verifii.in/terms/"
+    }
+  ]
 };
 
 export default function TermsOfServicePage() {
   return (
     <div className="min-h-screen bg-[#050507] text-white font-sans selection:bg-primary selection:text-[#080808]">
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
 
       <main className="max-w-4xl mx-auto px-6 pt-32 pb-24">
         {/* Back Link */}
@@ -46,7 +72,7 @@ export default function TermsOfServicePage() {
             <ShieldCheck className="w-5 h-5 text-emerald-400" /> Agreement to Terms
           </h2>
           <p className="text-neutral-300 text-sm leading-relaxed mb-4">
-            Welcome to Verifi. By creating a founder profile, submitting startup information, or connecting payment processor access keys, you agree to comply with and be bound by these Terms of Service. Please read them thoroughly before utilizing our metrics and trust protocol.
+            Welcome to Verifii. By creating a founder profile, submitting startup information, or connecting payment processor access keys, you agree to comply with and be bound by these Terms of Service. Please read them thoroughly before utilizing our metrics and trust protocol.
           </p>
           <p className="text-neutral-400 text-xs font-semibold leading-relaxed">
             If you do not agree to these terms, you are prohibited from utilizing the verification services, listing on public leaderboards, or distributing dynamic verification badges.
@@ -61,12 +87,12 @@ export default function TermsOfServicePage() {
               <span className="text-primary">01.</span> Platform Usage & Credentials
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
-              Verifi provides a decentralized web platform designed to analyze, verify, and publicly audit startup financial metrics (such as Monthly Recurring Revenue and growth consistency). To use the platform:
+              Verifii provides a decentralized web platform designed to analyze, verify, and publicly audit startup financial metrics (such as Monthly Recurring Revenue and growth consistency). To use the platform:
             </p>
             <ul className="list-disc pl-5 text-neutral-400 text-sm space-y-2 leading-relaxed">
               <li><strong className="text-white">Founder Accounts:</strong> You must be an authorized founder, officer, or legal representative of the startup to establish its profile and authorize integrations.</li>
               <li><strong className="text-white">Credential Integrity:</strong> You are responsible for safeguarding your login identifiers and linked third-party session tokens.</li>
-              <li><strong className="text-white">Authorized Access:</strong> You grant Verifi permission to query your linked payment processors in a strictly read-only capacity to extract, normalize, and score revenue logs.</li>
+              <li><strong className="text-white">Authorized Access:</strong> You grant Verifii permission to query your linked payment processors in a strictly read-only capacity to extract, normalize, and score revenue logs.</li>
             </ul>
           </section>
 
@@ -76,12 +102,12 @@ export default function TermsOfServicePage() {
               <span className="text-primary">02.</span> Startup Submissions
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
-              When submitting startup listings, assets, descriptions, and gateway integrations to Verifi:
+              When submitting startup listings, assets, descriptions, and gateway integrations to Verifii:
             </p>
             <ul className="list-disc pl-5 text-neutral-400 text-sm space-y-2 leading-relaxed">
               <li><strong className="text-white">Accuracy Warranty:</strong> You warrant that all manual text fields, identity credentials, and self-reported parameters are complete, truthful, and free of misrepresentation.</li>
-              <li><strong className="text-white">IP & Brand Licenses:</strong> You grant Verifi a worldwide, non-exclusive, royalty-free license to display your company name, logo, category, and verified metrics on our public leaderboards and badges.</li>
-              <li><strong className="text-white">Ownership of Content:</strong> You retain complete ownership of all data submitted. Verifi acts strictly as a verification pipeline and display wrapper.</li>
+              <li><strong className="text-white">IP & Brand Licenses:</strong> You grant Verifii a worldwide, non-exclusive, royalty-free license to display your company name, logo, category, and verified metrics on our public leaderboards and badges.</li>
+              <li><strong className="text-white">Ownership of Content:</strong> You retain complete ownership of all data submitted. Verifii acts strictly as a verification pipeline and display wrapper.</li>
             </ul>
           </section>
 
@@ -96,7 +122,7 @@ export default function TermsOfServicePage() {
             <ul className="list-disc pl-5 text-neutral-400 text-sm space-y-2 leading-relaxed">
               <li><strong className="text-white">No Investment Advice:</strong> Verification badges, growth benchmarks, and leaderboard stats do not constitute financial audits, credit ratings, or investment advice. Investors should perform independent due diligence.</li>
               <li><strong className="text-white">As-Is Snapshots:</strong> Metrics represent transient trailing periods and depend entirely on the precision and completeness of the connected payment processors.</li>
-              <li><strong className="text-white">Algorithmic Auditing:</strong> Verifi reserves the right to apply automated anomaly detection filters (such as spike, repetitions, or customer volume verification) to flag suspect profiles.</li>
+              <li><strong className="text-white">Algorithmic Auditing:</strong> Verifii reserves the right to apply automated anomaly detection filters (such as spike, repetitions, or customer volume verification) to flag suspect profiles.</li>
             </ul>
           </section>
 
@@ -132,7 +158,7 @@ export default function TermsOfServicePage() {
               <span className="text-primary">06.</span> Liability Limitations
             </h3>
             <p className="text-neutral-400 text-sm leading-relaxed">
-              TO THE MAXIMUM EXTENT PERMITTED BY LAW, VERIFI AND ITS OPERATORS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, OR EXEMPLARY DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF REVENUE, PROFITS, BUSINESS REPUTATION, OR INVESTOR TRUST ARISING OUT OF OR IN CONNECTION WITH ACCURACY BENCHMARKS, ALGORITHMIC METRICS FLAGS, PUBLIC DIRECTORIES, LEADERBOARD RANKINGS, OR BADGE EMBEDS.
+              TO THE MAXIMUM EXTENT PERMITTED BY LAW, VERIFII AND ITS OPERATORS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, OR EXEMPLARY DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF REVENUE, PROFITS, BUSINESS REPUTATION, OR INVESTOR TRUST ARISING OUT OF OR IN CONNECTION WITH ACCURACY BENCHMARKS, ALGORITHMIC METRICS FLAGS, PUBLIC DIRECTORIES, LEADERBOARD RANKINGS, OR BADGE EMBEDS.
             </p>
           </section>
 
@@ -154,11 +180,11 @@ export default function TermsOfServicePage() {
                 <p className="text-neutral-500 text-xs">For questions regarding terms, licensing, and arbitration.</p>
               </div>
               <a 
-                href="mailto:legal@verifi.app" 
+                href="mailto:legal@verifii.in" 
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-xs font-bold uppercase tracking-wider text-primary/80"
               >
                 <Mail className="w-3.5 h-3.5" />
-                legal@verifi.app
+                legal@verifii.in
               </a>
             </div>
           </section>

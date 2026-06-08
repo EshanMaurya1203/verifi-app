@@ -19,12 +19,21 @@ export async function POST(
   const { id } = await params;
 
   // Enforce authentication and strict startup ownership validation
-  const { authenticated, owned, startup } = await verifyStartupOwnership(id);
+  const { authenticated, owned, startup, user } = await verifyStartupOwnership(id);
   if (!authenticated) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   if (!owned) {
     return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
+  }
+
+  const { getUserPlan } = await import("@/lib/subscriptions");
+  const plan = await getUserPlan(user!.id);
+  if (plan.plan_code === "viewer") {
+    return NextResponse.json(
+      { error: "Subscription required for manual sync" },
+      { status: 403 }
+    );
   }
 
   const supabase = getSupabaseServer();

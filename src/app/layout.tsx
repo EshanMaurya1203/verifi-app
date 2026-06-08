@@ -18,28 +18,28 @@ const syne = Syne({
   subsets: ["latin"],
 });
 
-const appUrl = getSiteUrl();
-const metadataBase = appUrl ? new URL(appUrl) : undefined;
+const appUrl = getSiteUrl() || "https://www.verifii.in";
+const metadataBase = new URL(appUrl);
 
 export const metadata: Metadata = {
   ...(metadataBase ? { metadataBase } : {}),
   title: {
-    default: "Verifi — Verified Startup Revenue Database",
-    template: "%s | Verifi"
+    default: "Verifii — Verified Startup Revenue for Indian Founders",
+    template: "Verifii | %s"
   },
   description:
     "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
   openGraph: {
-    title: "Verifi — Verified Startup Revenue Database",
+    title: "Verifii — Verified Startup Revenue for Indian Founders",
     description: "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
     url: "/",
-    siteName: "Verifi",
+    siteName: "Verifii",
     images: [
       {
         url: "/api/og/startup/default",
         width: 1200,
         height: 630,
-        alt: "Verifi Public Revenue Verification Platform",
+        alt: "Verifii Public Revenue Verification Platform",
       }
     ],
     locale: "en_US",
@@ -47,17 +47,41 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Verifi — Verified Startup Revenue Database",
+    title: "Verifii — Verified Startup Revenue for Indian Founders",
     description: "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
     images: ["/api/og/startup/default"],
+    site: "@verifii",
   },
   robots: {
     index: true,
     follow: true,
   },
   alternates: {
-    canonical: "/",
+    canonical: "https://www.verifii.in/",
   }
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "Verifii",
+      "url": "https://www.verifii.in",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://www.verifii.in/search?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@type": "Organization",
+      "name": "Verifii",
+      "url": "https://www.verifii.in",
+      "logo": "https://www.verifii.in/logo.png",
+      "sameAs": ["https://twitter.com/verifii", "https://linkedin.com/company/verifii"]
+    }
+  ]
 };
 
 
@@ -71,7 +95,13 @@ export default function RootLayout({
       lang="en"
       className={cn("dark", "h-full", "bg-background", "antialiased", dmSans.variable, syne.variable, "font-sans", geist.variable)}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

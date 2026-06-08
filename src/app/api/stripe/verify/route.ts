@@ -25,13 +25,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "startupId is required" }, { status: 400 });
     }
 
-    const { authenticated, owned } = await verifyStartupOwnership(startupId);
+    const { authenticated, owned, user } = await verifyStartupOwnership(startupId);
     if (!authenticated) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
     if (!owned) {
       return NextResponse.json(
         { error: "Unauthorized startup ownership check failed" },
+        { status: 403 }
+      );
+    }
+
+    const { getUserPlan } = await import("@/lib/subscriptions");
+    const plan = await getUserPlan(user!.id);
+    if (plan.plan_code === "viewer") {
+      return NextResponse.json(
+        { error: "Subscription required to connect integration" },
         { status: 403 }
       );
     }

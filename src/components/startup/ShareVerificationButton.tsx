@@ -50,10 +50,10 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   // Dynamic public share copy according to verification status
   const isVerified = confidenceTier === "REVENUE_VERIFIED" && !isDemo;
   const shareText = isDemo
-    ? `Exploring Verifi's premium trust dashboard sandbox: check out the simulated profile of ${startupName} here!`
+    ? `Exploring Verifii's premium trust dashboard sandbox: check out the simulated profile of ${startupName} here!`
     : isVerified
-    ? `Transparency is our strongest signal. We just opened our verified revenue profile on @Verifi — check it out:`
-    : `Transparency is our strongest signal. We just opened our startup trust profile on @Verifi — check it out:`;
+    ? `Transparency is our strongest signal. We just opened our verified revenue profile on @Verifii — check it out:`
+    : `Transparency is our strongest signal. We just opened our startup trust profile on @Verifii — check it out:`;
 
   const handleTwitterShare = () => {
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;

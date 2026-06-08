@@ -72,7 +72,7 @@ const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; col
     label: "Profile Created",
     icon: ShieldCheck,
     color: "text-primary bg-primary/10",
-    description: () => "Startup profile entered Verifi index. Verification protocols initialized."
+    description: () => "Startup profile entered Verifii index. Verification protocols initialized."
   }
 };
 

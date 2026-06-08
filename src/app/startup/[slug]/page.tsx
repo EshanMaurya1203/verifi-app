@@ -18,6 +18,7 @@ import { VerificationTimeline } from "@/components/startup/VerificationTimeline"
 import { RevenueCompositionCard } from "@/components/startup/RevenueCompositionCard";
 import { getSiteUrl } from "@/lib/site-url";
 import { formatCurrency, formatGrowth } from "@/lib/formatters";
+import { USD_TO_INR } from "@/lib/revenue-aggregation";
 
 
 
@@ -32,7 +33,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     .maybeSingle();
 
   if (!startup) {
-    return { title: "Startup Not Found | Verifi" };
+    return { title: "Startup Not Found | Verifii" };
   }
 
   const { data: providers } = await supabaseServer
@@ -59,8 +60,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   );
   const evidenceBacked = metaState.hasVerificationEvidence;
   const verifiedTitle = evidenceBacked
-    ? `${startup.startup_name} is Revenue Verified on Verifi`
-    : `${startup.startup_name} on Verifi`;
+    ? `${startup.startup_name} is Revenue Verified on Verifii`
+    : `${startup.startup_name} on Verifii`;
 
   const baseUrl = getSiteUrl();
   const encodedSlug = encodeURIComponent(slug);
@@ -69,7 +70,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     : `/api/og/startup/${encodedSlug}`;
 
   return {
-    title: `${startup.startup_name} - Financial Profile | Verifi`,
+    title: `${startup.startup_name} - Financial Profile | Verifii`,
     description: evidenceBacked
       ? `View provider-backed revenue metrics and trust profile for ${startup.startup_name}.`
       : `View the trust profile and revenue disclosure for ${startup.startup_name}.`,
@@ -77,13 +78,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: verifiedTitle,
       description: evidenceBacked
         ? `${startup.startup_name} has provider-backed revenue with a recent ledger sync.`
-        : `${startup.startup_name} profile on Verifi — verification in progress or self-reported.`,
+        : `${startup.startup_name} profile on Verifii — verification in progress or self-reported.`,
       images: [
         {
           url: ogImageUrl,
           width: 1200,
           height: 630,
-          alt: `${startup.startup_name} Verifi Profile`,
+          alt: `${startup.startup_name} Verifii Profile`,
         },
       ],
     },
@@ -92,9 +93,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: verifiedTitle,
       description: evidenceBacked
         ? `${startup.startup_name} has provider-backed revenue with a recent ledger sync.`
-        : `${startup.startup_name} profile on Verifi — verification in progress or self-reported.`,
+        : `${startup.startup_name} profile on Verifii — verification in progress or self-reported.`,
       images: [ogImageUrl],
     },
+    alternates: {
+      canonical: `${baseUrl}/startup/${encodedSlug}/`,
+    }
   };
 }
 
@@ -110,6 +114,8 @@ export default async function PublicStartupProfile({ params }: { params: Promise
       .eq("slug", slug)
       .maybeSingle()
   );
+
+  const { data: { user } } = await supabaseServer.auth.getUser();
 
   if (error || !ok || !startup) {
     return (
@@ -194,6 +200,8 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     })
   );
 
+  const isOwner = user?.id === startup.user_id;
+  const hasProof = !!startup.proof_url;
   const isVerified = verificationState.hasVerificationEvidence;
 
   // 4. Compute per-provider revenue breakdown
@@ -207,13 +215,17 @@ export default async function PublicStartupProfile({ params }: { params: Promise
       const p = txn.provider || "unknown";
       providerTxCount[p] = (providerTxCount[p] || 0) + 1;
     }
-    compositionBreakdown = Object.entries(mrrBreakdown).map(([provider, amount]) => ({
-      provider,
-      amount: Number(amount),
-      percentage: totalMrrFromBreakdown > 0 ? Math.round((Number(amount) / totalMrrFromBreakdown) * 100) : 0,
-      transactionCount: providerTxCount[provider] || 0,
-      currency: provider === "stripe" ? "USD" : "INR",
-    }));
+    compositionBreakdown = Object.entries(mrrBreakdown).map(([provider, amount]) => {
+      const isStripe = provider === "stripe";
+      const displayAmount = isStripe ? Number(amount) / USD_TO_INR : Number(amount);
+      return {
+        provider,
+        amount: displayAmount,
+        percentage: totalMrrFromBreakdown > 0 ? Math.round((Number(amount) / totalMrrFromBreakdown) * 100) : 0,
+        transactionCount: providerTxCount[provider] || 0,
+        currency: isStripe ? "USD" : "INR",
+      };
+    });
   } else {
     // Fallback
     const providerTxMap: Record<string, { total: number; count: number; currency: string }> = {};
@@ -224,13 +236,17 @@ export default async function PublicStartupProfile({ params }: { params: Promise
       providerTxMap[p].count += 1;
     }
     const totalFromTxns = Object.values(providerTxMap).reduce((s, v) => s + v.total, 0);
-    compositionBreakdown = Object.entries(providerTxMap).map(([provider, data]) => ({
-      provider,
-      amount: data.total,
-      percentage: totalFromTxns > 0 ? Math.round((data.total / totalFromTxns) * 100) : 0,
-      transactionCount: data.count,
-      currency: data.currency,
-    }));
+    compositionBreakdown = Object.entries(providerTxMap).map(([provider, data]) => {
+      const isStripe = provider === "stripe";
+      const displayAmount = isStripe ? data.total / USD_TO_INR : data.total;
+      return {
+        provider,
+        amount: displayAmount,
+        percentage: totalFromTxns > 0 ? Math.round((data.total / totalFromTxns) * 100) : 0,
+        transactionCount: data.count,
+        currency: isStripe ? "USD" : "INR",
+      };
+    });
   }
 
   // 5. Calculate real growth from revenue snapshots
@@ -271,9 +287,34 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     created_at: l.created_at
   }));
 
+  const baseUrl = getSiteUrl();
+  const encodedSlug = encodeURIComponent(slug);
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": `${baseUrl}/`
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": startup.startup_name,
+        "item": `${baseUrl}/startup/${encodedSlug}/`
+      }
+    ]
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-primary selection:text-[#080808]">
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
 
       {isDemo && (
         <div className="bg-[#0f0f11] border-b border-primary/20 px-6 py-4 flex items-center justify-center gap-3 mt-16">
@@ -573,6 +614,19 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                 <ShieldCheck className="w-3.5 h-3.5 text-primary" /> Verification Status
               </h3>
               <VerificationMetadata state={verificationState} showBreakdown={true} />
+              
+              {isOwner && hasProof && (
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  <a 
+                    href={`/api/startup/${startup.id}/proof`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="w-full px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> View Uploaded Proof
+                  </a>
+                </div>
+              )}
             </section>
 
             {/* Badge Embedder Card (Badge) */}

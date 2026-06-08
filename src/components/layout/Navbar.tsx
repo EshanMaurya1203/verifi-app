@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Menu, LogOut, LayoutDashboard, Settings, Rocket } from "lucide-react";
+import { Menu, LogOut, LayoutDashboard, Settings, Rocket, CreditCard } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { SubscriptionStatusIndicator } from "@/components/billing/SubscriptionStatusIndicator";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 
 export function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -32,6 +34,18 @@ export function Navbar() {
 
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      if (data.user) {
+        supabase
+          .from("subscriptions")
+          .select("*")
+          .eq("user_id", data.user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+          .then(({ data: plan }) => {
+            if (plan) setSubscription(plan);
+          });
+      }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -101,7 +115,7 @@ export function Navbar() {
           className="flex items-center gap-2 text-white transition-opacity hover:opacity-90"
         >
           <span className="font-syne text-[20px] font-bold tracking-tight">
-            verifi
+            verifii
             <span className="ml-1 inline-block h-2 w-2 rounded-full bg-primary" />
           </span>
         </Link>
@@ -121,6 +135,14 @@ export function Navbar() {
           >
             Add your startup
           </Link>
+
+          {subscription && (
+            <SubscriptionStatusIndicator 
+              planCode={subscription.plan_code} 
+              status={subscription.status} 
+              trialEnd={subscription.trial_end} 
+            />
+          )}
 
           {!user ? (
             <button
@@ -175,6 +197,14 @@ export function Navbar() {
                   >
                     <Settings className="h-4 w-4" />
                     Settings
+                  </Link>
+                  <Link
+                    href="/dashboard/billing"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Billing
                   </Link>
                   <div className="h-px w-full bg-border my-1" />
                   <button
@@ -260,6 +290,14 @@ export function Navbar() {
                 >
                   <Settings className="h-4 w-4" />
                   Settings
+                </Link>
+                <Link
+                  href="/dashboard/billing"
+                  onClick={() => setIsMobileOpen(false)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Billing
                 </Link>
                 <button
                   onClick={handleSignOut}

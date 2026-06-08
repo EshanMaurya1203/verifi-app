@@ -14,7 +14,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 type PaymentMethod = {
   id: string;
   label: string;
-  badge: "API Verified";
+  badge: "API Verified" | "Coming Soon";
 };
 
 type FormState = {
@@ -41,9 +41,9 @@ type Step = 1 | 2 | 3 | 4;
 const paymentMethodOptions: PaymentMethod[] = [
   { id: "razorpay", label: "Razorpay", badge: "API Verified" },
   { id: "stripe", label: "Stripe", badge: "API Verified" },
-  { id: "cashfree", label: "Cashfree", badge: "API Verified" },
-  { id: "paddle", label: "Paddle", badge: "API Verified" },
-  { id: "lemon-squeezy", label: "Lemon Squeezy", badge: "API Verified" },
+  { id: "cashfree", label: "Cashfree", badge: "Coming Soon" },
+  { id: "paddle", label: "Paddle", badge: "Coming Soon" },
+  { id: "lemon-squeezy", label: "Lemon Squeezy", badge: "Coming Soon" },
 ];
 
 const businessTypeOptions = [
@@ -79,7 +79,7 @@ function badgeClassName(type: PaymentMethod["badge"]) {
   if (type === "API Verified") {
     return "border border-primary/20 bg-primary/20 text-primary";
   }
-  return "";
+  return "border border-white/10 bg-white/5 text-neutral-400";
 }
 
 export default function SubmitPage() {
@@ -169,7 +169,7 @@ export default function SubmitPage() {
 
   const twitterShareUrl = useMemo(() => {
     const text =
-      "Just joined Verifi's founding member cohort. Building in public with verified revenue.";
+      "Just joined Verifii's founding member cohort. Building in public with verified revenue.";
     return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
   }, []);
   const totalSpots = 50;
@@ -372,13 +372,8 @@ export default function SubmitPage() {
           return;
         }
 
-        const { data } = supabase.storage
-          .from("proofs")
-          .getPublicUrl(fileName);
-
-        proof_url = data.publicUrl;
-
-
+        // Store the file name instead of the public URL
+        proof_url = fileName;
       }
 
       const confidenceMap: Record<string, number> = {
@@ -476,7 +471,7 @@ export default function SubmitPage() {
               Authentication Required
             </h2>
             <p className="text-xs font-semibold text-neutral-500 leading-relaxed mb-6">
-              Listing your startup on Verifi requires a verified Google account.
+              Listing your startup on Verifii requires a verified Google account.
             </p>
 
             {authError && (
@@ -514,7 +509,7 @@ export default function SubmitPage() {
 
       <header className="mx-auto max-w-[640px] px-6 pt-12 text-center">
         <h1 className="font-syne text-3xl md:text-4xl font-extrabold tracking-tight text-foreground">
-          List your startup on Verifi — <span className="text-primary">free</span>
+          List your startup on Verifii — <span className="text-primary">free</span>
         </h1>
         <p className="mt-3 text-base font-normal text-muted-foreground">
           Get verified and join the most transparent startup revenue database.
@@ -870,18 +865,23 @@ export default function SubmitPage() {
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                       {paymentMethodOptions.map((item) => {
                         const isChecked = form.paymentMethods.includes(item.id);
+                        const isComingSoon = item.badge === "Coming Soon";
+                        
                         return (
                           <button
                             type="button"
                             key={item.id}
-                            onClick={() => togglePaymentMethod(item.id)}
+                            onClick={() => !isComingSoon && togglePaymentMethod(item.id)}
                             aria-pressed={isChecked}
                             role="checkbox"
                             aria-checked={isChecked}
+                            disabled={isComingSoon}
                             className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all duration-150 ${
-                              isChecked
-                                ? "border-[rgba(185,255,75,0.4)] bg-[rgba(185,255,75,0.03)]"
-                                : "border-border bg-[#161616] hover:border-border"
+                              isComingSoon
+                                ? "border-border bg-[#161616]/50 opacity-60 cursor-not-allowed"
+                                : isChecked
+                                  ? "border-[rgba(185,255,75,0.4)] bg-[rgba(185,255,75,0.03)]"
+                                  : "border-border bg-[#161616] hover:border-border"
                             }`}
                           >
                             <input
@@ -891,6 +891,7 @@ export default function SubmitPage() {
                               checked={isChecked}
                               readOnly
                               aria-hidden="true"
+                              disabled={isComingSoon}
                             />
                             <span
                               className={`flex h-4 w-4 items-center justify-center rounded-sm border text-[10px] ${

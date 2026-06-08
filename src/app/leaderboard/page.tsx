@@ -16,8 +16,27 @@ export const metadata: Metadata = {
   title: "Leaderboard",
   description: "Live revenue rankings for verified internet startups. Backed by real-time payment provider streams.",
   alternates: {
-    canonical: "/leaderboard",
+    canonical: "https://www.verifii.in/leaderboard/",
   },
+};
+
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://www.verifii.in/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Leaderboard",
+      "item": "https://www.verifii.in/leaderboard/"
+    }
+  ]
 };
 
 export default async function LeaderboardPage() {
@@ -71,6 +90,10 @@ export default async function LeaderboardPage() {
   return (
     <div className="min-h-screen bg-[#040406] text-white font-sans">
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
 
       <main className="max-w-6xl mx-auto px-6 pt-32 pb-24">
         {/* Header */}
@@ -201,7 +224,7 @@ export default async function LeaderboardPage() {
               <div className="px-6 py-20 text-center flex flex-col items-center justify-center bg-black/10">
                 <AlertTriangle className="w-8 h-8 text-amber-500/80 mb-4 animate-pulse" />
                 <p className="text-xs uppercase font-bold tracking-widest text-amber-500">Ecosystem Offline</p>
-                <p className="text-xs text-neutral-500 font-medium mt-2 max-w-sm leading-relaxed">Verifi protocol is currently experiencing dynamic sync latency. Real-time ranking verification is temporarily paused. Please reload.</p>
+                <p className="text-xs text-neutral-500 font-medium mt-2 max-w-sm leading-relaxed">Verifii protocol is currently experiencing dynamic sync latency. Real-time ranking verification is temporarily paused. Please reload.</p>
               </div>
             ) : realStartups.length === 0 ? (
               <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
@@ -228,7 +251,7 @@ export default async function LeaderboardPage() {
                   <span className="w-2 h-2 rounded-full bg-neutral-600 animate-pulse" />
                   Sandbox & Demo Listings
                 </h2>
-                <p className="text-xs text-neutral-500 mt-1">Simulated example startups used to preview the Verifi interface, trust tiers, and analytics dashboard.</p>
+                <p className="text-xs text-neutral-500 mt-1">Simulated example startups used to preview the Verifii interface, trust tiers, and analytics dashboard.</p>
               </div>
             </div>
             

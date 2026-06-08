@@ -87,13 +87,13 @@ export async function GET(
       <rect width="300" height="80" rx="16" fill="${bgColor}"/>
       <rect x="0.5" y="0.5" width="299" height="79" rx="15.5" stroke="${borderColor}"/>
       
-      <!-- Verifi Icon (centered & premium checkmark) -->
+      <!-- Verifii Icon (centered & premium checkmark) -->
       <rect x="18" y="18" width="44" height="44" rx="11" fill="#b9ff4b"/>
       <path d="M28 40 L34 46 L45 32" stroke="#080808" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       
       <!-- Content -->
       <text x="72" y="34" font-family="Inter, sans-serif" font-size="${nameFontSize}" font-weight="800" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startupName}</text>
-      <text x="72" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">Verified on Verifi</text>
+      <text x="72" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">Verified on Verifii</text>
       
       <!-- Tier Badge (perfectly aligned with no text overflow) -->
       <rect x="174" y="30" width="110" height="20" rx="10" fill="${tierColor}15"/>
