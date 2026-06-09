@@ -135,13 +135,14 @@ export async function POST(req: Request) {
   let localStatus = "active";
 
   switch (event) {
+    case "subscription.created":
+      localStatus = "trialing";
+      break;
     case "subscription.authenticated":
+      localStatus = "trialing";
+      break;
     case "subscription.activated":
-      if (subscription.status === "active") {
-        localStatus = "active";
-      } else if (subscription.status === "created" || subscription.status === "authenticated") {
-        localStatus = "trialing";
-      }
+      localStatus = "active";
       break;
     case "subscription.charged":
       localStatus = "active";
@@ -167,10 +168,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true, skipped: "unhandled_event" });
   }
 
-  // Handle trials specifically if present in Razorpay payload
-  // Typically, if Razorpay says it's not started or charge at is in the future
-  if (subscription.charge_at && subscription.charge_at > (Date.now() / 1000) && localStatus !== 'cancelled') {
-    localStatus = "trialing";
+  // charge_at is the next billing date and stays in the future for active subs;
+  // only use it to set trial_end when the subscription is still trialing.
+  if (localStatus === "trialing" && subscription.charge_at) {
     trialEnd = secondsToIso(subscription.charge_at);
   }
 
