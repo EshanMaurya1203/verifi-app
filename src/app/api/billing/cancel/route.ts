@@ -37,9 +37,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing Razorpay subscription id." }, { status: 400 });
   }
 
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    return NextResponse.json(
+      { error: "Razorpay billing keys are not configured" },
+      { status: 500 }
+    );
+  }
+
   const razorpay = new Razorpay({
-    key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
-    key_secret: process.env.RAZORPAY_KEY_SECRET || ""
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET
   });
 
   try {
