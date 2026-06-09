@@ -969,55 +969,6 @@ export default function SubmitPage() {
                 </section>
               )}
 
-
-            {step === 4 && (
-              <section>
-                <h3 className={sectionTitleClass}>Social links</h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className={labelClass}>Twitter / X handle</label>
-                    <input
-                      className={inputClass}
-                      value={form.twitter}
-                      onChange={(e) => onInputChange("twitter", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>LinkedIn URL</label>
-                    <input
-                      className={inputClass}
-                      value={form.linkedin}
-                      onChange={(e) => onInputChange("linkedin", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <label className={labelClass}>
-                    City / Country <span className="text-primary">*</span>
-                  </label>
-                  <input
-                    className={`${inputClass} ${errors.cityCountry ? "border-border" : ""}`}
-                    value={form.cityCountry}
-                    onChange={(e) => onInputChange("cityCountry", e.target.value)}
-                  />
-                  {errors.cityCountry ? (
-                    <p className="mt-1 text-xs text-[#ff4b4b]">{errors.cityCountry}</p>
-                  ) : null}
-                </div>
-
-                <div className="mt-6">
-                  <label className={labelClass}>Notes</label>
-                  <textarea
-                    rows={4}
-                    className="w-full rounded-lg border border-border bg-[#161616] px-4 py-3 text-[14px] text-foreground placeholder:text-muted-foreground outline-none transition-colors duration-150 focus:border-border"
-                    placeholder="Your story, what you're building, questions..."
-                    value={form.notes}
-                    onChange={(e) => onInputChange("notes", e.target.value)}
-                  />
-                </div>
-              </section>
-            )}
-
             {successMessage && (
               <div className="mt-6 rounded-lg bg-green-900/40 border border-green-500/30 px-4 py-3 text-green-300">
                 {successMessage}
