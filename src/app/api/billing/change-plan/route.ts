@@ -83,11 +83,33 @@ export async function POST(req: Request) {
   });
 
   try {
-    // Update Razorpay subscription immediately with proration
+    const razorpaySub = await razorpay.subscriptions.fetch(sub.razorpay_subscription_id);
+    const paymentMethod = (razorpaySub as { payment_method?: string }).payment_method;
+
+    if (paymentMethod === "upi") {
+      const subscription = await razorpay.subscriptions.create({
+        plan_id: newPlanId,
+        customer_notify: 1,
+        total_count: billing_cycle === "annual" ? 10 : 120,
+        notes: {
+          user_id: user.id,
+          plan_code,
+          billing_cycle,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        subscription_id: subscription.id,
+        short_url: subscription.short_url,
+      });
+    }
+
+    // Card subscriptions: update immediately with proration
     await razorpay.subscriptions.update(sub.razorpay_subscription_id, {
       plan_id: newPlanId,
-      schedule_change_at: 'now', // Change immediately
-      customer_notify: 1
+      schedule_change_at: "now",
+      customer_notify: 1,
     });
 
     return NextResponse.json({ success: true, status: "pending_webhook" });

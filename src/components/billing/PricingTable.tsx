@@ -47,18 +47,16 @@ export function PricingTable({
         return;
       }
 
+      if (data.short_url) {
+        window.location.href = data.short_url;
+        return;
+      }
+
       if (isChange) {
-        // change-plan returns success: true, no redirect needed, just refresh
         onCheckoutComplete?.();
         router.refresh();
       } else {
-        // checkout returns short_url
-        if (data.short_url) {
-          window.location.href = data.short_url;
-        } else {
-          // fallback refresh
-          router.refresh();
-        }
+        router.refresh();
       }
     } catch (err) {
       console.error(err);
