@@ -9,6 +9,8 @@ interface UpgradeModalProps {
   onClose: () => void;
   currentPlanCode?: string;
   currentCycle?: "monthly" | "annual";
+  status?: string;
+  currentPeriodEnd?: string | null;
 }
 
 export function UpgradeModal({
@@ -16,6 +18,8 @@ export function UpgradeModal({
   onClose,
   currentPlanCode,
   currentCycle,
+  status,
+  currentPeriodEnd,
 }: UpgradeModalProps) {
   useEffect(() => {
     if (isOpen) {
@@ -54,6 +58,8 @@ export function UpgradeModal({
           <PricingTable
             currentPlanCode={currentPlanCode}
             currentCycle={currentCycle}
+            status={status}
+            currentPeriodEnd={currentPeriodEnd}
             isModal={true}
             onCheckoutStart={() => {}}
             onCheckoutComplete={onClose}

@@ -24,16 +24,16 @@ export default async function BillingDashboardPage() {
   const isPro = plan.plan_code === "pro";
   const isFounder = plan.plan_code === "founder";
   
-  const statusDisplay = 
-    plan.status === "trialing" ? "Trial Active" :
-    plan.status === "active" ? "Active" :
-    plan.status === "cancelled" ? "Cancels at period end" :
-    plan.status === "past_due" ? "Past Due" :
-    "Inactive";
-
   const periodEnd = plan.current_period_end 
     ? new Date(plan.current_period_end).toLocaleDateString()
     : "—";
+
+  const statusDisplay = 
+    plan.status === "trialing" ? "Trial Active" :
+    plan.status === "active" ? "Active" :
+    plan.status === "cancelled" ? `Cancels on ${periodEnd}` :
+    plan.status === "past_due" ? "Past Due" :
+    "Inactive";
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col">
@@ -101,6 +101,7 @@ export default async function BillingDashboardPage() {
                 currentPlanCode={plan.plan_code} 
                 currentCycle={plan.billing_cycle}
                 status={plan.status}
+                currentPeriodEnd={plan.current_period_end}
               />
             </div>
           </div>

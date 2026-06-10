@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 interface PricingTableProps {
   currentPlanCode?: string;
   currentCycle?: "monthly" | "annual";
+  status?: string;
+  currentPeriodEnd?: string | null;
   onCheckoutStart?: () => void;
   onCheckoutComplete?: () => void;
   isModal?: boolean;
@@ -15,16 +17,25 @@ interface PricingTableProps {
 export function PricingTable({
   currentPlanCode = "viewer",
   currentCycle = "monthly",
+  status,
+  currentPeriodEnd,
   onCheckoutStart,
   onCheckoutComplete,
   isModal = false,
 }: PricingTableProps) {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("annual");
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const router = useRouter();
 
   const handleCheckout = async (planCode: string) => {
     if (loadingPlan) return;
+    
+    if (planCode === "viewer" && currentPlanCode !== "viewer") {
+      setShowCancelModal(true);
+      return;
+    }
+
     setLoadingPlan(planCode);
     onCheckoutStart?.();
 
@@ -68,6 +79,29 @@ export function PricingTable({
     }
   };
 
+  const handleCancelConfirm = async () => {
+    setLoadingPlan("cancel");
+    try {
+      const res = await fetch("/api/billing/cancel", {
+        method: "POST"
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        alert(data.error || "Failed to cancel subscription");
+      } else {
+        setShowCancelModal(false);
+        onCheckoutComplete?.();
+        router.refresh();
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An unexpected error occurred.");
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
   const plans = [
     {
       code: "viewer",
@@ -75,8 +109,12 @@ export function PricingTable({
       description: "Basic access to public verified profiles.",
       price: { monthly: 0, annual: 0 },
       features: ["View public startup profiles", "Search verified database", "Community access"],
-      buttonText: "Current Plan",
-      disabled: currentPlanCode === "viewer",
+      buttonText: currentPlanCode === "viewer" 
+        ? "Current Plan" 
+        : status === "cancelled"
+          ? `Cancels on ${currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : 'period end'}`
+          : "Cancel Subscription",
+      disabled: currentPlanCode === "viewer" || status === "cancelled",
     },
     {
       code: "founder",
@@ -203,6 +241,35 @@ export function PricingTable({
           );
         })}
       </div>
+
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm sm:p-6">
+          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl text-center">
+            <h3 className="font-syne text-2xl font-bold mb-2">Cancel Subscription?</h3>
+            <p className="text-muted-foreground mb-6 text-sm">
+              Your subscription will remain active until the current billing period ends.
+              After expiry your account will automatically move to the Free plan.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="rounded-xl px-6 py-2.5 border border-border font-bold hover:bg-muted transition-colors text-sm"
+                disabled={loadingPlan === "cancel"}
+              >
+                Go Back
+              </button>
+              <button
+                onClick={handleCancelConfirm}
+                className="rounded-xl px-6 py-2.5 bg-red-500 text-white font-bold hover:bg-red-600 transition-colors flex items-center gap-2 text-sm"
+                disabled={loadingPlan === "cancel"}
+              >
+                {loadingPlan === "cancel" && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

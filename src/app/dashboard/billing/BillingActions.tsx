@@ -9,9 +9,10 @@ interface BillingActionsProps {
   currentPlanCode: string;
   currentCycle: "monthly" | "annual";
   status: string;
+  currentPeriodEnd?: string | null;
 }
 
-export function BillingActions({ currentPlanCode, currentCycle, status }: BillingActionsProps) {
+export function BillingActions({ currentPlanCode, currentCycle, status, currentPeriodEnd }: BillingActionsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const router = useRouter();
@@ -84,6 +85,8 @@ export function BillingActions({ currentPlanCode, currentCycle, status }: Billin
         onClose={() => setIsModalOpen(false)}
         currentPlanCode={currentPlanCode}
         currentCycle={currentCycle}
+        status={status}
+        currentPeriodEnd={currentPeriodEnd}
       />
     </div>
   );

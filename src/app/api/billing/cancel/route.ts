@@ -53,8 +53,11 @@ export async function POST(req: Request) {
     // Cancel at period end
     await razorpay.subscriptions.cancel(sub.razorpay_subscription_id, 1);
     
-    // We don't update local state here; we rely on the webhook
-    // which will eventually update subscriptions.status = 'cancelled'
+    // Immediately update local state so UI updates instantly
+    await supabaseServer
+      .from("subscriptions")
+      .update({ status: "cancelled" })
+      .eq("id", sub.id);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
