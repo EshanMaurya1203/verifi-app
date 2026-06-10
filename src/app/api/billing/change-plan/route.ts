@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     const razorpaySub = await razorpay.subscriptions.fetch(sub.razorpay_subscription_id);
     const paymentMethod = (razorpaySub as { payment_method?: string }).payment_method;
 
-    if (paymentMethod === "upi") {
+    if (paymentMethod === "upi" || paymentMethod === "emandate") {
       const subscription = await razorpay.subscriptions.create({
         plan_id: newPlanId,
         customer_notify: 1,
@@ -95,6 +95,7 @@ export async function POST(req: Request) {
           user_id: user.id,
           plan_code,
           billing_cycle,
+          replaces_subscription_id: sub.razorpay_subscription_id,
         },
       });
 

@@ -35,7 +35,7 @@ export async function getUserPlan(userId: string): Promise<UserSubscription> {
     .from("subscriptions")
     .select("*")
     .eq("user_id", userId)
-    .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso}),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
+    .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso},replaces_razorpay_subscription_id.is.null),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
+import Razorpay from "razorpay";
 
 const RAZORPAY_PLAN_MAP: Record<string, Record<string, string | undefined>> = {
   founder: {
@@ -88,6 +89,8 @@ export async function POST(req: Request) {
     console.warn("[Billing Webhook] Missing notes.user_id for subscription:", subscription.id);
     return NextResponse.json({ received: true, skipped: "no_user_id" });
   }
+
+  const replacesSubId = subscription.notes?.replaces_subscription_id;
 
   const resolvedPlan = resolvePlanFromRazorpayPlanId(subscription.plan_id);
   if (!resolvedPlan) {
@@ -186,6 +189,7 @@ export async function POST(req: Request) {
         razorpay_subscription_id: subscription.id,
         razorpay_customer_id: subscription.customer_id,
         razorpay_plan_id: subscription.plan_id,
+        replaces_razorpay_subscription_id: replacesSubId,
         current_period_start: currentPeriodStart,
         current_period_end: currentPeriodEnd,
         last_billing_event_at: eventAt,
@@ -218,6 +222,45 @@ export async function POST(req: Request) {
     },
     created_at: new Date().toISOString()
   });
+
+  if ((event === "subscription.activated" || event === "subscription.charged") && replacesSubId) {
+    const { data: oldSub } = await supabaseServer
+      .from("subscriptions")
+      .select("id, status")
+      .eq("razorpay_subscription_id", replacesSubId)
+      .maybeSingle();
+
+    if (oldSub && ["active", "trialing", "grace_period", "past_due"].includes(oldSub.status)) {
+      if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+        console.error("[Billing Webhook] Razorpay keys missing, cannot cancel old subscription.");
+      } else {
+        try {
+          const razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET
+          });
+          
+          await razorpay.subscriptions.cancel(replacesSubId, false);
+          
+          await supabaseServer
+            .from("subscriptions")
+            .update({ status: "cancelled" })
+            .eq("razorpay_subscription_id", replacesSubId);
+            
+          await supabaseServer.from("subscription_events").insert({
+            subscription_id: oldSub.id,
+            user_id: userId,
+            event_type: "subscription.replaced",
+            new_status: "cancelled",
+            metadata: { reason: "replaced_by_upi_plan_change", new_subscription_id: subscription.id },
+            created_at: new Date().toISOString()
+          });
+        } catch (err) {
+          console.error("[Billing Webhook] Failed to cancel old subscription:", err);
+        }
+      }
+    }
+  }
 
   return NextResponse.json({ received: true, status: localStatus });
 }
