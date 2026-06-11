@@ -50,15 +50,18 @@ export async function POST(req: Request) {
   }
 
   // Get active subscription from local DB
+  const nowIso = new Date().toISOString();
+
   const { data: sub, error: subError } = await supabaseServer
     .from("subscriptions")
-    .select("id, razorpay_subscription_id, status, plan_code, billing_cycle")
+    .select("id, razorpay_subscription_id, status, plan_code, billing_cycle, current_period_end")
     .eq("user_id", user.id)
-    .in("status", ["active", "trialing"])
+    .or(
+      `status.in.(active,trialing),and(status.eq.cancelled,current_period_end.gt.${nowIso})`
+    )
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-
   if (subError || !sub) {
     return NextResponse.json({ error: "No active subscription found to change." }, { status: 404 });
   }
