@@ -173,6 +173,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true, skipped: "unhandled_event" });
   }
 
+  // Safely transition unpaid/abandoned replacement subscriptions to expired.
+  if (
+    localStatus === "cancelled" &&
+    replacesSubId &&
+    (subscription.paid_count ?? 0) === 0
+  ) {
+    localStatus = "expired";
+  }
+
   // charge_at is the next billing date and stays in the future for active subs;
   // only use it to set trial_end when the subscription is still trialing.
   if (localStatus === "trialing" && subscription.charge_at) {
