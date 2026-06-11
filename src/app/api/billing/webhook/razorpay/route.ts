@@ -134,8 +134,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, skipped: "stale_event" });
   }
 
-  // Determine local status mapping
-  let localStatus = "active";
+  // Determine local status mapping. 
+  // Initialize to a safe, non-active default to prevent accidental early access.
+  let localStatus = "trialing";
 
   switch (event) {
     case "subscription.created":
@@ -165,6 +166,7 @@ export async function POST(req: Request) {
       else if (subscription.status === "halted") localStatus = "past_due";
       else if (subscription.status === "cancelled") localStatus = "cancelled";
       else if (subscription.status === "completed") localStatus = "expired";
+      else if (subscription.status === "created" || subscription.status === "authenticated") localStatus = "trialing";
       break;
     default:
       console.log(`[Billing Webhook] Unhandled event type: ${event}`);

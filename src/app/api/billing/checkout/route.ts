@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
   // Check if user already has an active subscription to avoid duplicates
   const currentPlan = await getUserPlan(user.id);
-  if (currentPlan && currentPlan.status === "active" && currentPlan.plan_code !== "viewer") {
+  if (currentPlan && currentPlan.status !== "expired" && currentPlan.plan_code !== "viewer") {
     // Prevent subscribing if they already have an active sub (they should use change-plan)
     return NextResponse.json({ 
       error: "Active subscription exists. Please use change plan or cancel first." 

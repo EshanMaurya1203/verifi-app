@@ -49,6 +49,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server configuration error: Missing plan ID" }, { status: 500 });
   }
 
+  // Prevent multiple pending scheduled changes
+  const { data: pendingChange } = await supabaseServer
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("status", "trialing")
+    .not("replaces_razorpay_subscription_id", "is", null)
+    .maybeSingle();
+
+  if (pendingChange) {
+    return NextResponse.json({ error: "You already have a scheduled plan change. Please wait for it to activate at the end of your billing cycle." }, { status: 400 });
+  }
+
   // Get active subscription from local DB
   const nowIso = new Date().toISOString();
 
@@ -89,11 +102,14 @@ export async function POST(req: Request) {
     const razorpaySub = await razorpay.subscriptions.fetch(sub.razorpay_subscription_id);
     const paymentMethod = (razorpaySub as { payment_method?: string }).payment_method;
 
-    if (paymentMethod === "upi" || paymentMethod === "emandate") {
+    if (paymentMethod === "upi" || paymentMethod === "emandate" || sub.status === "cancelled") {
       const subscription = await razorpay.subscriptions.create({
         plan_id: newPlanId,
         customer_notify: 1,
         total_count: billing_cycle === "annual" ? 10 : 120,
+        ...(sub.current_period_end ? {
+          start_at: Math.floor(new Date(sub.current_period_end).getTime() / 1000)
+        } : {}),
         notes: {
           user_id: user.id,
           plan_code,
