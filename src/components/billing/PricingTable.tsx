@@ -112,7 +112,7 @@ export function PricingTable({
       buttonText: currentPlanCode === "viewer" 
         ? "Current Plan" 
         : status === "cancelled"
-          ? `Cancels on ${currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : 'period end'}`
+          ? "Downgraded to Free"
           : "Cancel Subscription",
       disabled: currentPlanCode === "viewer" || status === "cancelled",
     },
@@ -128,8 +128,10 @@ export function PricingTable({
         "Tamper-proof Revenue Badges",
         "14-Day Free Trial",
       ],
-      buttonText: currentPlanCode === "founder" && currentCycle === billingCycle ? "Current Plan" : "Start 14-Day Trial",
-      disabled: currentPlanCode === "founder" && currentCycle === billingCycle,
+      buttonText: currentPlanCode === "founder" && currentCycle === billingCycle 
+        ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+        : "Start 14-Day Trial",
+      disabled: currentPlanCode === "founder" && currentCycle === billingCycle && status !== "cancelled",
     },
     {
       code: "pro",
@@ -143,8 +145,10 @@ export function PricingTable({
         "Priority Support",
         "Custom Branding",
       ],
-      buttonText: currentPlanCode === "pro" && currentCycle === billingCycle ? "Current Plan" : "Upgrade to Pro",
-      disabled: currentPlanCode === "pro" && currentCycle === billingCycle,
+      buttonText: currentPlanCode === "pro" && currentCycle === billingCycle 
+        ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+        : "Upgrade to Pro",
+      disabled: currentPlanCode === "pro" && currentCycle === billingCycle && status !== "cancelled",
     },
   ];
 

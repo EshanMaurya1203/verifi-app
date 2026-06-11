@@ -65,7 +65,7 @@ export function BillingActions({ currentPlanCode, currentCycle, status, currentP
             onClick={() => setIsModalOpen(true)}
             className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:bg-[#a8e630] transition-colors"
           >
-            Change Plan
+            {status === "cancelled" ? "Resume / Change Plan" : "Change Plan"}
           </button>
           
           {status !== "cancelled" && status !== "expired" && (
