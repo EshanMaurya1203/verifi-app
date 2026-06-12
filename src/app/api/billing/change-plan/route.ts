@@ -79,10 +79,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No active subscription found to change." }, { status: 404 });
   }
 
-  if (sub.plan_code === plan_code && sub.billing_cycle === billing_cycle) {
-    return NextResponse.json({ error: "Already on the target plan and billing cycle." }, { status: 400 });
+  if (
+    sub.status !== "cancelled" &&
+    sub.plan_code === plan_code &&
+    sub.billing_cycle === billing_cycle
+  ) {
+    return NextResponse.json(
+      { error: "Already on the target plan and billing cycle." },
+      { status: 400 }
+    );
   }
-
   if (!sub.razorpay_subscription_id) {
     return NextResponse.json({ error: "Missing Razorpay subscription id." }, { status: 400 });
   }
