@@ -99,8 +99,8 @@ export async function POST(req: Request) {
   }
 
   // Parse timestamps (Razorpay sends unix timestamps in seconds)
-  const currentPeriodStart = secondsToIso(subscription.current_start) || new Date().toISOString();
-  const currentPeriodEnd = secondsToIso(subscription.current_end) || new Date().toISOString();
+  const currentPeriodStart = secondsToIso(subscription.current_start);
+  const currentPeriodEnd = secondsToIso(subscription.current_end);
   const trialStart = secondsToIso(subscription.start_at);
   let trialEnd = secondsToIso(subscription.charge_at);
   const eventAt =
@@ -250,14 +250,14 @@ export async function POST(req: Request) {
             key_id: process.env.RAZORPAY_KEY_ID,
             key_secret: process.env.RAZORPAY_KEY_SECRET
           });
-          
+
           await razorpay.subscriptions.cancel(replacesSubId, false);
-          
+
           await supabaseServer
             .from("subscriptions")
             .update({ status: "cancelled" })
             .eq("razorpay_subscription_id", replacesSubId);
-            
+
           await supabaseServer.from("subscription_events").insert({
             subscription_id: oldSub.id,
             user_id: userId,
