@@ -99,14 +99,21 @@ export async function POST(req: Request) {
   }
 
   // Parse timestamps (Razorpay sends unix timestamps in seconds)
-  const currentPeriodStart = secondsToIso(subscription.current_start);
-  const currentPeriodEnd = secondsToIso(subscription.current_end);
-  const trialStart = secondsToIso(subscription.start_at);
-  let trialEnd = secondsToIso(subscription.charge_at);
   const eventAt =
     secondsToIso(payload.created_at) ||
     secondsToIso(subscription.updated_at) ||
     new Date().toISOString();
+
+  const currentPeriodStart =
+    secondsToIso(subscription.current_start) ??
+    eventAt;
+
+  const currentPeriodEnd =
+    secondsToIso(subscription.current_end) ??
+    eventAt;
+
+  const trialStart = secondsToIso(subscription.start_at);
+  let trialEnd = secondsToIso(subscription.charge_at);
   const eventId =
     payload.id ||
     payload.event_id ||
