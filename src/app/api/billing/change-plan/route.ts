@@ -72,6 +72,7 @@ export async function POST(req: Request) {
     .or(
       `status.in.(active,trialing),and(status.eq.cancelled,current_period_end.gt.${nowIso})`
     )
+    .is("replaces_razorpay_subscription_id", null)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

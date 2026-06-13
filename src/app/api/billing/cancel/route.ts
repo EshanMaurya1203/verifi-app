@@ -22,9 +22,10 @@ export async function POST(req: Request) {
   // Get active subscription from local DB
   const { data: sub, error: subError } = await supabaseServer
     .from("subscriptions")
-    .select("id, razorpay_subscription_id, status")
+    .select(`id, razorpay_subscription_id, status, plan_code, replaces_razorpay_subscription_id`)
     .eq("user_id", user.id)
     .in("status", ["active", "trialing", "past_due"])
+    .is("replaces_razorpay_subscription_id", null)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -51,8 +52,9 @@ export async function POST(req: Request) {
 
   try {
     // Cancel at period end
+    console.log("[Billing Cancel] Selected subscription:", sub);
     await razorpay.subscriptions.cancel(sub.razorpay_subscription_id, 1);
-    
+
     // Immediately update local state so UI updates instantly
     await supabaseServer
       .from("subscriptions")
@@ -61,7 +63,17 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("[Billing Cancel] Failed to cancel Razorpay subscription:", error);
-    return NextResponse.json({ error: "Failed to process cancellation" }, { status: 500 });
+    console.error(
+      "[Billing Cancel] Failed to cancel Razorpay subscription:",
+      JSON.stringify(error, null, 2)
+    );
+
+    return NextResponse.json(
+      {
+        error: "Failed to process cancellation",
+        razorpayError: error?.error || error?.message || error
+      },
+      { status: 500 }
+    );
   }
 }
