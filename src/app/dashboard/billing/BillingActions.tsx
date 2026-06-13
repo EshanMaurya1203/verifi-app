@@ -10,9 +10,10 @@ interface BillingActionsProps {
   currentCycle: "monthly" | "annual";
   status: string;
   currentPeriodEnd?: string | null;
+  pendingReplacement?: any;
 }
 
-export function BillingActions({ currentPlanCode, currentCycle, status, currentPeriodEnd }: BillingActionsProps) {
+export function BillingActions({ currentPlanCode, currentCycle, status, currentPeriodEnd, pendingReplacement }: BillingActionsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const router = useRouter();
@@ -87,6 +88,7 @@ export function BillingActions({ currentPlanCode, currentCycle, status, currentP
         currentCycle={currentCycle}
         status={status}
         currentPeriodEnd={currentPeriodEnd}
+        pendingReplacement={pendingReplacement}
       />
     </div>
   );

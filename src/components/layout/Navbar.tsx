@@ -35,10 +35,12 @@ export function Navbar() {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
       if (data.user) {
+        const nowIso = new Date().toISOString();
         supabase
           .from("subscriptions")
           .select("*")
           .eq("user_id", data.user.id)
+          .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso},replaces_razorpay_subscription_id.is.null),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle()

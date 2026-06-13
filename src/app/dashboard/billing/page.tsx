@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth-server";
 import { getUserPlan } from "@/lib/subscriptions";
+import { supabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { TrialCountdownBanner } from "@/components/billing/TrialCountdownBanner";
 import { GracePeriodWarning } from "@/components/billing/GracePeriodWarning";
@@ -20,6 +21,17 @@ export default async function BillingDashboardPage() {
 
   const plan = await getUserPlan(user.id);
 
+  // Query database for a pending/scheduled replacement subscription (trialing with replaces_razorpay_subscription_id)
+  const { data: pendingReplacement } = await supabaseServer
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("status", "trialing")
+    .not("replaces_razorpay_subscription_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const isFree = plan.plan_code === "viewer";
   const isPro = plan.plan_code === "pro";
   const isFounder = plan.plan_code === "founder";
@@ -35,6 +47,12 @@ export default async function BillingDashboardPage() {
     plan.status === "past_due" ? "Past Due" :
     "Inactive";
 
+  const pendingPlanName = pendingReplacement?.plan_code === "pro" ? "Pro" : "Verified Founder";
+  const pendingCycleName = pendingReplacement?.billing_cycle === "annual" ? "annual" : "monthly";
+  const pendingActivationDate = pendingReplacement?.trial_end
+    ? new Date(pendingReplacement.trial_end).toLocaleDateString()
+    : periodEnd;
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col">
       <Navbar />
@@ -42,6 +60,19 @@ export default async function BillingDashboardPage() {
       {/* Global Billing Banners */}
       <TrialCountdownBanner status={plan.status} trialEnd={plan.trial_end} />
       <GracePeriodWarning status={plan.status} />
+      
+      {pendingReplacement && (
+        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2.5">
+          <div className="mx-auto max-w-6xl flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-2 text-primary font-medium">
+              <Calendar className="h-4 w-4 shrink-0" />
+              <span>
+                You have a scheduled plan change to <strong>{pendingPlanName} ({pendingCycleName})</strong> starting on <strong>{pendingActivationDate}</strong>.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto w-full max-w-4xl px-4 pt-12 pb-24 flex-1">
         <div className="mb-8">
@@ -102,6 +133,7 @@ export default async function BillingDashboardPage() {
                 currentCycle={plan.billing_cycle}
                 status={plan.status}
                 currentPeriodEnd={plan.current_period_end}
+                pendingReplacement={pendingReplacement}
               />
             </div>
           </div>

@@ -11,6 +11,7 @@ interface UpgradeModalProps {
   currentCycle?: "monthly" | "annual";
   status?: string;
   currentPeriodEnd?: string | null;
+  pendingReplacement?: any;
 }
 
 export function UpgradeModal({
@@ -20,6 +21,7 @@ export function UpgradeModal({
   currentCycle,
   status,
   currentPeriodEnd,
+  pendingReplacement,
 }: UpgradeModalProps) {
   useEffect(() => {
     if (isOpen) {
@@ -60,6 +62,7 @@ export function UpgradeModal({
             currentCycle={currentCycle}
             status={status}
             currentPeriodEnd={currentPeriodEnd}
+            pendingReplacement={pendingReplacement}
             isModal={true}
             onCheckoutStart={() => {}}
             onCheckoutComplete={onClose}

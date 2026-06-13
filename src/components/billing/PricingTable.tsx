@@ -9,6 +9,7 @@ interface PricingTableProps {
   currentCycle?: "monthly" | "annual";
   status?: string;
   currentPeriodEnd?: string | null;
+  pendingReplacement?: any;
   onCheckoutStart?: () => void;
   onCheckoutComplete?: () => void;
   isModal?: boolean;
@@ -19,6 +20,7 @@ export function PricingTable({
   currentCycle = "monthly",
   status,
   currentPeriodEnd,
+  pendingReplacement,
   onCheckoutStart,
   onCheckoutComplete,
   isModal = false,
@@ -224,23 +226,32 @@ export function PricingTable({
                 ))}
               </ul>
 
-              <button
-                onClick={() => handleCheckout(plan.code)}
-                disabled={plan.disabled || loadingPlan !== null}
-                className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition-all flex justify-center items-center ${
-                  plan.disabled
-                    ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
-                    : isPro
-                    ? "bg-primary text-primary-foreground hover:bg-[#a8e630]"
-                    : "bg-card border border-border hover:border-primary text-foreground"
-                }`}
-              >
-                {loadingPlan === plan.code ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  plan.buttonText
-                )}
-              </button>
+              {(() => {
+                const isPendingTarget = pendingReplacement && pendingReplacement.plan_code === plan.code && pendingReplacement.billing_cycle === billingCycle;
+                return (
+                  <button
+                    onClick={() => handleCheckout(plan.code)}
+                    disabled={plan.disabled || loadingPlan !== null || isPendingTarget}
+                    className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition-all flex justify-center items-center ${
+                      isPendingTarget
+                        ? "bg-primary/10 text-primary border border-primary/20 cursor-not-allowed"
+                        : plan.disabled
+                        ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
+                        : isPro
+                        ? "bg-primary text-primary-foreground hover:bg-[#a8e630]"
+                        : "bg-card border border-border hover:border-primary text-foreground"
+                    }`}
+                  >
+                    {loadingPlan === plan.code ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : isPendingTarget ? (
+                      "Scheduled to Activate"
+                    ) : (
+                      plan.buttonText
+                    )}
+                  </button>
+                );
+              })()}
             </div>
           );
         })}
