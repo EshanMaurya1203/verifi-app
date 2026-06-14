@@ -106,6 +106,9 @@ export function PricingTable({
     }
   };
 
+  const hasPendingReplacement = !!pendingReplacement;
+  const pendingPlanName = pendingReplacement?.plan_code === "pro" ? "Pro" : "Verified Founder";
+
   const plans = [
     {
       code: "viewer",
@@ -133,9 +136,12 @@ export function PricingTable({
         "14-Day Free Trial",
       ],
       buttonText: currentPlanCode === "founder" && currentCycle === billingCycle 
-        ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+        ? (hasPendingReplacement
+            ? `Switching to ${pendingPlanName}`
+            : status === "cancelled" ? "Resume Subscription" : "Current Plan")
         : "Start 14-Day Trial",
-      disabled: currentPlanCode === "founder" && currentCycle === billingCycle && status !== "cancelled",
+      disabled: currentPlanCode === "founder" && currentCycle === billingCycle 
+        && (status !== "cancelled" || hasPendingReplacement),
     },
     {
       code: "pro",
@@ -150,9 +156,12 @@ export function PricingTable({
         "Custom Branding",
       ],
       buttonText: currentPlanCode === "pro" && currentCycle === billingCycle 
-        ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+        ? (hasPendingReplacement
+            ? `Switching to ${pendingPlanName}`
+            : status === "cancelled" ? "Resume Subscription" : "Current Plan")
         : "Upgrade to Pro",
-      disabled: currentPlanCode === "pro" && currentCycle === billingCycle && status !== "cancelled",
+      disabled: currentPlanCode === "pro" && currentCycle === billingCycle 
+        && (status !== "cancelled" || hasPendingReplacement),
     },
   ];
 
