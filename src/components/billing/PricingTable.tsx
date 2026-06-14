@@ -25,7 +25,9 @@ export function PricingTable({
   onCheckoutComplete,
   isModal = false,
 }: PricingTableProps) {
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("annual");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(
+    pendingReplacement?.billing_cycle ?? currentCycle ?? "monthly"
+  );
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const router = useRouter();
