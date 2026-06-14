@@ -21,8 +21,7 @@ export default async function BillingDashboardPage() {
 
   const plan = await getUserPlan(user.id);
 
-  // Query database for a pending/scheduled replacement subscription (trialing with replaces_razorpay_subscription_id)
-  const { data: pendingReplacement } = await supabaseServer
+  const { data: pendingReplacement, error: pendingReplacementError } = await supabaseServer
     .from("subscriptions")
     .select("*")
     .eq("user_id", user.id)
@@ -31,6 +30,16 @@ export default async function BillingDashboardPage() {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  console.log(
+    "[Billing Page] pendingReplacement:",
+    JSON.stringify(pendingReplacement, null, 2)
+  );
+
+  console.log(
+    "[Billing Page] pendingReplacementError:",
+    JSON.stringify(pendingReplacementError, null, 2)
+  );
 
   const isFree = plan.plan_code === "viewer";
   const isPro = plan.plan_code === "pro";
