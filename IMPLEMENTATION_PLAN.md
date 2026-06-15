@@ -353,6 +353,16 @@ Resolved critical issues with Razorpay subscription changes for UPI/emandate pay
 | L9 | `getUserPlan()` replacement-aware query | `src/lib/subscriptions.ts` | Authorization query excludes trialing subscriptions that have a `replaces_razorpay_subscription_id` (deferred replacements) to prevent premature plan upgrades |
 | L10 | Subscription cancellation & free plan downgrade | `PricingTable.tsx`, `cancel/route.ts` | Viewer card acts as "Cancel Subscription" CTA with confirmation modal; cancel API sends Razorpay `cancel_at_cycle_end` |
 
+### Phase M — Scheduled Plan Change UI Locking & Pricing Table Fixes ✅ (2026-06-14)
+Resolved visual state synchronization issues on the Pricing Table when a user has a pending (scheduled) replacement subscription.
+
+| # | Task | Files | Outcome |
+|---|------|-------|---------|
+| M1 | Runtime diagnostics for pending replacement | `src/app/dashboard/billing/page.tsx` | Added `error: pendingReplacementError` and console logging to track the pending replacement subscription and query errors in real time. |
+| M2 | Initialize cycle from replacement subscription | `src/components/billing/PricingTable.tsx` | Updated state initialization `useState<"monthly" | "annual">` to match `pendingReplacement?.billing_cycle ?? currentCycle ?? "monthly"`. Fixed default tab mismatched states. |
+| M3 | Gated pending replacement visual state | `src/components/billing/PricingTable.tsx` | Introduced `hasPendingReplacement` and `pendingPlanName` variables. Configured the cards to display "Switching to {pendingPlanName}" and disable actions when a pending replacement is active. |
+| M4 | Cycle-independent lock status | `src/components/billing/PricingTable.tsx` | Removed cycle comparison constraints (`billingCycle === pendingReplacement.billing_cycle` and `currentCycle === billingCycle`) for pending check text and disabled state. Ensured switching billing cycle tabs locks all cards uniformly to prevent duplicate checkout requests. |
+
 ---
 
 ## 4. Database schema additions (Phase K–L)
