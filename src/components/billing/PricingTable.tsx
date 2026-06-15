@@ -179,22 +179,30 @@ export function PricingTable({
 
   return (
     <div className="w-full max-w-6xl mx-auto font-sans">
+      {hasPendingReplacement && (
+        <div className="mb-8 rounded-xl border border-primary/20 bg-primary/10 p-4 text-center text-sm font-medium text-primary">
+          You have a scheduled plan change to {pendingPlanName} ({pendingReplacement.billing_cycle === "annual" ? "Annual" : "Monthly"}) that will activate at the end of your current billing period.
+        </div>
+      )}
+
       {/* Toggle */}
-      <div className="flex justify-center mb-12">
-        <div className="inline-flex items-center rounded-full border border-border bg-card p-1">
+      <div className={`flex justify-center mb-12 ${hasPendingReplacement ? "opacity-50" : ""}`}>
+        <div className={`inline-flex items-center rounded-full border border-border bg-card p-1 ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}>
           <button
             onClick={() => setBillingCycle("monthly")}
+            disabled={hasPendingReplacement}
             className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${
               billingCycle === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
+            } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
           >
             Monthly
           </button>
           <button
             onClick={() => setBillingCycle("annual")}
+            disabled={hasPendingReplacement}
             className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${
               billingCycle === "annual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
+            } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
           >
             Annual <span className="ml-1 text-xs text-green-500">-20%</span>
           </button>
