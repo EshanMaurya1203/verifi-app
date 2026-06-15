@@ -207,7 +207,7 @@ export async function POST(req: Request) {
         razorpay_subscription_id: subscription.id,
         razorpay_customer_id: subscription.customer_id,
         razorpay_plan_id: subscription.plan_id,
-        replaces_razorpay_subscription_id: replacesSubId,
+        replaces_razorpay_subscription_id: localStatus === "active" ? null : replacesSubId,
         current_period_start: currentPeriodStart,
         current_period_end: currentPeriodEnd,
         last_billing_event_at: eventAt,
