@@ -116,12 +116,14 @@ export function PricingTable({
       description: "Basic access to public verified profiles.",
       price: { monthly: 0, annual: 0 },
       features: ["View public startup profiles", "Search verified database", "Community access"],
-      buttonText: currentPlanCode === "viewer" 
-        ? "Current Plan" 
-        : status === "cancelled"
-          ? "Downgraded to Free"
-          : "Cancel Subscription",
-      disabled: currentPlanCode === "viewer" || status === "cancelled",
+      buttonText: hasPendingReplacement
+        ? "Unavailable"
+        : currentPlanCode === "viewer" 
+          ? "Current Plan" 
+          : status === "cancelled"
+            ? "Downgraded to Free"
+            : "Cancel Subscription",
+      disabled: hasPendingReplacement || currentPlanCode === "viewer" || status === "cancelled",
     },
     {
       code: "founder",
@@ -135,13 +137,18 @@ export function PricingTable({
         "Tamper-proof Revenue Badges",
         "14-Day Free Trial",
       ],
-      buttonText: currentPlanCode === "founder" && currentCycle === billingCycle 
-        ? (hasPendingReplacement
+      buttonText: hasPendingReplacement
+        ? (currentPlanCode === "founder"
             ? `Switching to ${pendingPlanName}`
-            : status === "cancelled" ? "Resume Subscription" : "Current Plan")
-        : "Start 14-Day Trial",
-      disabled: currentPlanCode === "founder" && currentCycle === billingCycle 
-        && (status !== "cancelled" || hasPendingReplacement),
+            : pendingReplacement?.plan_code === "founder" 
+              ? "Scheduled to Activate" 
+              : "Unavailable")
+        : currentPlanCode === "founder" && currentCycle === billingCycle 
+          ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+          : "Start 14-Day Trial",
+      disabled: hasPendingReplacement
+        ? true
+        : currentPlanCode === "founder" && currentCycle === billingCycle && status !== "cancelled",
     },
     {
       code: "pro",
@@ -155,13 +162,18 @@ export function PricingTable({
         "Priority Support",
         "Custom Branding",
       ],
-      buttonText: currentPlanCode === "pro" && currentCycle === billingCycle 
-        ? (hasPendingReplacement
+      buttonText: hasPendingReplacement
+        ? (currentPlanCode === "pro"
             ? `Switching to ${pendingPlanName}`
-            : status === "cancelled" ? "Resume Subscription" : "Current Plan")
-        : "Upgrade to Pro",
-      disabled: currentPlanCode === "pro" && currentCycle === billingCycle 
-        && (status !== "cancelled" || hasPendingReplacement),
+            : pendingReplacement?.plan_code === "pro" 
+              ? "Scheduled to Activate" 
+              : "Unavailable")
+        : currentPlanCode === "pro" && currentCycle === billingCycle 
+          ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+          : "Upgrade to Pro",
+      disabled: hasPendingReplacement
+        ? true
+        : currentPlanCode === "pro" && currentCycle === billingCycle && status !== "cancelled",
     },
   ];
 
@@ -238,7 +250,7 @@ export function PricingTable({
               </ul>
 
               {(() => {
-                const isPendingTarget = pendingReplacement && pendingReplacement.plan_code === plan.code && pendingReplacement.billing_cycle === billingCycle;
+                const isPendingTarget = hasPendingReplacement && pendingReplacement.plan_code === plan.code;
                 return (
                   <button
                     onClick={() => handleCheckout(plan.code)}
