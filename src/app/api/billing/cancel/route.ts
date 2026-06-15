@@ -4,6 +4,15 @@ import { supabaseServer } from "@/lib/supabase-server";
 import Razorpay from "razorpay";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 
+function isAlreadyCancelledError(err: any): boolean {
+  return (
+    err?.statusCode === 400 &&
+    err?.error?.code === "BAD_REQUEST_ERROR" &&
+    typeof err?.error?.description === "string" &&
+    err.error.description.includes("not cancellable")
+  );
+}
+
 /**
  * Initiates subscription cancellation at the end of the current period.
  */
@@ -34,6 +43,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No active subscription found to cancel." }, { status: 404 });
   }
 
+  // Get all pending replacement subscriptions associated with this active subscription
+  const { data: pendingReplacements, error: pendingError } = await supabaseServer
+    .from("subscriptions")
+    .select("id, razorpay_subscription_id")
+    .eq("user_id", user.id)
+    .eq("status", "trialing")
+    .eq("replaces_razorpay_subscription_id", sub.razorpay_subscription_id);
+
+  if (pendingError) {
+    console.error("[Billing Cancel] Failed to fetch pending replacements:", pendingError);
+  }
+  const pendingReplacementsList = pendingReplacements || [];
+
   if (!sub.razorpay_subscription_id) {
     return NextResponse.json({ error: "Missing Razorpay subscription id." }, { status: 400 });
   }
@@ -51,15 +73,66 @@ export async function POST(req: Request) {
   });
 
   try {
-    // Cancel at period end
-    console.log("[Billing Cancel] Selected subscription:", sub);
-    await razorpay.subscriptions.cancel(sub.razorpay_subscription_id, 1);
+    // 1. Cancel all pending replacement subscriptions immediately
+    // We cancel pending replacements BEFORE the active subscription. If the server crashes
+    // mid-execution, we want the active subscription to remain active so the user can retry.
+    // If we cancelled the active subscription first, a retry would be blocked (because the DB
+    // says the active subscription is already cancelled), permanently leaving billable pending
+    // replacements orphaned in Razorpay.
+    const cancelledPendingIds: string[] = [];
 
-    // Immediately update local state so UI updates instantly
-    await supabaseServer
-      .from("subscriptions")
-      .update({ status: "cancelled" })
-      .eq("id", sub.id);
+    for (const pending of pendingReplacementsList) {
+      if (pending.razorpay_subscription_id) {
+        console.log("[Billing Cancel] Cancelling pending replacement:", pending.razorpay_subscription_id);
+        try {
+          await razorpay.subscriptions.cancel(pending.razorpay_subscription_id, false);
+          cancelledPendingIds.push(pending.id);
+        } catch (err: any) {
+          if (isAlreadyCancelledError(err)) {
+            console.log(`[Billing Cancel] Pending replacement ${pending.razorpay_subscription_id} was already cancelled.`);
+            cancelledPendingIds.push(pending.id);
+          } else {
+            console.error(`[Billing Cancel] Failed to cancel pending replacement ${pending.razorpay_subscription_id}:`, err);
+          }
+        }
+      }
+    }
+
+    // Abort if any pending replacement failed to cancel
+    if (cancelledPendingIds.length < pendingReplacementsList.length) {
+      console.error(`[CRITICAL BILLING ALIGNMENT] Aborting cancellation. Failed to cancel pending replacement subscriptions.`);
+      return NextResponse.json(
+        {
+          error: "We encountered an error cancelling your scheduled plan change. Your active subscription has not been cancelled yet. Please contact support."
+        },
+        { status: 500 }
+      );
+    }
+
+    // 2. Cancel the active subscription at period end
+    console.log("[Billing Cancel] Cancelling active subscription:", sub.razorpay_subscription_id);
+    try {
+      await razorpay.subscriptions.cancel(sub.razorpay_subscription_id, 1);
+    } catch (err: any) {
+      if (isAlreadyCancelledError(err)) {
+        console.log(`[Billing Cancel] Active subscription ${sub.razorpay_subscription_id} was already cancelled.`);
+      } else {
+        throw err; // Handled by outer catch
+      }
+    }
+
+    // 3. Update database only after successful Razorpay operations
+    const updatePromises = [
+      supabaseServer.from("subscriptions").update({ status: "cancelled" }).eq("id", sub.id)
+    ];
+
+    if (cancelledPendingIds.length > 0) {
+      updatePromises.push(
+        supabaseServer.from("subscriptions").update({ status: "expired" }).in("id", cancelledPendingIds)
+      );
+    }
+
+    await Promise.all(updatePromises);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
