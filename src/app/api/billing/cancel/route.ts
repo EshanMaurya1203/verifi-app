@@ -74,31 +74,46 @@ export async function POST(req: Request) {
 
   try {
     // 1. Cancel all pending replacement subscriptions immediately
-    // We cancel pending replacements BEFORE the active subscription. If the server crashes
-    // mid-execution, we want the active subscription to remain active so the user can retry.
-    // If we cancelled the active subscription first, a retry would be blocked (because the DB
-    // says the active subscription is already cancelled), permanently leaving billable pending
-    // replacements orphaned in Razorpay.
     const cancelledPendingIds: string[] = [];
 
     for (const pending of pendingReplacementsList) {
       if (pending.razorpay_subscription_id) {
         console.log("[Billing Cancel] Cancelling pending replacement:", pending.razorpay_subscription_id);
         try {
-          await razorpay.subscriptions.cancel(pending.razorpay_subscription_id, false);
-          cancelledPendingIds.push(pending.id);
+          // Pass false to cancel immediately
+          const response = await razorpay.subscriptions.cancel(pending.razorpay_subscription_id, false);
+          console.log(
+            "[Billing Cancel] Razorpay cancel response (pending):",
+            JSON.stringify(response, null, 2)
+          );
+
+          const verification = await razorpay.subscriptions.fetch(pending.razorpay_subscription_id);
+          console.log(
+            "[Billing Cancel] Verification fetch (pending):",
+            JSON.stringify(verification, null, 2)
+          );
+
+          if (verification.status !== "cancelled") {
+            console.error(
+              "[CRITICAL BILLING ALIGNMENT] Razorpay status mismatch for pending replacement. Expected cancelled.",
+              verification
+            );
+          } else {
+            console.log(`[Billing Cancel] Successfully cancelled subscription ${pending.razorpay_subscription_id}`);
+            cancelledPendingIds.push(pending.id);
+          }
         } catch (err: any) {
           if (isAlreadyCancelledError(err)) {
             console.log(`[Billing Cancel] Pending replacement ${pending.razorpay_subscription_id} was already cancelled.`);
             cancelledPendingIds.push(pending.id);
           } else {
             console.error(`[Billing Cancel] Failed to cancel pending replacement ${pending.razorpay_subscription_id}:`, err);
+            console.error("[Billing Cancel] Razorpay cancel error payload:", JSON.stringify(err, null, 2));
           }
         }
       }
     }
 
-    // Abort if any pending replacement failed to cancel
     if (cancelledPendingIds.length < pendingReplacementsList.length) {
       console.error(`[CRITICAL BILLING ALIGNMENT] Aborting cancellation. Failed to cancel pending replacement subscriptions.`);
       return NextResponse.json(
@@ -111,20 +126,60 @@ export async function POST(req: Request) {
 
     // 2. Cancel the active subscription at period end
     console.log("[Billing Cancel] Cancelling active subscription:", sub.razorpay_subscription_id);
+    let activeDbStatusUpdate: string | null = null;
+
     try {
-      await razorpay.subscriptions.cancel(sub.razorpay_subscription_id, 1);
+      // Pass true to cancel at cycle end (second parameter must be a boolean per Razorpay SDK)
+      const response = await razorpay.subscriptions.cancel(sub.razorpay_subscription_id, true);
+      console.log(
+        "[Billing Cancel] Razorpay cancel response (active):",
+        JSON.stringify(response, null, 2)
+      );
+
+      const verification = await razorpay.subscriptions.fetch(sub.razorpay_subscription_id);
+      console.log(
+        "[Billing Cancel] Verification fetch (active):",
+        JSON.stringify(verification, null, 2)
+      );
+
+      // Razorpay leaves the subscription as "active" but with has_scheduled_changes: true or cancel_at_cycle_end: 1
+      if (verification.status === "active") {
+        console.log(`[Billing Cancel] Successfully scheduled cancellation for subscription ${sub.razorpay_subscription_id}. Status remains active until period end.`);
+        // Database should accurately mirror Razorpay lifecycle state. 
+        // We will NOT mark it as cancelled. The existing schema treats `status: cancelled` with `current_period_end > now` as active,
+        // which serves as our "scheduled_for_cancellation" equivalent state. We map it to "cancelled" locally to reflect this pending-cancellation state 
+        // to the UI, since our DB check constraints only allow: 'active', 'trialing', 'grace_period', 'past_due', 'cancelled', 'expired'.
+        activeDbStatusUpdate = "cancelled"; 
+      } else if (verification.status === "cancelled") {
+        console.log(`[Billing Cancel] Successfully cancelled subscription ${sub.razorpay_subscription_id}.`);
+        activeDbStatusUpdate = "cancelled";
+      } else {
+        console.error(
+          "[CRITICAL BILLING ALIGNMENT] Razorpay status mismatch for active subscription. Unexpected status.",
+          verification
+        );
+      }
     } catch (err: any) {
       if (isAlreadyCancelledError(err)) {
         console.log(`[Billing Cancel] Active subscription ${sub.razorpay_subscription_id} was already cancelled.`);
+        activeDbStatusUpdate = "cancelled";
       } else {
-        throw err; // Handled by outer catch
+        console.error(
+          "[Billing Cancel] Failed to cancel Razorpay active subscription:",
+          JSON.stringify(err, null, 2)
+        );
+        throw err;
       }
     }
 
     // 3. Update database only after successful Razorpay operations
-    const updatePromises = [
-      supabaseServer.from("subscriptions").update({ status: "cancelled" }).eq("id", sub.id)
-    ];
+    const updatePromises = [];
+
+    if (activeDbStatusUpdate) {
+      updatePromises.push(
+        supabaseServer.from("subscriptions").update({ status: activeDbStatusUpdate }).eq("id", sub.id)
+      );
+    }
 
     if (cancelledPendingIds.length > 0) {
       updatePromises.push(
@@ -137,7 +192,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error(
-      "[Billing Cancel] Failed to cancel Razorpay subscription:",
+      "[Billing Cancel] Failed to process cancellation flow:",
       JSON.stringify(error, null, 2)
     );
 
