@@ -100,6 +100,24 @@ export async function POST(req: Request) {
     );
   }
 
+  // Acquire Lease Lock (1 minute)
+  const lockDurationMs = 60 * 1000; // 1 minute
+  const lockUntil = new Date(Date.now() + lockDurationMs).toISOString();
+
+  const { data: lockData, error: lockError } = await supabaseServer
+    .from("subscriptions")
+    .update({ plan_change_lock_until: lockUntil })
+    .eq("id", sub.id)
+    .or(`plan_change_lock_until.is.null,plan_change_lock_until.lte.${nowIso}`)
+    .select("id");
+
+  if (lockError || !lockData || lockData.length === 0) {
+    return NextResponse.json(
+      { error: "Another plan change is currently in progress. Please try again in a few minutes." },
+      { status: 409 }
+    );
+  }
+
   const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET
@@ -142,6 +160,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, status: "pending_webhook" });
   } catch (error: any) {
     console.error("[Billing Change Plan] Failed to change Razorpay subscription:", error);
+
+    // Release lock on failure so the user can retry immediately
+    await supabaseServer
+      .from("subscriptions")
+      .update({ plan_change_lock_until: null })
+      .eq("id", sub.id);
+
     return NextResponse.json({ error: "Failed to process plan change" }, { status: 500 });
   }
 }
