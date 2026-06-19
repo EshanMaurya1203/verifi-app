@@ -34,7 +34,7 @@ export function PricingTable({
 
   const handleCheckout = async (planCode: string) => {
     if (loadingPlan) return;
-    
+
     if (planCode === "viewer" && currentPlanCode !== "viewer") {
       setShowCancelModal(true);
       return;
@@ -90,7 +90,7 @@ export function PricingTable({
         method: "POST"
       });
       const data = await res.json();
-      
+
       if (!res.ok) {
         alert(data.error || "Failed to cancel subscription");
       } else {
@@ -118,11 +118,11 @@ export function PricingTable({
       features: ["View public startup profiles", "Search verified database", "Community access"],
       buttonText: hasPendingReplacement
         ? "Unavailable"
-        : currentPlanCode === "viewer" 
-          ? "Current Plan" 
+        : currentPlanCode === "viewer"
+          ? "Current Plan"
           : status === "cancelled"
             ? "Downgraded to Free"
-            : "Cancel Subscription",
+            : "Downgrade to Free",
       disabled: hasPendingReplacement || currentPlanCode === "viewer" || status === "cancelled",
     },
     {
@@ -139,11 +139,11 @@ export function PricingTable({
       ],
       buttonText: hasPendingReplacement
         ? (currentPlanCode === "founder"
-            ? `Switching to ${pendingPlanName}`
-            : pendingReplacement?.plan_code === "founder" 
-              ? "Scheduled to Activate" 
-              : "Unavailable")
-        : currentPlanCode === "founder" && currentCycle === billingCycle 
+          ? `Switching to ${pendingPlanName}`
+          : pendingReplacement?.plan_code === "founder"
+            ? "Scheduled to Activate"
+            : "Unavailable")
+        : currentPlanCode === "founder" && currentCycle === billingCycle
           ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
           : "Start 14-Day Trial",
       disabled: hasPendingReplacement
@@ -164,11 +164,11 @@ export function PricingTable({
       ],
       buttonText: hasPendingReplacement
         ? (currentPlanCode === "pro"
-            ? `Switching to ${pendingPlanName}`
-            : pendingReplacement?.plan_code === "pro" 
-              ? "Scheduled to Activate" 
-              : "Unavailable")
-        : currentPlanCode === "pro" && currentCycle === billingCycle 
+          ? `Switching to ${pendingPlanName}`
+          : pendingReplacement?.plan_code === "pro"
+            ? "Scheduled to Activate"
+            : "Unavailable")
+        : currentPlanCode === "pro" && currentCycle === billingCycle
           ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
           : "Upgrade to Pro",
       disabled: hasPendingReplacement
@@ -191,18 +191,16 @@ export function PricingTable({
           <button
             onClick={() => setBillingCycle("monthly")}
             disabled={hasPendingReplacement}
-            className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${
-              billingCycle === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
+            className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${billingCycle === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
           >
             Monthly
           </button>
           <button
             onClick={() => setBillingCycle("annual")}
             disabled={hasPendingReplacement}
-            className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${
-              billingCycle === "annual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
+            className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${billingCycle === "annual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
           >
             Annual <span className="ml-1 text-xs text-green-500">-20%</span>
           </button>
@@ -216,9 +214,8 @@ export function PricingTable({
           return (
             <div
               key={plan.code}
-              className={`relative flex flex-col rounded-3xl border p-8 shadow-sm transition-all ${
-                isPro ? "border-primary bg-primary/5" : "border-border bg-card"
-              }`}
+              className={`relative flex flex-col rounded-3xl border p-8 shadow-sm transition-all ${isPro ? "border-primary bg-primary/5" : "border-border bg-card"
+                }`}
             >
               {isPro && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground uppercase tracking-wide">
@@ -263,15 +260,14 @@ export function PricingTable({
                   <button
                     onClick={() => handleCheckout(plan.code)}
                     disabled={plan.disabled || loadingPlan !== null || isPendingTarget}
-                    className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition-all flex justify-center items-center ${
-                      isPendingTarget
+                    className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition-all flex justify-center items-center ${isPendingTarget
                         ? "bg-primary/10 text-primary border border-primary/20 cursor-not-allowed"
                         : plan.disabled
-                        ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
-                        : isPro
-                        ? "bg-primary text-primary-foreground hover:bg-[#a8e630]"
-                        : "bg-card border border-border hover:border-primary text-foreground"
-                    }`}
+                          ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
+                          : isPro
+                            ? "bg-primary text-primary-foreground hover:bg-[#a8e630]"
+                            : "bg-card border border-border hover:border-primary text-foreground"
+                      }`}
                   >
                     {loadingPlan === plan.code ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
