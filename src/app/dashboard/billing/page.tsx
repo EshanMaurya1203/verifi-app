@@ -39,6 +39,13 @@ export default async function BillingDashboardPage() {
     ? new Date(plan.current_period_end).toLocaleDateString()
     : "—";
 
+  const displayDate =
+    plan.status === "trialing"
+      ? (plan.trial_end
+          ? new Date(plan.trial_end).toLocaleDateString()
+          : "—")
+      : periodEnd;
+
   const statusDisplay = 
     plan.status === "trialing" ? "Trial Active" :
     plan.status === "active" ? "Active" :
@@ -116,9 +123,9 @@ export default async function BillingDashboardPage() {
                   <div>
                     <p className="text-sm text-muted-foreground flex items-center gap-1.5 mb-1">
                       <Calendar className="h-4 w-4" />
-                      {plan.status === "cancelled" ? "Ends On" : "Renews On"}
+                      {plan.status === "cancelled" ? "Ends On" : plan.status === "trialing" ? "Trial Ends" : "Renews On"}
                     </p>
-                    <p className="font-medium">{periodEnd}</p>
+                    <p className="font-medium">{displayDate}</p>
                   </div>
                 </div>
               )}
