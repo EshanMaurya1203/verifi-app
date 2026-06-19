@@ -27,10 +27,9 @@ export default async function BillingDashboardPage() {
     .eq("user_id", user.id)
     .eq("status", "trialing")
     .not("replaces_razorpay_subscription_id", "is", null)
-    .order("created_at", { ascending: false })
+    .neq("id", plan.id) // Ensure we don't treat the current subscription as a replacement of itself
     .limit(1)
     .maybeSingle();
-
 
   const isFree = plan.plan_code === "viewer";
   const isPro = plan.plan_code === "pro";

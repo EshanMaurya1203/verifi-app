@@ -21,26 +21,38 @@ export interface UserSubscription {
 }
 
 /**
+ * Status priority for selecting the "current" subscription.
+ * Lower number = higher priority.
+ */
+const STATUS_PRIORITY: Record<string, number> = {
+  active: 0,
+  grace_period: 1,
+  trialing: 2,
+  cancelled: 3,
+};
+
+/**
  * Retrieves the currently active subscription for a given user.
- * If the user has no active subscription, defaults to the 'viewer' plan.
+ * Selection priority: active > grace_period > trialing > cancelled.
+ * Within the same priority, the newest (by created_at) wins.
+ * If the user has no qualifying subscription, defaults to the 'viewer' plan.
  */
 export async function getUserPlan(userId: string): Promise<UserSubscription> {
   const nowIso = new Date().toISOString();
   
-  // Authorization reads ONLY from local subscriptions table.
-  // Active/Grace: status is active or grace_period
-  // Trialing: status is trialing AND trial_end > now
-  // Cancelled: status is cancelled AND current_period_end > now
+  // Fetch ALL qualifying subscriptions (not just 1) so we can sort by
+  // status priority. Qualifying means:
+  //   - active or grace_period (always valid)
+  //   - trialing with trial_end in the future
+  //   - cancelled with current_period_end in the future (still has access)
   const { data, error } = await supabaseServer
     .from("subscriptions")
     .select("*")
     .eq("user_id", userId)
-    .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso},replaces_razorpay_subscription_id.is.null),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso}),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
+    .order("created_at", { ascending: false });
 
-  if (error || !data) {
+  if (error || !data || data.length === 0) {
     // Default fallback is the free viewer plan
     return {
       id: "free_viewer_fallback",
@@ -52,7 +64,19 @@ export async function getUserPlan(userId: string): Promise<UserSubscription> {
     };
   }
 
-  return data as UserSubscription;
+  // Sort by status priority (active > grace_period > trialing > cancelled),
+  // then by created_at descending.
+  data.sort((a, b) => {
+    const pa = STATUS_PRIORITY[a.status] ?? 99;
+    const pb = STATUS_PRIORITY[b.status] ?? 99;
+    if (pa !== pb) return pa - pb;
+    // Same priority → newest first (already ordered by query, but be explicit)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const selected = data[0] as UserSubscription;
+
+  return selected;
 }
 
 /**

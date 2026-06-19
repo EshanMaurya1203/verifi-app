@@ -40,12 +40,24 @@ export function Navbar() {
           .from("subscriptions")
           .select("*")
           .eq("user_id", data.user.id)
-          .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso},replaces_razorpay_subscription_id.is.null),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
+          .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso}),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
           .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle()
-          .then(({ data: plan }) => {
-            if (plan) setSubscription(plan);
+          .then(({ data: plans }) => {
+            if (plans && plans.length > 0) {
+              const STATUS_PRIORITY: Record<string, number> = {
+                active: 0,
+                grace_period: 1,
+                trialing: 2,
+                cancelled: 3,
+              };
+              plans.sort((a, b) => {
+                const pa = STATUS_PRIORITY[a.status] ?? 99;
+                const pb = STATUS_PRIORITY[b.status] ?? 99;
+                if (pa !== pb) return pa - pb;
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              });
+              setSubscription(plans[0]);
+            }
           });
       }
     });
