@@ -348,7 +348,6 @@ export async function computeTrustScore(
   const updateData: Record<string, unknown> = {
     trust_score: score,
     trust_tier: tier,
-    verification_status: status,
     trust_breakdown: breakdown,
     penalty_count: penaltyCount
   };
