@@ -8,12 +8,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // 1. Retrieve all startups that have completed dynamic revenue verification
   const { data: startups } = await supabaseServer
     .from('startup_submissions')
-    .select('slug, last_verified_at, updated_at')
+    .select('slug, last_verified_at')
     .neq('verification_status', 'flagged')
 
   const startupUrls = (startups || []).map((s) => ({
     url: `${baseUrl}/startup/${s.slug}/`,
-    lastModified: s.last_verified_at ? new Date(s.last_verified_at) : (s.updated_at ? new Date(s.updated_at) : new Date()),
+    lastModified: s.last_verified_at ? new Date(s.last_verified_at) : new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.8,
   }))

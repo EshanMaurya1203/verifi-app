@@ -182,7 +182,7 @@ export default function HomePage() {
           const eventStream: ActivityEvent[] = [];
           
           realList.slice(0, 6).forEach((s: any, i: number) => {
-            const updatedAt = new Date(s.updated_at || s.created_at);
+            const updatedAt = new Date(s.created_at);
             const createdAt = new Date(s.created_at);
             
             if (updatedAt.getTime() - createdAt.getTime() > 86400000) {

@@ -33,7 +33,10 @@ const breadcrumbJsonLd = {
   ]
 };
 
-function getStatusConfig(status: string | null): { label: string; color: string; bg: string } {
+function getStatusConfig(status: string | null, isConnected?: boolean): { label: string; color: string; bg: string } {
+  if (isConnected) {
+    return { label: "Payment Connected", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" };
+  }
   switch (status) {
     case "api_verified":
     case "verified":
@@ -43,6 +46,8 @@ function getStatusConfig(status: string | null): { label: string; color: string;
     case "stripe_connected":
     case "PAYMENT_CONNECTED":
       return { label: "Payment Connected", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" };
+    case "syncing":
+      return { label: "Syncing Data", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" };
     case "proof_submitted":
       return { label: "Proof Submitted", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" };
     case "pending":
@@ -68,6 +73,7 @@ function formatRelativeDate(dateStr: string | null): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+
 export default async function DashboardPage() {
   const user = await getAuthenticatedUser();
 
@@ -78,14 +84,15 @@ export default async function DashboardPage() {
   // Fetch startups owned by authenticated user
   const { data: startups } = await supabaseServer
     .from("startup_submissions")
-    .select("id, startup_name, slug, verification_status, trust_tier, startup_logo, updated_at, created_at")
+    .select("id, startup_name, slug, verification_status, trust_tier, startup_logo, payment_connected, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
+
 
   const startupCount = startups?.length || 0;
 
   const verifiedStatuses = ["api_verified", "proof_submitted", "stripe_connected", "verified", "REVENUE_VERIFIED", "PAYMENT_CONNECTED", "HIGH_CONFIDENCE"];
-  const verificationCount = startups?.filter(s => verifiedStatuses.includes(s.verification_status))?.length || 0;
+  const verificationCount = startups?.filter(s => s.payment_connected || verifiedStatuses.includes(s.verification_status))?.length || 0;
 
   const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Founder";
 
@@ -166,9 +173,9 @@ export default async function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {startups!.map((startup) => {
-                const status = getStatusConfig(startup.verification_status);
+                const status = getStatusConfig(startup.verification_status, startup.payment_connected);
                 const slug = startup.slug || startup.id;
-                const lastUpdated = startup.updated_at || startup.created_at;
+                const lastUpdated = startup.created_at;
 
                 return (
                   <div
