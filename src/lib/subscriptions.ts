@@ -43,13 +43,13 @@ export async function getUserPlan(userId: string): Promise<UserSubscription> {
   // Fetch ALL qualifying subscriptions (not just 1) so we can sort by
   // status priority. Qualifying means:
   //   - active or grace_period (always valid)
-  //   - trialing with trial_end in the future
+  //   - trialing with trial_end in the future AND (trial_start <= now OR trial_start IS NULL)
   //   - cancelled with current_period_end in the future (still has access)
   const { data, error } = await supabaseServer
     .from("subscriptions")
     .select("*")
     .eq("user_id", userId)
-    .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso}),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
+    .or(`status.in.(active,grace_period),and(status.eq.trialing,trial_end.gt.${nowIso},or(trial_start.lte.${nowIso},trial_start.is.null)),and(status.eq.cancelled,current_period_end.gt.${nowIso})`)
     .order("created_at", { ascending: false });
 
   if (error || !data || data.length === 0) {
