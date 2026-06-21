@@ -91,7 +91,16 @@ export default async function DashboardPage() {
 
   const startupCount = startups?.length || 0;
 
-  const verifiedStatuses = ["api_verified", "proof_submitted", "stripe_connected", "verified", "REVENUE_VERIFIED", "PAYMENT_CONNECTED", "HIGH_CONFIDENCE"];
+  const verifiedStatuses = [
+    "api_verified",
+    "stripe_connected",
+    "PAYMENT_CONNECTED",
+    "REVENUE_VERIFIED",
+    "HIGH_CONFIDENCE",
+    "verified",
+    "approved",
+    "identity_verified"
+  ];
   const verificationCount = startups?.filter(s => s.payment_connected || verifiedStatuses.includes(s.verification_status))?.length || 0;
 
   const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Founder";
