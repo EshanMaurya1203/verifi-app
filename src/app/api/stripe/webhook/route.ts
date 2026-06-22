@@ -93,14 +93,20 @@ export async function POST(req: Request) {
               { onConflict: "startup_id,provider" }
             );
 
+            // Always set connection fields; only promote status from pre-verified states
             await supabaseServer
               .from("startup_submissions")
               .update({
                 stripe_account_id: account.id,
                 payment_connected: true,
-                verification_status: "stripe_connected",
               })
               .eq("id", startupId);
+
+            await supabaseServer
+              .from("startup_submissions")
+              .update({ verification_status: "stripe_connected" })
+              .eq("id", startupId)
+              .in("verification_status", ["pending", "syncing", "unverified"]);
           }
         }
         break;
