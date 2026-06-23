@@ -20,7 +20,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { founder_name, founder_avatar, startup_logo, founder_bio } = body;
+    const { founder_name, founder_avatar, startup_logo, founder_bio, is_public } = body;
 
     const { data, error } = await supabaseServer
       .from("startup_submissions")
@@ -28,7 +28,8 @@ export async function PUT(
         founder_name,
         founder_avatar,
         startup_logo,
-        founder_bio
+        founder_bio,
+        is_public
       })
       .eq("id", startupId)
       .select()

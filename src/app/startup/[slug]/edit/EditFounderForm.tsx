@@ -22,12 +22,16 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
     founder_name: startup.founder_name || "",
     founder_avatar: startup.founder_avatar || "",
     founder_bio: startup.founder_bio || "",
+    is_public: startup.is_public ?? false,
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
+    
     setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: type === 'checkbox' ? checked : value
     }));
   };
 
@@ -120,6 +124,22 @@ export function EditFounderForm({ startup, slug }: EditFounderFormProps) {
             rows={4}
             className="w-full bg-neutral-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-colors resize-none"
           />
+        </div>
+
+        <div className="pt-4 border-t border-white/5">
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              name="is_public"
+              checked={formData.is_public}
+              onChange={handleChange}
+              className="w-5 h-5 rounded border-white/20 bg-neutral-950 text-primary focus:ring-primary focus:ring-offset-0 transition-all cursor-pointer"
+            />
+            <div>
+              <span className="block text-sm font-bold text-white group-hover:text-primary transition-colors">Public Profile</span>
+              <span className="block text-xs text-neutral-400 mt-0.5">When enabled, your startup profile can appear on public surfaces such as the leaderboard and search engines.</span>
+            </div>
+          </label>
         </div>
       </div>
 
