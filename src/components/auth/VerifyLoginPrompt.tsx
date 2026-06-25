@@ -13,7 +13,7 @@ export function VerifyLoginPrompt({ slug }: VerifyLoginPromptProps) {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent(next)}`,
+        redirectTo: process.env.NODE_ENV === "production" ? "https://www.verifii.in/auth/callback" : "http://localhost:3000/auth/callback",
       },
     });
   };

@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabase-server";
 import { safeSupabaseQuery } from "@/lib/safe-network";
 import { Navbar } from "@/components/layout/Navbar";
+import { getAuthenticatedUser } from "@/lib/auth-server";
 import { ShieldCheck, ShieldAlert, Share2, Globe, CalendarDays, ExternalLink, Award, CheckCircle2, AlertTriangle, Link, ScanSearch, Clock, TrendingUp, History, Fingerprint } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { RevenueConsistencyCard } from "@/components/startup/RevenueConsistencyCard";
@@ -115,7 +116,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
       .maybeSingle()
   );
 
-  const { data: { user } } = await supabaseServer.auth.getUser();
+  const user = await getAuthenticatedUser();
 
   if (error || !ok || !startup) {
     return (

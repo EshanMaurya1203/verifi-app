@@ -155,7 +155,7 @@ export default function SubmitPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent(nextParam)}`,
+        redirectTo: process.env.NODE_ENV === "production" ? "https://www.verifii.in/auth/callback" : "http://localhost:3000/auth/callback",
       },
     });
   };
@@ -206,8 +206,9 @@ export default function SubmitPage() {
           }
           setIsLoading(false);
         } else {
-          // Unauthenticated user - trigger automatic Google OAuth redirection
-          await handleGoogleLogin();
+          // Unauthenticated user — show login prompt instead of auto-redirecting
+          // Auto-redirecting creates an OAuth loop causing "bad_oauth_state" errors
+          setIsLoading(false);
         }
       } catch (err) {
         if (process.env.NODE_ENV === "development") {

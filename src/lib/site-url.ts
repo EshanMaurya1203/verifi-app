@@ -7,8 +7,9 @@ function normalizeSiteUrl(url: string): string {
  * Production must set NEXT_PUBLIC_SITE_URL.
  */
 export function getSiteUrl(): string {
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL);
+  const rawUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (rawUrl) {
+    return normalizeSiteUrl(rawUrl);
   }
 
   // Client: use the active origin when env is unset (e.g. local dev)

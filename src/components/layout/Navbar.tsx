@@ -79,7 +79,7 @@ export function Navbar() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/")}`,
+        redirectTo: process.env.NODE_ENV === "production" ? "https://www.verifii.in/auth/callback" : "http://localhost:3000/auth/callback",
       },
     });
   };
@@ -96,15 +96,15 @@ export function Navbar() {
   const handleAddStartupClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     setIsMobileOpen(false);
-    const { data: { session } } = await supabase.auth.getSession();
-    const currentUser = session?.user || user;
-    if (currentUser) {
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const effectiveUser = currentUser || user;
+    if (effectiveUser) {
       router.push("/submit");
     } else {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/submit")}`,
+          redirectTo: process.env.NODE_ENV === "production" ? "https://www.verifii.in/auth/callback" : "http://localhost:3000/auth/callback",
         },
       });
     }

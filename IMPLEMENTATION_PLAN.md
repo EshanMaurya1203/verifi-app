@@ -363,6 +363,17 @@ Resolved visual state synchronization issues on the Pricing Table when a user ha
 | M3 | Gated pending replacement visual state | `src/components/billing/PricingTable.tsx` | Introduced `hasPendingReplacement` and `pendingPlanName` variables. Configured the cards to display "Switching to {pendingPlanName}" and disable actions when a pending replacement is active. |
 | M4 | Cycle-independent lock status | `src/components/billing/PricingTable.tsx` | Removed cycle comparison constraints (`billingCycle === pendingReplacement.billing_cycle` and `currentCycle === billingCycle`) for pending check text and disabled state. Ensured switching billing cycle tabs locks all cards uniformly to prevent duplicate checkout requests. |
 
+### Phase N — Supabase OAuth Flow & Authentication Fixes (In Progress)
+Google OAuth flow currently exhibits issues like redirect loops and expired states. This phase implements the fixes identified during the complete auth audit.
+
+| # | Task | Files | Target Outcome / Status |
+|---|------|-------|-------------------------|
+| N1 | Remove auto-OAuth-redirect on `/submit` | `src/app/submit/page.tsx` | Avoid infinite redirect loop and PKCE state expiration by allowing existing login UI to handle login interaction. |
+| N2 | Set `NEXT_PUBLIC_SITE_URL` env variable | `.env.local` | Set `NEXT_PUBLIC_SITE_URL=http://localhost:3000` locally and ensure it's set in production. |
+| N3 | Use cookie-aware auth in startup profile page | `src/app/startup/[slug]/page.tsx` | Replace service-role `auth.getUser()` with cookie-aware `getAuthenticatedUser()` from `auth-server.ts`. |
+| N4 | Replace `getSession()` with `getUser()` | `src/components/layout/Navbar.tsx`, `src/app/page.tsx` | Use safe `auth.getUser()` calls to prevent stale local storage/cached session reads. |
+| N5 | Robust site URL fallback for env compatibility | `src/lib/site-url.ts` | Support `NEXT_PUBLIC_APP_URL` as a fallback configuration for `NEXT_PUBLIC_SITE_URL` in `getSiteUrl()`. |
+
 ---
 
 ## 4. Database schema additions (Phase K–L)
@@ -448,6 +459,7 @@ Auto-populated via PostgreSQL trigger `trg_audit_subscriptions` on every INSERT/
 | **Billing receipt emails** | No email notifications for billing events | Integrate transactional email for receipts, trial expiry reminders |
 | **Razorpay checkout UX** | Checkout redirects to Razorpay hosted page | Consider Razorpay Checkout.js modal for in-app experience |
 | **Webhook retry resilience** | Single-attempt handler | Add idempotency keys and retry-safe processing |
+| **Auth & OAuth Flow** | Google OAuth redirect loop on `/submit`, missing env var, service-role client mismatch | Implement Phase N fixes (remove auto-redirect on `/submit`, set `NEXT_PUBLIC_SITE_URL`, fix server component auth calls, upgrade `getSession` to `getUser`) |
 
 ---
 

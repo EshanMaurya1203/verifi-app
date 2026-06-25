@@ -68,13 +68,13 @@ export default function HomePage() {
 
   const handleVerifyClick = async (e: React.MouseEvent) => {
     e.preventDefault();
-    const { data: { session } } = await supabase.auth.getSession();
-    const currentUser = session?.user || user;
-    if (currentUser) {
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const effectiveUser = currentUser || user;
+    if (effectiveUser) {
       const { data: startups } = await supabase
         .from("startup_submissions")
         .select("slug")
-        .eq("user_id", currentUser.id)
+        .eq("user_id", effectiveUser.id)
         .order("created_at", { ascending: false });
 
       if (startups && startups.length > 0) {
@@ -86,7 +86,7 @@ export default function HomePage() {
       await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${getClientOAuthRedirect("/auth/callback")}?next=${encodeURIComponent("/submit?action=verify")}`,
+          redirectTo: process.env.NODE_ENV === "production" ? "https://www.verifii.in/auth/callback" : "http://localhost:3000/auth/callback",
         },
       });
     }
