@@ -52,7 +52,7 @@ export default function AdminPage() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: process.env.NODE_ENV === "production" ? "https://www.verifii.in/auth/callback" : "http://localhost:3000/auth/callback",
+        redirectTo: getClientOAuthRedirect("/auth/callback"),
       },
     });
   };
