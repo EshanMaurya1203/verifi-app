@@ -45,10 +45,28 @@ export async function GET(request: Request) {
     }
   );
 
+  const cookiesBefore = cookieStore.getAll().map(c => c.name);
   const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  const cookiesAfter = cookieStore.getAll().map(c => c.name);
 
   if (exchangeError) {
-    console.error("[auth/callback] exchangeCodeForSession:", exchangeError.message);
+    console.error("====== SUPABASE OAUTH EXCHANGE FAILURE ======");
+    console.error("1. Error Object:", exchangeError);
+    console.error("2. JSON stringified:", JSON.stringify(exchangeError, null, 2));
+    console.error("3. Request URL:", request.url);
+    console.error("4. Request origin:", origin);
+    console.error("5. Search params:", searchParams.toString());
+    console.error("6. Code exists:", !!code);
+    console.error("7. NEXT_PUBLIC_SUPABASE_URL exists:", !!process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.error("8. NEXT_PUBLIC_SUPABASE_ANON_KEY exists:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    console.error("9. Cookies before exchange:\n" + JSON.stringify(cookiesBefore, null, 2));
+    console.error("10. Cookies after exchange:\n" + JSON.stringify(cookiesAfter, null, 2));
+    console.error("11. Error status:", (exchangeError as any).status);
+    console.error("12. Error code:", (exchangeError as any).code);
+    console.error("13. Error message:", exchangeError.message);
+    console.error("14. Error name:", exchangeError.name);
+    console.error("=============================================");
+
     return redirectTo("/submit?error=oauth_exchange_failed");
   }
 
