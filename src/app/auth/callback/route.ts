@@ -6,6 +6,15 @@ import { NextResponse } from "next/server";
  * Supabase OAuth callback — exchanges PKCE code for a session stored in cookies.
  */
 export async function GET(request: Request) {
+  console.error("########################################");
+  console.error("AUTH CALLBACK ROUTE EXECUTED");
+  console.error("Timestamp:", new Date().toISOString());
+  console.error("Commit SHA:", process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown");
+  console.error("Runtime:", process.env.NEXT_RUNTIME ?? "unknown");
+  console.error("Node Version:", process.version);
+  console.error("URL:", request.url);
+  console.error("########################################");
+
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/submit";
