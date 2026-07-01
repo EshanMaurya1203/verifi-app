@@ -57,18 +57,24 @@ export async function POST(req: Request) {
       currency: result.currency,
       total_transactions: result.total_transactions,
     });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Razorpay verification failed";
+  } catch (err: any) {
+    const isProviderError = err && err.name === "ProviderError";
+    const message = err instanceof Error ? err.message : "Razorpay verification failed";
     const isClientError =
       message.includes("No revenue") ||
       message.includes("Invalid") ||
       message.includes("Missing");
 
-    console.error("[Razorpay Verify] Error:", err);
+    const status = isProviderError && err.statusCode !== 500
+      ? err.statusCode
+      : (isClientError ? 400 : 500);
+
+    // Ensure logs contain the full structured object
+    console.error("[Razorpay Verify] Error:", isProviderError ? (err.originalError || err) : err);
+
     return NextResponse.json(
       { success: false, error: message },
-      { status: isClientError ? 400 : 500 }
+      { status }
     );
   }
 }

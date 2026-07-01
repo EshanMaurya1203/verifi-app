@@ -89,8 +89,9 @@ export async function POST(
           }
         }
       }
-    } catch (err) {
-      console.error(`[Manual Sync] Error for connection ${conn.id}:`, err);
+    } catch (err: any) {
+      const isProviderError = err && err.name === "ProviderError";
+      console.error(`[Manual Sync] Error for connection ${conn.id}:`, isProviderError ? (err.originalError || err) : err);
     }
   }
 

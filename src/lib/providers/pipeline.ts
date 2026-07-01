@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { computeTrustScore } from "@/lib/scoring";
 import { fraudService } from "./services/fraud-service";
 import { revenueService } from "./services/revenue-service";
+import { normalizeProviderError, ProviderError } from "./errors";
 
 export interface VerificationPipelineContext {
   startupId: number;
@@ -74,7 +75,7 @@ export class VerificationPipeline {
         success: false,
         startupId: this.context.startupId,
         providerId: this.context.provider.id,
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: new ProviderError(normalizeProviderError(error)),
       };
     }
   }

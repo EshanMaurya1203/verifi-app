@@ -55,9 +55,12 @@ export async function POST(req: Request) {
       currency: result.currency,
       total_transactions: result.total_transactions,
     });
-  } catch (err: unknown) {
+  } catch (err: any) {
+    const isProviderError = err && err.name === "ProviderError";
     const message = err instanceof Error ? err.message : "Failed to sync revenue";
-    console.error("[Razorpay Sync] Error:", err);
+    
+    // Ensure logs contain the full structured object
+    console.error("[Razorpay Sync] Error:", isProviderError ? (err.originalError || err) : err);
 
     const body = await req.clone().json().catch(() => ({}));
     if (body.startup_id) {
@@ -68,9 +71,13 @@ export async function POST(req: Request) {
       });
     }
 
+    const status = isProviderError && err.statusCode !== 500
+      ? err.statusCode
+      : (message.includes("No active") ? 404 : 500);
+
     return NextResponse.json(
       { success: false, error: message },
-      { status: message.includes("No active") ? 404 : 500 }
+      { status }
     );
   }
 }
