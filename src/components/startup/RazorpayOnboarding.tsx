@@ -221,8 +221,14 @@ export const RazorpayOnboarding: React.FC<RazorpayOnboardingProps> = ({
         <div className="p-4 bg-red-500/8 border border-red-500/20 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
           <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
           <div>
-            <p className="text-xs text-red-400 font-bold uppercase tracking-wide leading-relaxed">{errorMsg}</p>
-            <p className="text-[10px] text-red-400/60 mt-1">Check that your Key ID and Key Secret are correct and try again.</p>
+            {errorMsg.includes("Live Razorpay authentication failed") ? (
+              <p className="text-xs text-red-400 font-bold uppercase tracking-wide leading-relaxed">Verification Failed</p>
+            ) : (
+              <>
+                <p className="text-xs text-red-400 font-bold uppercase tracking-wide leading-relaxed whitespace-pre-wrap">{errorMsg}</p>
+                <p className="text-[10px] text-red-400/60 mt-1">Check that your Key ID and Key Secret are correct and try again.</p>
+              </>
+            )}
           </div>
         </div>
       )}

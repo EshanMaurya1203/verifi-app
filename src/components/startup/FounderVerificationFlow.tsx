@@ -214,12 +214,29 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
               <p className="text-sm text-neutral-500 font-medium">Link your payment gateway for read-only automated verification.</p>
             </div>
 
-            {errorMsg && (
+            {errorMsg && errorMsg.includes("Live Razorpay authentication failed") ? (
+              <div className="mb-6 p-5 bg-red-500/10 border border-red-500/20 rounded-2xl flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                  <h3 className="text-sm font-bold text-red-400 uppercase tracking-wide">Unable to connect to Razorpay</h3>
+                </div>
+                <div className="text-xs text-red-300/90 leading-relaxed space-y-3">
+                  <p>We couldn't authenticate your Razorpay account.</p>
+                  <p>Before trying again, please verify:</p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>You're using Live API Keys</li>
+                    <li>Your website has been approved by Razorpay</li>
+                    <li>Your Key ID and Key Secret belong to the same account</li>
+                  </ul>
+                  <p>Test Mode API Keys are not supported.</p>
+                </div>
+              </div>
+            ) : errorMsg ? (
               <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
-                <p className="text-xs text-red-400 font-bold uppercase tracking-wide leading-relaxed">{errorMsg}</p>
+                <p className="text-xs text-red-400 font-bold uppercase tracking-wide leading-relaxed whitespace-pre-wrap">{errorMsg}</p>
               </div>
-            )}
+            ) : null}
 
             {isDemo ? (
               <div className="space-y-4 text-center">
