@@ -71,8 +71,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });
   } catch (err: any) {
     const { normalizeProviderError } = await import("@/lib/providers/errors");
+    const { getFriendlyErrorMessage } = await import("@/lib/providers/error-mapping");
     const normalized = normalizeProviderError(err);
+    const friendlyMessage = getFriendlyErrorMessage("razorpay", normalized);
     console.error("One-off verification error:", normalized.originalError);
-    return NextResponse.json({ error: normalized.message }, { status: normalized.statusCode });
+    return NextResponse.json({ error: friendlyMessage }, { status: normalized.statusCode });
   }
 }

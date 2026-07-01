@@ -67,12 +67,14 @@ export async function POST(req: Request) {
       total_transactions: result.total_transactions,
     });
   } catch (err: any) {
+    const { getFriendlyErrorMessage } = await import("@/lib/providers/error-mapping");
     const isProviderError = err && err.name === "ProviderError";
-    const message = err instanceof Error ? err.message : "Razorpay sync failed";
+    const message = getFriendlyErrorMessage("razorpay", err);
     const isClientError =
       message.includes("No revenue") ||
       message.includes("No active Razorpay") ||
-      message.includes("Invalid");
+      message.includes("Invalid") ||
+      message.includes("Live Razorpay authentication failed");
 
     const status = isProviderError && err.statusCode !== 500
       ? err.statusCode

@@ -56,8 +56,9 @@ export async function POST(req: Request) {
       total_transactions: result.total_transactions,
     });
   } catch (err: any) {
+    const { getFriendlyErrorMessage } = await import("@/lib/providers/error-mapping");
     const isProviderError = err && err.name === "ProviderError";
-    const message = err instanceof Error ? err.message : "Failed to sync revenue";
+    const message = getFriendlyErrorMessage("razorpay", err);
     
     // Ensure logs contain the full structured object
     console.error("[Razorpay Sync] Error:", isProviderError ? (err.originalError || err) : err);
