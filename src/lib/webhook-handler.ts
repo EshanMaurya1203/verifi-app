@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabase-server";
 import { computeTrustScore } from "@/lib/scoring";
-import { detectFraud } from "@/lib/fraud";
+import { fraudService } from "@/lib/providers/services/fraud-service";
 
 /**
  * Shared handler for real-time revenue updates from webhooks.
@@ -55,32 +55,21 @@ export async function updateRevenueAndSnapshot(
   }
 
   // ─── STEP 3: ABUSE DETECTION (before insert so counts are not inflated) ──
-  const { data: recentHistory } = await supabaseServer
-    .from("revenue_transactions")
-    .select("amount, created_at")
-    .eq("startup_id", startupId)
-    .order("created_at", { ascending: false })
-    .limit(4);
-
-  const previousTransactions = (recentHistory ?? []).map(row => Number(row.amount));
-  const timestamps = (recentHistory ?? []).map(row => new Date(row.created_at).getTime());
-
-  const fraud = detectFraud({
-    amount,
-    previousTransactions,
-    timestamps,
-    now: Date.now()
+  const fraudResult = await fraudService.runChecks({
+    startupId,
+    currentMaxAmount: amount,
+    insertSignalOnSpike: false, // webhook-handler does not insert fraud_signals directly for spikes
   });
 
   // ─── STEP 4: CLEAN EVENTS & PENALTY ─────────────────────────────────────
-  const isClean = !fraud.isFraud && amount >= 100;
+  const isClean = !fraudResult.isFraud && amount >= 100;
   const currentCleanEvents = Number(currentStartup.clean_events) || 0;
   const newCleanEvents = isClean ? currentCleanEvents + 1 : 0;
 
   let newPenaltyCount = Number(currentStartup.penalty_count) || 0;
   let lastPenaltyAt = currentStartup.last_penalty_at;
 
-  if (fraud.isFraud) {
+  if (fraudResult.isFraud) {
     newPenaltyCount += 1;
     lastPenaltyAt = new Date().toISOString();
   }

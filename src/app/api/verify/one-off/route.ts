@@ -52,14 +52,20 @@ export async function POST(req: Request) {
       if (!keyId || !keySecret) {
         return NextResponse.json({ error: "Missing Razorpay credentials" }, { status: 400 });
       }
-      const { createRazorpayClient, fetchRazorpayCapturedPayments } = await import(
-        "@/lib/razorpay-sync"
-      );
-      const rzp = createRazorpayClient(keyId, keySecret);
-      const captured = await fetchRazorpayCapturedPayments(rzp);
-      const total = captured.reduce((sum, p) => sum + p.amount / 100, 0);
+      
+      const { providerRegistry } = await import("@/lib/providers");
+      const rzpProvider = providerRegistry.get("razorpay");
+      if (!rzpProvider) {
+        return NextResponse.json({ error: "Razorpay provider not found" }, { status: 500 });
+      }
 
-      return NextResponse.json({ success: true, revenue: total, currency: "INR" });
+      const valid = await rzpProvider.verifyCredentials({ keyId, keySecret });
+      if (!valid) {
+        return NextResponse.json({ error: "Invalid Razorpay credentials" }, { status: 400 });
+      }
+
+      const result = await rzpProvider.fetchRevenue(keyId, keySecret);
+      return NextResponse.json({ success: true, revenue: result.revenue, currency: result.currency });
     }
 
     return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });

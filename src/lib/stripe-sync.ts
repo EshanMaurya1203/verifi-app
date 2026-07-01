@@ -2,8 +2,8 @@ import Stripe from "stripe";
 import { supabaseServer } from "@/lib/supabase-server";
 import { encrypt } from "@/lib/encryption";
 import { computeTrustScore } from "@/lib/scoring";
-import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
-import { detectFraud } from "@/lib/fraud";
+import { revenueService } from "@/lib/providers/services/revenue-service";
+import { fraudService } from "@/lib/providers/services/fraud-service";
 import {
   getPlatformStripe,
   getStripeForSecretKey,
@@ -55,31 +55,7 @@ async function listRecentBalanceTransactions(
   );
 }
 
-export async function upsertStripeBalanceTransactions(
-  startupId: number,
-  transactions: Stripe.BalanceTransaction[]
-): Promise<number> {
-  let synced = 0;
-
-  for (const tx of transactions) {
-    const { error } = await supabaseServer.from("revenue_transactions").upsert(
-      {
-        startup_id: startupId,
-        provider: "stripe",
-        amount: tx.amount / 100,
-        currency: (tx.currency || "usd").toUpperCase(),
-        status: "captured",
-        external_id: tx.id,
-        payment_id: tx.id,
-        created_at: new Date(tx.created * 1000).toISOString(),
-      },
-      { onConflict: "external_id" }
-    );
-    if (!error) synced++;
-  }
-
-  return synced;
-}
+// Removed upsertStripeBalanceTransactions
 
 export async function saveStripeConnection(params: {
   startupId: number;
@@ -122,31 +98,14 @@ async function runFraudChecks(
   const amounts = transactions.map((tx) => tx.amount / 100);
   const currentMaxTx = amounts.length > 0 ? Math.max(...amounts) : 0;
 
-  const { data: history } = await supabaseServer
-    .from("revenue_transactions")
-    .select("amount, created_at")
-    .eq("startup_id", startupId)
-    .order("created_at", { ascending: false })
-    .limit(4);
-
-  const fraud = detectFraud({
-    amount: currentMaxTx,
-    previousTransactions: (history ?? []).map((h) => Number(h.amount)),
-    timestamps: (history ?? []).map((h) => new Date(h.created_at).getTime()),
-    now: Date.now(),
+  const result = await fraudService.runChecks({
+    startupId,
+    currentMaxAmount: currentMaxTx,
+    insertSignalOnSpike: true,
+    signalDescription: "Revenue spike detected via Stripe verification",
   });
 
-  if (fraud.reason === "spike") {
-    await supabaseServer.from("fraud_signals").insert({
-      startup_id: startupId,
-      signal_type: "REVENUE_SPIKE",
-      severity: 3,
-      description: "Revenue spike detected via Stripe verification",
-    });
-    return true;
-  }
-
-  return false;
+  return result.spikeDetected;
 }
 
 export async function completeStripeVerification(
@@ -187,9 +146,20 @@ export async function completeStripeVerification(
   }
 
   const spikeDetected = await runFraudChecks(startupId, transactions);
-  await upsertStripeBalanceTransactions(startupId, transactions);
+  await revenueService.upsertTransactions({
+    startupId,
+    provider: "stripe",
+    transactions: transactions.map(tx => ({
+      external_payment_id: tx.id,
+      amount: tx.amount / 100,
+      currency: (tx.currency || "usd").toUpperCase(),
+      timestamp: tx.created * 1000,
+      status: "captured",
+      provider: "stripe"
+    }))
+  });
 
-  const aggregated = await getAggregatedRevenue(startupId);
+  const aggregated = await revenueService.aggregateRevenue(startupId);
   const snapshotRevenue = aggregated.totalRevenue ?? revenue30d;
 
   const { data: lastSnap } = await supabaseServer

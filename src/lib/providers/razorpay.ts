@@ -1,52 +1,147 @@
 import Razorpay from "razorpay";
-import { RevenueProvider, NormalizedPayment } from "./types";
+import { encrypt } from "@/lib/encryption";
+import {
+  Provider,
+  ProviderCredentials,
+  SerializedCredentials,
+  ProviderRevenueResult,
+  WebhookResult,
+} from "./provider";
+import { NormalizedPayment } from "./types";
 
-export class RazorpayProvider implements RevenueProvider {
-  private razorpay: Razorpay;
+const THIRTY_DAYS_SEC = 30 * 24 * 60 * 60;
 
-  constructor(keyId: string, keySecret: string) {
-    this.razorpay = new Razorpay({
-      key_id: keyId,
-      key_secret: keySecret,
-    });
+/**
+ * RazorpayProvider — Reference implementation of the Provider interface.
+ *
+ * Responsible ONLY for:
+ *   - Credential verification against Razorpay API
+ *   - Fetching raw payment data from Razorpay
+ *   - Normalizing Razorpay responses into NormalizedPayment[]
+ *   - Serializing credentials for encrypted storage
+ *
+ * All orchestration (fraud, snapshots, trust, persistence) is handled
+ * by the VerificationPipeline and shared services.
+ */
+export class RazorpayProvider implements Provider {
+  readonly id = "razorpay";
+  readonly name = "Razorpay";
+
+  // ---------------------------------------------------------------------------
+  // Provider Interface — Core Methods
+  // ---------------------------------------------------------------------------
+
+  async verifyCredentials(credentials: ProviderCredentials): Promise<boolean> {
+    const { keyId, keySecret } = credentials;
+    if (!keyId || !keySecret) return false;
+
+    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    try {
+      await razorpay.payments.all({ count: 1 });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  async fetchPayments(): Promise<NormalizedPayment[]> {
-    const thirtyDaysAgo = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
-    const now = Math.floor(Date.now() / 1000);
-
-    let allPayments: any[] = [];
+  async fetchTransactions(
+    accountId: string,
+    decryptedKey: string
+  ): Promise<NormalizedPayment[]> {
+    const razorpay = new Razorpay({ key_id: accountId, key_secret: decryptedKey });
+    const from = Math.floor(Date.now() / 1000) - THIRTY_DAYS_SEC;
+    const to = Math.floor(Date.now() / 1000);
+    const collected: NormalizedPayment[] = [];
     let skip = 0;
-    const count = 100;
-    
-    // Fetch all payments in the last 30 days
+    const pageSize = 100;
+
     while (true) {
-      const response = await this.razorpay.payments.all({
-        from: thirtyDaysAgo,
-        to: now,
-        count: count,
-        skip: skip,
+      const response = await razorpay.payments.all({
+        from,
+        to,
+        count: pageSize,
+        skip,
       });
 
-      if (!response || !response.items || response.items.length === 0) {
-        break;
+      const items = response?.items || [];
+      if (items.length === 0) break;
+
+      for (const p of items) {
+        if (p.status !== "captured") continue;
+        collected.push({
+          external_payment_id: p.id,
+          amount: (Number(p.amount) || 0) / 100,
+          currency: ((p.currency as string) || "INR").toUpperCase(),
+          timestamp: (Number(p.created_at) || 0) * 1000,
+          status: p.status,
+          provider: "razorpay",
+        });
       }
 
-      allPayments = allPayments.concat(response.items);
-      
-      if (response.items.length < count) {
-        break;
-      }
-      skip += count;
+      if (items.length < pageSize) break;
+      skip += pageSize;
     }
 
-    return allPayments.map((p: any) => ({
-      external_payment_id: p.id,
-      amount: p.amount / 100, // Razorpay amount is in paise
-      currency: p.currency,
-      timestamp: p.created_at * 1000,
-      status: p.status === "captured" ? "successful" : p.status, // Normalized status
+    return collected;
+  }
+
+  async fetchRevenue(
+    accountId: string,
+    decryptedKey: string
+  ): Promise<ProviderRevenueResult> {
+    const transactions = await this.fetchTransactions(accountId, decryptedKey);
+    const revenue = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const currency = transactions[0]?.currency || "INR";
+    return { revenue, currency, transactionCount: transactions.length };
+  }
+
+  async serializeCredentials(
+    credentials: ProviderCredentials
+  ): Promise<SerializedCredentials> {
+    const { keyId, keySecret } = credentials;
+    return {
+      accountId: keyId,
+      encryptedKey: encrypt(keySecret),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Provider Interface — Lifecycle Methods
+  // ---------------------------------------------------------------------------
+
+  async connect(_startupId: string, _credentials: ProviderCredentials): Promise<void> {
+    // Connection persistence is handled by the pipeline's Stage 8
+  }
+
+  async disconnect(_startupId: string): Promise<void> {
+    // Disconnection is handled externally via API routes
+  }
+
+  // ---------------------------------------------------------------------------
+  // Provider Interface — Webhook & Health
+  // ---------------------------------------------------------------------------
+
+  async parseWebhook(payload: any, _signature?: string): Promise<WebhookResult> {
+    const event = payload?.event;
+    const paymentEntity = payload?.payload?.payment?.entity;
+
+    if (!paymentEntity) {
+      throw new Error("Invalid Razorpay webhook payload");
+    }
+
+    return {
+      paymentId: paymentEntity.id,
+      amount: (Number(paymentEntity.amount) || 0) / 100,
+      currency: ((paymentEntity.currency as string) || "INR").toUpperCase(),
+      status: event === "payment.captured" ? "captured" : paymentEntity.status,
       provider: "razorpay",
-    }));
+    };
+  }
+
+  async healthCheck(): Promise<boolean> {
+    // Razorpay does not expose a dedicated health endpoint.
+    return true;
   }
 }
+
+export const razorpayProvider = new RazorpayProvider();

@@ -4,11 +4,7 @@ import { getAggregatedRevenue } from "@/lib/revenue-aggregation";
 import { computeTrustScore } from "@/lib/scoring";
 import { decrypt } from "@/lib/encryption";
 import { getPlatformStripe, getStripeForSecretKey, isStripeConnectAccountId } from "@/lib/stripe";
-import {
-  createRazorpayClient,
-  upsertRazorpayPayments,
-  fetchRazorpayCapturedPayments,
-} from "@/lib/razorpay-sync";
+import { resyncExistingRazorpayConnection } from "@/lib/razorpay-sync";
 
 import { verifyStartupOwnership } from "@/lib/auth-server";
 
@@ -57,14 +53,8 @@ export async function POST(
       const decryptedKey = decrypt(conn.api_key_encrypted);
 
       if (conn.provider === "razorpay") {
-        const razorpay = createRazorpayClient(conn.account_id, decryptedKey);
-        const payments = await fetchRazorpayCapturedPayments(razorpay);
-        snapshotsSynced += await upsertRazorpayPayments(Number(id), payments);
-
-        await supabase
-          .from("provider_connections")
-          .update({ last_synced_at: new Date().toISOString() })
-          .eq("id", conn.id);
+        const result = await resyncExistingRazorpayConnection(Number(id));
+        if (result) snapshotsSynced += (result.total_transactions || 0);
       } else if (conn.provider === "stripe") {
         const stripe = isStripeConnectAccountId(conn.account_id)
           ? getPlatformStripe()

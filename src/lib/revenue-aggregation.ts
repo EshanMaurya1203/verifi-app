@@ -208,7 +208,9 @@ export async function getRazorpayRevenue(
  * calculating Stripe / Razorpay revenue independently.
  */
 export async function getAggregatedRevenue(
-  startupId: number
+  startupId: number,
+  prefetchedProviders?: Record<string, ProviderRevenue>,
+  skipPersist: boolean = false
 ): Promise<AggregatedRevenue> {
   // ── 1. Fetch all connected providers ─────────────────────
   const { data: connections, error } = await supabaseServer
@@ -235,6 +237,10 @@ export async function getAggregatedRevenue(
   // ── 2. Fetch live revenue from each provider (parallel) ──
   const providerResults: ProviderRevenue[] = await Promise.all(
     connections.map(async (conn) => {
+      if (prefetchedProviders && prefetchedProviders[conn.provider]) {
+        return prefetchedProviders[conn.provider];
+      }
+
       const decryptedKey = decrypt(conn.api_key_encrypted);
 
       switch (conn.provider) {
@@ -294,61 +300,63 @@ export async function getAggregatedRevenue(
     }
   }
 
-  // ── 4. Persist per-provider latest_revenue ───────────────
-  await Promise.all(
-    providerResults
-      .filter((r) => r.success)
-      .map((result) =>
-        supabaseServer
-          .from("provider_connections")
-          .update({
-            latest_revenue: result.revenue,
-            last_synced_at: new Date().toISOString(),
-          })
-          .eq("startup_id", startupId)
-          .eq("provider", result.provider)
-      )
-  );
+  if (!skipPersist) {
+    // ── 4. Persist per-provider latest_revenue ───────────────
+    await Promise.all(
+      providerResults
+        .filter((r) => r.success)
+        .map((result) =>
+          supabaseServer
+            .from("provider_connections")
+            .update({
+              latest_revenue: result.revenue,
+              last_synced_at: new Date().toISOString(),
+            })
+            .eq("startup_id", startupId)
+            .eq("provider", result.provider)
+        )
+    );
 
-  // ── 5. Persist aggregated MRR to startup_submissions ─────
-  await supabaseServer
-    .from("startup_submissions")
-    .update({
-      mrr: Math.round(totalRevenue),
-      mrr_breakdown: breakdown,
-    })
-    .eq("id", startupId);
+    // ── 5. Persist aggregated MRR to startup_submissions ─────
+    await supabaseServer
+      .from("startup_submissions")
+      .update({
+        mrr: Math.round(totalRevenue),
+        mrr_breakdown: breakdown,
+      })
+      .eq("id", startupId);
 
-  // ── 6. Persist historical snapshot if changed ─────────────
-  const { data: lastSnapshot } = await supabaseServer
-    .from("revenue_snapshots")
-    .select("total_revenue, provider_breakdown")
-    .eq("startup_id", startupId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    // ── 6. Persist historical snapshot if changed ─────────────
+    const { data: lastSnapshot } = await supabaseServer
+      .from("revenue_snapshots")
+      .select("total_revenue, provider_breakdown")
+      .eq("startup_id", startupId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  const roundedTotal = Math.round(totalRevenue);
-  
-  // 🛡️ Snapshot Consistency Guard:
-  // Prevent combined snapshots from collapsing to zero if we have active connections
-  // and previous revenue. A total collapse to 0 is highly suspicious in a production app.
-  const isSuspiciousCollapse = roundedTotal === 0 && lastSnapshot && Number(lastSnapshot.total_revenue) > 0;
+    const roundedTotal = Math.round(totalRevenue);
+    
+    // 🛡️ Snapshot Consistency Guard:
+    // Prevent combined snapshots from collapsing to zero if we have active connections
+    // and previous revenue. A total collapse to 0 is highly suspicious in a production app.
+    const isSuspiciousCollapse = roundedTotal === 0 && lastSnapshot && Number(lastSnapshot.total_revenue) > 0;
 
-  const isChanged = !lastSnapshot || 
-    Number(lastSnapshot.total_revenue) !== roundedTotal ||
-    JSON.stringify(lastSnapshot.provider_breakdown) !== JSON.stringify(breakdown);
+    const isChanged = !lastSnapshot || 
+      Number(lastSnapshot.total_revenue) !== roundedTotal ||
+      JSON.stringify(lastSnapshot.provider_breakdown) !== JSON.stringify(breakdown);
 
-  if (isChanged && !isSuspiciousCollapse) {
-    await supabaseServer.from("revenue_snapshots").insert({
-      startup_id: startupId,
-      total_revenue: roundedTotal,
-      provider_breakdown: breakdown,
-      provider: "combined",
-    });
-    console.log("[RevenueEngine] Snapshot persisted:", { startupId, total_revenue: roundedTotal });
-  } else if (isSuspiciousCollapse) {
-    console.warn("[RevenueEngine] Prevented suspicious zero-value snapshot for:", startupId);
+    if (isChanged && !isSuspiciousCollapse) {
+      await supabaseServer.from("revenue_snapshots").insert({
+        startup_id: startupId,
+        total_revenue: roundedTotal,
+        provider_breakdown: breakdown,
+        provider: "combined",
+      });
+      console.log("[RevenueEngine] Snapshot persisted:", { startupId, total_revenue: roundedTotal });
+    } else if (isSuspiciousCollapse) {
+      console.warn("[RevenueEngine] Prevented suspicious zero-value snapshot for:", startupId);
+    }
   }
 
   return { totalRevenue, breakdown, providers: providerResults };
