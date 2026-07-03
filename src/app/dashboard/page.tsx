@@ -84,7 +84,7 @@ export default async function DashboardPage() {
   // Fetch startups owned by authenticated user
   const { data: startups } = await supabaseServer
     .from("startup_submissions")
-    .select("id, startup_name, slug, verification_status, trust_tier, startup_logo, payment_connected, created_at")
+    .select("id, startup_name, slug, verification_status, trust_tier, startup_logo, payment_connected, created_at, is_public")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -214,10 +214,15 @@ export default async function DashboardPage() {
                             {startup.startup_name}
                           </h3>
                           <div className="mt-1 flex flex-wrap items-center gap-3">
-                            <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${status.bg} ${status.color}`}>
+                            <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${!startup.payment_connected ? "bg-neutral-500/10 border-neutral-500/20 text-neutral-400" : status.bg + " " + status.color}`}>
                               {status.label === "Verified" && <ShieldCheck className="h-3 w-3" />}
-                              {status.label}
+                              {!startup.payment_connected ? "Verification Pending" : status.label}
                             </span>
+                            {!startup.is_public && (
+                              <span className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider bg-red-500/10 border-red-500/20 text-red-400">
+                                Private
+                              </span>
+                            )}
                             <span className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Clock className="h-3 w-3" />
                               {formatRelativeDate(lastUpdated)}
@@ -242,13 +247,23 @@ export default async function DashboardPage() {
                           <Pencil className="h-3.5 w-3.5" />
                           <span className="hidden xs:inline">Edit</span>
                         </Link>
-                        <Link
-                          href={`/startup/${encodeURIComponent(slug)}/verify`}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
-                        >
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                          <span className="hidden xs:inline">Verify</span>
-                        </Link>
+                        {!startup.payment_connected ? (
+                          <Link
+                            href={`/startup/${encodeURIComponent(slug)}/verify`}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            <span className="hidden xs:inline">Resume Verification</span>
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/startup/${encodeURIComponent(slug)}/verify`}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            <span className="hidden xs:inline">Verify</span>
+                          </Link>
+                        )}
                       </div>
                     </div>
                   </div>

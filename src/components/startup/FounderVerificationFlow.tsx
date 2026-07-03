@@ -33,6 +33,7 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
   const stripeStatus = searchParams?.get("stripe");
   
   const [currentStep, setCurrentStep] = useState<VerificationStep>("connect");
+  const [hasMadeDecision, setHasMadeDecision] = useState<boolean>(!!stripeStatus);
   const [provider, setProvider] = useState<"stripe" | "razorpay" | null>(null);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   
@@ -49,7 +50,7 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
   const [autoForwardSeconds, setAutoForwardSeconds] = useState(5);
 
   const STEPS = [
-    { id: "connect", label: "Connect Provider" },
+    { id: "connect", label: "Choose Your Payment Provider" },
     { id: "syncing", label: "Sync Revenue" },
     { id: "analyzing", label: "Check Consistency" },
     { id: "summary", label: "Verification Result" }
@@ -230,13 +231,45 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
       {/* ── Content Area ────────────────────────────────────────── */}
       <div className="bg-neutral-900/40 border border-white/5 rounded-[2rem] p-8 min-h-[400px] flex flex-col relative overflow-hidden">
         
-        {/* 1. Connect Provider */}
+        {/* 1. Connect Provider / Decision Screen */}
         {(currentStep === "connect" || currentStep === "incomplete") && (
           <div className="flex-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Connect Provider</h2>
-              <p className="text-sm text-neutral-500 font-medium">Link your payment gateway for read-only automated verification.</p>
-            </div>
+            {!hasMadeDecision ? (
+              <div className="flex flex-col items-center justify-center text-center max-w-md mx-auto py-8">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                  <CheckCircle2 className="w-8 h-8 text-primary" />
+                </div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter mb-4 text-white">Startup Saved Successfully</h2>
+                <div className="space-y-4 mb-8 text-sm text-neutral-400 font-medium">
+                  <p>Your startup details have been securely saved.</p>
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-xl flex items-start gap-3 text-left">
+                    <ShieldCheck className="w-5 h-5 text-neutral-500 shrink-0 mt-0.5" />
+                    <p className="leading-relaxed">
+                      Your startup is currently <strong className="text-white">Private</strong>. Verification publishes your startup and makes it visible to the community.
+                    </p>
+                  </div>
+                </div>
+                <div className="w-full flex flex-col gap-3">
+                  <button
+                    onClick={() => setHasMadeDecision(true)}
+                    className="w-full bg-white text-black py-4 rounded-xl font-black uppercase tracking-[0.15em] text-[12px] hover:bg-neutral-200 transition-colors shadow-xl shadow-white/10"
+                  >
+                    Verify Now
+                  </button>
+                  <button
+                    onClick={() => router.push('/dashboard')}
+                    className="w-full bg-transparent border border-white/10 text-white py-4 rounded-xl font-bold uppercase tracking-[0.1em] text-[11px] hover:bg-white/5 transition-colors"
+                  >
+                    Verify Later
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Choose Your Payment Provider</h2>
+                  <p className="text-sm text-neutral-500 font-medium">Link your payment gateway for read-only automated verification.</p>
+                </div>
 
             {errorMsg && errorMsg.includes("Live Razorpay authentication failed") ? (
               <div className="mb-6 p-5 bg-red-500/10 border border-red-500/20 rounded-2xl flex flex-col gap-3">
@@ -276,40 +309,37 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
                 </button>
               </div>
             ) : !provider ? (
-              <div className="flex flex-col gap-6">
-                {/* Primary OAuth CTA */}
-                <button 
-                  onClick={() => window.location.href = `/api/stripe/connect?startup_id=${startupId}`}
-                  className="w-full bg-[#635BFF] text-white py-4 px-6 rounded-xl font-black uppercase tracking-widest text-[12px] hover:bg-[#5851E5] transition-colors flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(99,91,255,0.3)] hover:shadow-[0_0_30px_rgba(99,91,255,0.5)]"
-                >
-                  <Globe className="w-5 h-5" /> Connect with Stripe
-                </button>
-                
-                <div className="flex items-center gap-4 w-full">
-                  <div className="h-px bg-white/10 flex-1" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Or use manual keys</span>
-                  <div className="h-px bg-white/10 flex-1" />
-                </div>
-
-                {/* Manual Fallbacks */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => setProvider("stripe")}
-                    className="p-4 bg-neutral-900/80 border border-white/5 hover:border-white/20 hover:bg-white/5 rounded-xl flex flex-col items-center gap-3 transition-all group"
-                  >
-                    <span className="font-bold text-sm text-neutral-400 group-hover:text-white transition-colors">Stripe (Manual Key)</span>
-                  </button>
-
+              <div className="flex flex-col gap-8">
+                {/* Razorpay Section */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xl">🇮🇳</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#2D81F7]">Recommended for Indian Founders</span>
+                  </div>
                   <button 
                     onClick={() => setProvider("razorpay")}
-                    className="p-4 bg-neutral-900/80 border border-white/5 hover:border-[#2D81F7]/50 hover:bg-[#2D81F7]/5 rounded-xl flex flex-col items-center gap-3 transition-all group"
+                    className="w-full bg-[#2D81F7] text-white py-4 px-6 rounded-xl font-black uppercase tracking-widest text-[12px] hover:bg-[#2069D3] transition-colors flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(45,129,247,0.3)] hover:shadow-[0_0_30px_rgba(45,129,247,0.5)]"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[#2D81F7]/10 flex items-center justify-center">
-                      <KeyRound className="w-4 h-4 text-[#2D81F7]/60 group-hover:text-[#2D81F7] transition-colors" />
-                    </div>
-                    <span className="font-bold text-sm text-neutral-400 group-hover:text-[#2D81F7] transition-colors">Razorpay Keys</span>
-                    <span className="text-[10px] text-neutral-600 group-hover:text-neutral-400 transition-colors">Key ID + Key Secret</span>
+                    <KeyRound className="w-5 h-5" /> Connect Razorpay
                   </button>
+                  <p className="text-xs text-neutral-500 text-center font-medium">Recommended for Indian startups. Supports INR and UPI.</p>
+                </div>
+                
+                {/* Stripe Section */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-4 w-full mb-1">
+                    <div className="h-px bg-white/10 flex-1" />
+                    <span className="text-xl">🌍</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Other Supported Providers</span>
+                    <div className="h-px bg-white/10 flex-1" />
+                  </div>
+                  <button 
+                    onClick={() => setProvider("stripe")}
+                    className="w-full bg-neutral-900 border border-white/10 text-white py-4 px-6 rounded-xl font-bold uppercase tracking-widest text-[11px] hover:bg-neutral-800 transition-colors flex items-center justify-center gap-3"
+                  >
+                    <KeyRound className="w-5 h-5 text-neutral-500" /> Stripe Verification
+                  </button>
+                  <p className="text-[10px] text-neutral-500 text-center font-medium">Best for international SaaS & global payments.</p>
                 </div>
               </div>
             ) : provider === "razorpay" ? (
@@ -360,6 +390,8 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
                   Start Verification Process <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
+            )}
+              </>
             )}
           </div>
         )}
