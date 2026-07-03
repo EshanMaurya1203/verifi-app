@@ -10,7 +10,8 @@ export async function GET(req: Request) {
   }
   const { count, error } = await supabaseServer
     .from("startup_submissions")
-    .select("*", { count: "exact", head: true });
+    .select("*", { count: "exact", head: true })
+    .eq("is_public", true);
 
   if (error) {
     console.error("startup submissions count error", error.message);

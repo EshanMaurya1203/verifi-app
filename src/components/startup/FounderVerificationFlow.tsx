@@ -106,7 +106,31 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
       });
 
       if (!syncResult.ok || !syncResult.data) {
-        throw new Error(syncResult.error?.message || "Verification connection failed.");
+        const errorMsg = syncResult.error?.message || "Verification connection failed.";
+        
+        // Treat 400, 401, 403 and typical validation messages as expected UI state
+        const isExpectedFailure = 
+          syncResult.status === 400 || 
+          syncResult.status === 401 || 
+          syncResult.status === 403 || 
+          errorMsg.includes("401") ||
+          errorMsg.toLowerCase().includes("invalid") ||
+          errorMsg.toLowerCase().includes("authentication failed");
+
+        if (isExpectedFailure) {
+          let friendlyError = errorMsg;
+          if (friendlyError.includes("401") || syncResult.status === 401) {
+            friendlyError = "Invalid API Key: Please verify your credentials and try again.";
+          }
+          
+          setErrorMsg(friendlyError);
+          setCurrentStep("incomplete");
+          setIsAutoSyncing(false);
+          return;
+        }
+
+        // Throw for genuine unexpected application/network failures
+        throw new Error(errorMsg);
       }
 
       // Sync successful, move to analysis

@@ -254,12 +254,19 @@ export const RazorpayOnboarding: React.FC<RazorpayOnboardingProps> = ({
             const Icon = step.icon;
 
             return (
-              <button
+              <div
                 key={step.step}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => setActiveStep(step.step)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setActiveStep(step.step);
+                  }
+                }}
                 className={`
-                  w-full px-5 py-4 flex items-start gap-4 text-left transition-all duration-300 group
+                  w-full cursor-pointer px-5 py-4 flex items-start gap-4 text-left transition-all duration-300 group
                   ${isActive ? "bg-white/[0.03]" : "hover:bg-white/[0.02]"}
                 `}
               >
@@ -324,7 +331,7 @@ export const RazorpayOnboarding: React.FC<RazorpayOnboardingProps> = ({
 
                 {/* Chevron */}
                 <ArrowRight className={`w-4 h-4 shrink-0 mt-1 transition-all duration-200 ${isActive ? "text-[#2D81F7] rotate-90" : "text-neutral-700 group-hover:text-neutral-500"}`} />
-              </button>
+              </div>
             );
           })}
         </div>

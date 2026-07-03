@@ -397,6 +397,7 @@ export async function GET(req: Request) {
     const { data, error } = await supabaseServer
       .from("startup_submissions")
       .select(PUBLIC_STARTUP_FIELDS)
+      .eq("is_public", true)
       .order("trust_score", { ascending: false });
 
     if (error) {

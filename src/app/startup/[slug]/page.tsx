@@ -27,13 +27,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const resolvedParams = await params;
   const slug = decodeURIComponent(resolvedParams.slug);
   
+  const user = await getAuthenticatedUser();
   const { data: startup } = await supabaseServer
     .from("startup_submissions")
-    .select("id, startup_name, mrr, verification_status, verification_type, proof_url")
+    .select("id, startup_name, mrr, verification_status, verification_type, proof_url, is_public, user_id")
     .eq("slug", slug)
     .maybeSingle();
 
-  if (!startup) {
+  if (!startup || (!startup.is_public && startup.user_id !== user?.id)) {
     return { title: "Startup Not Found | Verifii" };
   }
 
@@ -118,7 +119,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
 
   const user = await getAuthenticatedUser();
 
-  if (error || !ok || !startup) {
+  if (error || !ok || !startup || (!startup.is_public && startup.user_id !== user?.id)) {
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
         <Navbar />

@@ -46,6 +46,7 @@ export default async function LeaderboardPage() {
     supabase
       .from("startup_submissions")
       .select("*")
+      .eq("is_public", true)
       .order("mrr", { ascending: false })
   );
 

@@ -15,7 +15,7 @@ export async function GET(
   const theme = searchParams.get("theme") || "dark";
 
   // 1. Resolve Startup (match public profile lookup by slug)
-  let query = supabaseServer.from("startup_submissions").select("*");
+  let query = supabaseServer.from("startup_submissions").select("*").eq("is_public", true);
   if (!isNaN(Number(slug))) {
     query = query.eq("id", Number(slug));
   } else {

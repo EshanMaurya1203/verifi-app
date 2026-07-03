@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { verifyStartupOwnership } from "@/lib/auth-server";
+import { canStartupBePublic } from "@/lib/visibility";
 
 export async function PUT(
   request: Request,
@@ -21,6 +22,18 @@ export async function PUT(
 
     const body = await request.json();
     const { founder_name, founder_avatar, startup_logo, founder_bio, is_public } = body;
+
+    // Visibility gate: founders may always hide (is_public=false), but
+    // publishing requires the startup to meet platform eligibility criteria.
+    if (is_public === true) {
+      const eligibility = canStartupBePublic(startup);
+      if (!eligibility.eligible) {
+        return NextResponse.json(
+          { error: eligibility.reason },
+          { status: 403 }
+        );
+      }
+    }
 
     const { data, error } = await supabaseServer
       .from("startup_submissions")

@@ -36,6 +36,7 @@ export async function GET(
         .from("startup_submissions")
         .select("id, startup_name, mrr, penalty_count, user_id, verification_type, proof_url")
         .eq("slug", slug)
+        .eq("is_public", true)
         .maybeSingle();
 
       if (startupError || !startup) {

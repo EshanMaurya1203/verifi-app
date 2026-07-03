@@ -9,7 +9,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const { data: startups } = await supabaseServer
     .from('startup_submissions')
     .select('slug, last_verified_at')
-    .neq('verification_status', 'flagged')
+    .eq('is_public', true)
 
   const startupUrls = (startups || []).map((s) => ({
     url: `${baseUrl}/startup/${s.slug}/`,
