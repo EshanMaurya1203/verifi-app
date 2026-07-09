@@ -1,0 +1,7071 @@
+# Verifii Engineering Handbook
+
+> Single Source of Truth for the Verifii Platform
+
+---
+
+# Document Information
+
+| Field | Value |
+|--------|-------|
+| **Document** | Verifii Engineering Handbook |
+| **Version** | 1.0 |
+| **Status** | Active |
+| **Product** | Verifii |
+| **Owner** | Eshan Maurya |
+| **Started** | July 2026 |
+| **Last Updated** | July 2026 |
+| **Next Review** | After Phase 2 Completion |
+
+---
+
+## Document Classification
+
+**Audience**
+
+- Founders
+- Engineers
+- Future Contributors
+- Technical Reviewers
+
+**Confidentiality**
+
+Internal Engineering Documentation
+
+**Source of Truth**
+
+This handbook is the authoritative engineering reference for Verifii. Architectural changes should be reflected in this handbook and documented through an Architecture Decision Record (ADR) whenever appropriate.
+
+---
+
+# Purpose
+
+This handbook documents the engineering architecture, product decisions, implementation history, and operational standards of Verifii.
+
+Its purpose is to ensure that every future feature, bug fix, migration, refactor, and architectural decision is built with full understanding of the platform.
+
+Unlike the PRD, this document reflects the **actual implementation** of the platform.
+
+Unlike the Implementation Plan, this document is **not** a roadmap.
+
+It explains:
+
+- how the system works
+- why it works this way
+- how it evolved
+- what rules future engineers must follow
+
+This document should remain accurate throughout the lifetime of the project.
+
+---
+
+# Documentation Philosophy
+
+The project uses three core documents.
+
+## 1. PRD
+
+Defines the original vision.
+
+Answers:
+
+- Why are we building this?
+- What should exist?
+- Who is it for?
+
+---
+
+## 2. Implementation Plan
+
+Defines execution.
+
+Answers:
+
+- What has been built?
+- What remains?
+- What phase are we currently in?
+
+This document evolves constantly.
+
+---
+
+## 3. Engineering Handbook
+
+Defines reality.
+
+Answers:
+
+- How does the platform actually work?
+- Why was each architectural decision made?
+- What are the platform rules?
+- How should future contributors build on top of this system?
+
+This document grows over time.
+
+Nothing should ever be deleted without a strong reason.
+
+---
+
+# Preservation Rules
+
+This handbook is cumulative.
+
+Historical information must not be removed simply because implementation changes.
+
+Instead:
+
+- Mark old approaches as deprecated.
+- Record why they changed.
+- Document what replaced them.
+- Preserve the reasoning.
+
+The goal is to retain engineering knowledge, not just describe the latest code.
+
+---
+
+# Table of Contents
+
+## Chapter 1 — Product Overview
+
+## Chapter 2 — Product Evolution
+
+## Chapter 3 — Platform Architecture
+
+## Chapter 4 — Database Architecture
+
+## Chapter 5 — Authentication & Authorization
+
+## Chapter 6 — Verification System
+
+## Chapter 7 — Visibility System
+
+## Chapter 8 — Revenue Aggregation
+
+## Chapter 9 — Fraud & Trust Engine
+
+## Chapter 10 — Provider Integrations
+
+## Chapter 11 — Security
+
+## Chapter 12 — API Architecture
+
+## Chapter 13 — Frontend Architecture
+
+## Chapter 14 — Dashboard System
+
+## Chapter 15 — Leaderboard System
+
+## Chapter 16 — Subscription & Billing
+
+## Chapter 17 — Admin System
+
+## Chapter 18 — Operational Playbooks
+
+## Chapter 19 — Architecture Decision Records (ADR)
+
+## Chapter 20 — Engineering Changelog
+
+--
+
+# Chapter 1 — Product Overview
+
+## 1.1 What is Verifii?
+
+Verifii is a revenue verification platform that enables startup founders to prove their recurring revenue through direct integrations with supported payment providers instead of relying on screenshots or self-reported metrics.
+
+The platform is built on the principle that trust should be earned through verifiable data rather than claims. By connecting payment providers in read-only mode, Verifii independently verifies revenue information and allows founders to publish trusted startup profiles that can be confidently viewed by investors, customers, founders, and the wider startup community.
+
+Verifii is designed as an India-first platform while remaining compatible with founders and payment providers worldwide.
+
+---
+
+## 1.2 Why Verifii Exists
+
+Across startup communities, social media, and founder marketplaces, revenue claims are frequently supported only by screenshots or manually entered numbers. While these screenshots may be genuine, they can also be edited, selectively cropped, or taken out of context. As a result, investors, customers, and fellow founders have very little objective evidence that a claimed Monthly Recurring Revenue (MRR) figure is accurate.
+
+Verifii was created to replace screenshot-based trust with direct verification from payment providers.
+
+Instead of asking founders to upload evidence manually, Verifii connects directly to supported payment providers, calculates verified recurring revenue, and publishes transparent verification results through structured startup profiles.
+
+The long-term objective is to establish a trusted infrastructure where startup growth can be demonstrated through independently verified financial data instead of unverifiable marketing claims.
+
+---
+
+## 1.3 The Problem Being Solved
+
+The startup ecosystem currently lacks a standardized and trustworthy method for validating revenue claims.
+
+Founders often rely on screenshots, spreadsheets, or manually updated metrics to demonstrate traction. Although these methods are simple to share, they cannot be independently verified and therefore require the audience to trust the founder without supporting evidence.
+
+This creates several challenges:
+
+- Revenue claims can be manipulated or misrepresented.
+- Investors and customers have limited confidence in publicly shared metrics.
+- Honest founders receive little advantage over founders making exaggerated claims.
+- Startup directories primarily measure visibility rather than credibility.
+
+Verifii addresses these challenges by establishing a verification-first model where publicly displayed revenue is supported by provider-backed evidence rather than manual declarations.
+
+---
+
+## 1.4 The Verifii Solution
+
+Verifii provides founders with a secure workflow for verifying recurring revenue while maintaining full control over whether their startup is publicly visible.
+
+The current founder journey is:
+
+1. Submit startup information.
+2. Startup is saved privately.
+3. Choose to verify immediately or later.
+4. Connect a supported payment provider.
+5. Revenue is verified automatically.
+6. Founder chooses whether to publish the verified startup profile.
+7. Once published, the startup becomes visible across Verifii's public surfaces, including the leaderboard, startup profile, badges, and public APIs.
+
+This workflow balances founder flexibility with platform trust by ensuring that verification and publication remain separate decisions.
+
+---
+
+## 1.5 Target Audience
+
+Verifii is primarily designed for:
+
+- SaaS founders
+- Indie hackers
+- Bootstrapped startups
+- Micro SaaS businesses
+- AI startups
+- Internet businesses with recurring revenue
+
+The platform is especially optimized for Indian founders by providing native support for Razorpay, INR reporting, and India-focused onboarding, while continuing to support international payment providers such as Stripe.
+
+---
+
+## 1.6 Core Product Principles
+
+Every product and engineering decision within Verifii is guided by the following principles:
+
+### Verification Before Trust
+
+Public trust should be based on independently verified data rather than screenshots or self-reported numbers.
+
+### Privacy by Default
+
+Every startup begins as private. Public visibility is a deliberate founder decision that is only available after meeting the platform's verification requirements.
+
+### Founder Ownership
+
+Founders always retain ownership of their startup information and decide whether a verified profile should remain public or private.
+
+### Automation Over Manual Review
+
+Wherever possible, verification should occur through automated provider integrations instead of manual moderation or document review.
+
+### Security by Design
+
+Sensitive credentials, verification data, and payment integrations must be protected through secure engineering practices rather than relying solely on operational policies.
+
+### India-First Experience
+
+The platform prioritizes the experience of Indian founders while maintaining compatibility with international startups and payment providers.
+
+---
+
+## 1.7 Product Positioning
+
+Verifii is not a startup directory.
+
+It is not an analytics dashboard.
+
+It is not an accounting platform.
+
+Verifii is a trust platform.
+
+Its primary purpose is to help founders establish credibility through independently verified recurring revenue while providing the startup ecosystem with a more reliable source of publicly shared business metrics.
+
+---
+
+## 1.8 Current Product Scope
+
+At the time of writing, Verifii provides:
+
+- Founder authentication and startup management.
+- Private startup submissions.
+- Revenue verification through supported payment providers.
+- Verification status tracking.
+- Public startup profiles.
+- Public leaderboard.
+- Trust and verification indicators.
+- Founder dashboard.
+- Subscription and billing infrastructure.
+- Admin review capabilities.
+- Security, fraud prevention, and visibility controls.
+
+The platform continues to evolve, with additional capabilities documented throughout this handbook and in the product roadmap.
+
+--
+
+# Chapter 2 — Product & Architecture Evolution
+
+This chapter documents the complete evolution of Verifii from its original concept to its current architecture.
+
+Unlike a changelog, this chapter explains the reasoning behind major product decisions, architectural pivots, security improvements, and user experience changes.
+
+Whenever a significant platform decision was made, the previous approach, the problem that was discovered, the adopted solution, and the resulting architecture are recorded here.
+
+The objective is to preserve engineering knowledge rather than simply document the latest implementation.
+
+---
+
+## 2.1 The Original Vision
+
+Verifii was originally conceived as a trust layer for startup revenue.
+
+Across startup communities, social media, and founder marketplaces, revenue claims are frequently supported only by screenshots or manually entered numbers. While these screenshots may be genuine, they can also be edited, selectively cropped, or taken out of context. As a result, investors, customers, and fellow founders have very little objective evidence that a claimed Monthly Recurring Revenue (MRR) figure is accurate.
+
+The original vision behind Verifii was to replace screenshot-based trust with direct verification from payment providers.
+
+Instead of asking founders to upload evidence manually, Verifii would connect directly to supported payment platforms in read-only mode, aggregate recurring revenue automatically, and publish verification results through transparent public startup profiles.
+
+From the beginning, the platform was designed around five core principles:
+
+- Verification instead of screenshots.
+- Automated trust instead of manual moderation.
+- Founder ownership of their own data.
+- Transparent public startup profiles.
+- Privacy and security by design.
+
+The long-term objective has always been larger than simply displaying revenue numbers. Verifii aims to become a trusted infrastructure layer where founders can confidently prove business traction while allowing the community to evaluate startups using independently verified information rather than marketing claims.
+
+Although the earliest concept was global in scope, the platform would later evolve into an India-first product while maintaining compatibility with international founders and payment providers.
+
+--
+
+# Chapter 3 — Platform Architecture
+
+This chapter provides a high-level overview of Verifii's technical architecture.
+
+Rather than explaining individual features or implementation details, it describes how the major systems interact to deliver a secure, scalable, and verification-first platform.
+
+Subsequent chapters explore each subsystem in greater detail.
+
+---
+
+## 3.1 Architecture Overview
+
+Verifii is built as a modern full-stack web application with a modular architecture.
+
+The platform separates responsibilities into independent systems responsible for authentication, startup management, payment-provider verification, trust scoring, fraud detection, subscriptions, and public presentation.
+
+Each subsystem has a clearly defined responsibility, allowing new features to be introduced without tightly coupling unrelated business logic.
+
+The architecture prioritizes:
+
+- Security
+- Maintainability
+- Scalability
+- Modular development
+- Verification integrity
+
+---
+
+## 3.2 High-Level System Components
+
+The platform consists of several major subsystems.
+
+### Client Application
+
+The frontend provides interfaces for founders, administrators, subscribers, and public visitors.
+
+Responsibilities include:
+
+- Startup submission
+- Verification
+- Dashboard
+- Billing
+- Public profiles
+- Leaderboard
+- Account management
+
+---
+
+### Backend API
+
+The backend exposes server-side API routes responsible for:
+
+- Authentication
+- Authorization
+- Startup management
+- Provider integrations
+- Revenue synchronization
+- Trust calculation
+- Fraud detection
+- Billing
+- Administrative operations
+
+---
+
+### Database
+
+Supabase PostgreSQL acts as the primary source of truth for platform data.
+
+It stores:
+
+- Users
+- Startup submissions
+- Verification state
+- Revenue snapshots
+- Trust information
+- Billing records
+- Provider connections
+- Administrative data
+
+---
+
+### Provider Integration Layer
+
+The provider layer communicates with supported payment providers using secure, read-only integrations.
+
+Current providers include:
+
+- Razorpay (Primary)
+- Stripe (Supported)
+
+This layer is responsible for collecting provider data while abstracting provider-specific implementation details away from the rest of the platform.
+
+---
+
+### Verification Engine
+
+The verification engine coordinates provider synchronization and transforms provider data into standardized verification results.
+
+It determines:
+
+- Verification outcome
+- Revenue calculations
+- Verification status
+- Trust inputs
+
+---
+
+### Public Platform
+
+The public platform exposes verified startup information through:
+
+- Leaderboard
+- Startup profiles
+- Public APIs
+- Verification badges
+- Search engine indexing
+
+Only startups that satisfy the platform's publication requirements are exposed publicly.
+
+---
+
+## 3.3 Technology Stack
+
+The current platform is built using:
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+
+### Backend
+
+- Next.js Route Handlers
+- TypeScript
+
+### Database
+
+- Supabase PostgreSQL
+
+### Authentication
+
+- Supabase Auth
+
+### Storage
+
+- Supabase Storage
+
+### Hosting
+
+- Vercel
+
+### Payments
+
+- Razorpay
+- Stripe
+
+---
+
+## 3.4 High-Level Data Flow
+
+The simplified platform workflow is:
+
+Visitor
+
+↓
+
+Founder Authentication
+
+↓
+
+Startup Submission
+
+↓
+
+Private Startup
+
+↓
+
+Verification
+
+↓
+
+Revenue Processing
+
+↓
+
+Trust Evaluation
+
+↓
+
+Publication Decision
+
+↓
+
+Public Startup Profile
+
+↓
+
+Leaderboard & Public APIs
+
+Each stage represents a controlled transition governed by business rules and security validations.
+
+
+                ┌──────────────┐
+                │    Founder   │
+                └──────┬───────┘
+                       │
+                       ▼
+              Startup Submission
+                       │
+                       ▼
+             Private Startup Record
+                       │
+         ┌─────────────┴─────────────┐
+         ▼                           ▼
+  Verify Now                 Verify Later
+         │                           │
+         └─────────────┬─────────────┘
+                       ▼
+             Provider Integration
+        (Razorpay / Stripe Manual)
+                       │
+                       ▼
+             Verification Engine
+                       │
+                       ▼
+              Trust Evaluation
+                       │
+                       ▼
+          Eligible for Publication
+                       │
+             Founder Chooses Public
+                       │
+                       ▼
+     Leaderboard • Profile • Badge • API
+
+---
+
+## 3.5 Core Design Principles
+
+Several architectural principles guide the implementation of every subsystem.
+
+### Separation of Responsibilities
+
+Each subsystem is responsible for a single domain.
+
+Verification logic, billing, trust scoring, authentication, and visibility management remain independent wherever practical.
+
+---
+
+### Verification Before Publication
+
+Verification and publication are separate processes.
+
+Completing verification does not automatically expose a startup publicly.
+
+Publication remains an explicit founder decision after verification requirements have been satisfied.
+
+---
+
+### Security by Default
+
+Sensitive information is protected through encryption, access controls, ownership validation, and server-side authorization.
+
+Security decisions are enforced within backend services rather than relying solely on frontend restrictions.
+
+---
+
+### Extensibility
+
+The platform is designed to support additional payment providers, verification methods, and public features without requiring major architectural changes.
+
+---
+
+## 3.6 System Boundaries
+
+The platform intentionally separates several concerns.
+
+Authentication is independent of verification.
+
+Verification is independent of publication.
+
+Trust scoring is independent of billing.
+
+Billing is independent of provider synchronization.
+
+This separation reduces coupling and allows individual systems to evolve independently.
+
+---
+
+## 3.7 Current Architecture Summary
+
+At the time of writing, Verifii consists of a modular verification platform built around secure provider integrations, automated trust evaluation, founder-controlled publication, and an India-first verification experience.
+
+The chapters that follow describe each subsystem individually, including its responsibilities, architecture, implementation, and future evolution.
+
+---
+
+# Chapter 4 — Database Architecture
+
+This chapter documents the architecture of Verifii's primary database and explains how data is organized, related, and managed across the platform.
+
+Rather than describing every column or migration, this chapter focuses on the logical structure of the database and the responsibilities of each major data model.
+
+Detailed schema changes and migration history are documented in later chapters.
+
+---
+
+## 4.1 Database Overview
+
+Verifii uses **Supabase PostgreSQL** as its primary database.
+
+The database serves as the single source of truth for every persistent aspect of the platform, including authentication, startup records, verification state, trust metrics, billing, subscriptions, provider connections, and administrative operations.
+
+The database has been designed around modular entities where each table owns a clearly defined responsibility.
+
+This separation reduces coupling between systems while making future expansion significantly easier.
+
+---
+
+## 4.2 Database Design Principles
+
+The database follows several design principles.
+
+### Single Source of Truth
+
+Each entity has one authoritative location.
+
+For example:
+
+- Startup information belongs to startup submissions.
+- Revenue snapshots belong to revenue snapshot records.
+- Billing belongs to subscription records.
+- Provider credentials belong to provider connections.
+
+Information should never be duplicated unless intentionally denormalized for performance.
+
+---
+
+### Separation of Responsibilities
+
+Verification data, public profile information, billing, authentication, and fraud analysis remain logically independent.
+
+Each system owns its own data while referencing shared identifiers where necessary.
+
+---
+
+### Security by Default
+
+Sensitive information is protected through encryption, Row Level Security (RLS), ownership validation, and restricted storage access.
+
+The database is never trusted directly by client applications.
+
+All sensitive operations pass through authenticated backend APIs.
+
+---
+
+## 4.3 Core Data Models
+
+The platform is organized around several primary entities.
+
+### Users
+
+Represents authenticated platform users.
+
+Responsibilities include:
+
+- Authentication
+- Account ownership
+- Subscription ownership
+- Startup ownership
+
+---
+
+### Startup Submissions
+
+The central entity of the platform.
+
+Each startup submission represents a startup created by a founder.
+
+Responsibilities include:
+
+- Startup identity
+- Verification state
+- Public visibility
+- Founder ownership
+- Trust information
+- Revenue metadata
+
+Almost every major subsystem references startup records.
+
+---
+
+### Provider Connections
+
+Represents secure connections between startups and supported payment providers.
+
+Responsibilities include:
+
+- Connected provider
+- Connection state
+- Verification credentials
+- Synchronization status
+
+Current supported providers include Razorpay and Stripe.
+
+---
+
+### Revenue Snapshots
+
+Stores normalized verification results over time.
+
+Responsibilities include:
+
+- Verified recurring revenue
+- Historical snapshots
+- Growth calculations
+- Verification timestamps
+
+These records provide historical revenue tracking while preserving previous verification results.
+
+---
+
+### Trust & Fraud Data
+
+Stores platform-generated trust metrics.
+
+Responsibilities include:
+
+- Trust score
+- Confidence score
+- Fraud indicators
+- Risk classification
+- Trust breakdown
+
+These values are generated by backend verification systems rather than manually entered by founders.
+
+---
+
+### Billing & Subscription Records
+
+Stores subscription information for platform users.
+
+Responsibilities include:
+
+- Active plans
+- Trial status
+- Billing lifecycle
+- Subscription history
+- Payment provider references
+
+Billing remains independent from verification.
+
+---
+
+## 4.4 Data Relationships
+
+The platform follows a relational design.
+
+At a high level:
+
+- One user may own multiple startups.
+- One startup may connect to multiple payment providers.
+- One startup may generate multiple revenue snapshots.
+- One startup has one active trust profile.
+- One user owns one subscription lifecycle.
+
+These relationships allow each subsystem to evolve independently while maintaining data consistency.
+
+---
+
+## 4.5 Data Lifecycle
+
+A typical startup progresses through the following lifecycle:
+
+Founder Account
+
+↓
+
+Startup Submission
+
+↓
+
+Private Startup Record
+
+↓
+
+Provider Connection
+
+↓
+
+Revenue Verification
+
+↓
+
+Trust Evaluation
+
+↓
+
+Publication Decision
+
+↓
+
+Public Startup
+
+↓
+
+Ongoing Revenue Synchronization
+
+The database preserves historical information throughout this lifecycle instead of replacing previous verification data.
+
+---
+
+## 4.6 Data Integrity
+
+Verifii prioritizes data integrity over convenience.
+
+Key principles include:
+
+- Ownership validation before modification.
+- Server-side authorization.
+- Controlled state transitions.
+- Historical revenue preservation.
+- Verification auditability.
+- Secure handling of sensitive credentials.
+
+Every major state transition is performed through backend business logic rather than direct client updates.
+
+---
+
+## 4.7 Current Database Status
+
+At the time of writing, the database supports:
+
+- Founder accounts
+- Startup management
+- Revenue verification
+- Trust scoring
+- Fraud detection
+- Provider integrations
+- Subscription management
+- Public startup visibility
+- Administrative review
+
+The schema continues to evolve alongside the platform while preserving backward compatibility wherever practical.
+
+---
+
+# Chapter 5 — Authentication & Authorization
+
+This chapter documents how Verifii identifies users, protects platform resources, and authorizes access to sensitive operations.
+
+Authentication and authorization form the foundation of every secure workflow within the platform. Every request that creates, modifies, verifies, or publishes startup data passes through server-side ownership and permission validation before business logic is executed.
+
+---
+
+## 5.1 Overview
+
+Verifii follows a server-first authentication model.
+
+Authentication determines **who the user is**.
+
+Authorization determines **what the user is allowed to do**.
+
+Although these concepts work together, they remain separate responsibilities throughout the platform.
+
+Authentication establishes identity.
+
+Authorization enforces permissions.
+
+---
+
+## 5.2 Authentication Model
+
+User authentication is handled through Supabase Authentication.
+
+Every authenticated user receives a unique identity that is used throughout the platform.
+
+Authentication is required for:
+
+- Creating startup submissions.
+- Editing startup information.
+- Connecting payment providers.
+- Managing subscriptions.
+- Accessing the founder dashboard.
+- Administrative operations.
+
+Public pages such as the leaderboard and published startup profiles remain accessible without authentication.
+
+---
+
+## 5.3 Authorization Model
+
+Authentication alone does not grant access.
+
+Every protected action must also satisfy authorization rules.
+
+Authorization is enforced on the server before any business logic executes.
+
+Typical authorization checks include:
+
+- Startup ownership verification.
+- Subscription eligibility.
+- Administrative privileges.
+- Provider connection ownership.
+- Billing ownership.
+- Publication permissions.
+
+Frontend checks improve user experience, but backend validation remains the ultimate source of truth.
+
+---
+
+## 5.4 Ownership Model
+
+Every startup belongs to exactly one authenticated founder account.
+
+Ownership determines who can:
+
+- Edit startup information.
+- Connect payment providers.
+- Resume verification.
+- Publish or hide the startup.
+- Manage verification settings.
+
+Ownership validation occurs entirely on the backend.
+
+Client-provided identifiers are never trusted without server-side verification.
+
+---
+
+## 5.5 Permission Levels
+
+The platform currently operates with several logical permission levels.
+
+### Public Visitor
+
+Can:
+
+- Browse public startups.
+- View leaderboards.
+- View published startup profiles.
+
+Cannot:
+
+- Modify platform data.
+- Access founder dashboards.
+- View private startups.
+
+---
+
+### Authenticated Founder
+
+Can:
+
+- Submit startups.
+- Manage owned startups.
+- Connect supported providers.
+- Resume verification.
+- Control startup visibility.
+- Manage subscriptions.
+
+Cannot:
+
+- Access other founders' startups.
+- Perform administrative actions.
+
+---
+
+### Administrator
+
+Can:
+
+- Review submissions.
+- Moderate content.
+- Perform administrative verification tasks.
+- Access internal platform tools.
+
+Administrative access remains isolated from founder workflows.
+
+---
+
+## 5.6 Authorization Principles
+
+Several principles guide authorization throughout the platform.
+
+### Least Privilege
+
+Users receive only the permissions necessary for their role.
+
+---
+
+### Server Enforcement
+
+Authorization is always enforced by backend APIs.
+
+Frontend permission checks exist only to improve user experience.
+
+---
+
+### Ownership Validation
+
+Every modification request verifies ownership before data changes are allowed.
+
+No startup may be modified solely because its identifier is known.
+
+---
+
+### Explicit Access
+
+Resources are private unless explicitly made public according to platform rules.
+
+This principle applies to:
+
+- Startup profiles.
+- Verification data.
+- Provider connections.
+- Revenue information.
+
+---
+
+## 5.7 Security Boundaries
+
+Authentication and authorization protect every critical subsystem.
+
+Examples include:
+
+- Verification pipeline.
+- Billing.
+- Provider integrations.
+- Startup editing.
+- Dashboard operations.
+- Administrative tooling.
+
+Each subsystem performs independent permission validation before executing business logic.
+
+---
+
+## 5.8 Current Authentication Status
+
+At the time of writing, Verifii implements:
+
+- Secure founder authentication.
+- Server-side authorization.
+- Ownership validation.
+- Protected dashboard access.
+- Protected verification endpoints.
+- Administrative access controls.
+- Public/private resource separation.
+
+Authentication and authorization continue to evolve as additional founder roles, organizations, and collaboration features are introduced.
+
+---
+
+# Chapter 6 — Verification System
+
+The Verification System is the core capability that distinguishes Verifii from traditional startup directories and self-reported revenue platforms.
+
+Rather than relying on screenshots or manually entered metrics, Verifii verifies recurring revenue directly through supported payment providers and transforms provider data into standardized verification results.
+
+Every public trust signal on the platform ultimately originates from the Verification System.
+
+---
+
+## 6.1 Purpose
+
+The purpose of the Verification System is to establish trust between founders and the public by validating recurring revenue through independently verifiable sources.
+
+Instead of asking visitors to trust founder claims, Verifii verifies revenue using provider-backed evidence and applies a consistent verification process to every startup.
+
+The system is designed to answer one question:
+
+> "Can this startup's reported revenue be independently verified?"
+
+---
+
+## 6.2 Verification Philosophy
+
+Verification within Verifii follows several guiding principles.
+
+### Provider-Backed Verification
+
+Revenue should originate from supported payment providers rather than manual declarations whenever possible.
+
+---
+
+### Read-Only Access
+
+Provider integrations operate using read-only credentials wherever supported.
+
+Verifii never requests permissions that allow financial transactions or modifications to provider accounts.
+
+---
+
+### Founder Control
+
+Verification is initiated by the founder.
+
+Founders decide when to begin verification and whether a verified startup should become publicly visible after meeting publication requirements.
+
+---
+
+### Repeatable Verification
+
+Verification is not treated as a one-time event.
+
+Revenue may be synchronized repeatedly to ensure public information remains accurate as the business grows.
+
+---
+
+## 6.3 Verification Lifecycle
+
+Every startup progresses through a controlled verification lifecycle.
+
+Startup Submission
+
+↓
+
+Private Startup
+
+↓
+
+Verification Decision
+
+↓
+
+Provider Connection
+
+↓
+
+Revenue Synchronization
+
+↓
+
+Verification Processing
+
+↓
+
+Trust Evaluation
+
+↓
+
+Publication Eligibility
+
+↓
+
+Founder Publication Decision
+
+↓
+
+Public Startup
+
+The platform intentionally separates verification from publication.
+
+Completing verification makes a startup eligible for publication but does not automatically expose it publicly.
+
+---
+
+## 6.4 Verification Methods
+
+Verifii supports multiple verification methods depending on the provider and the capabilities offered by that provider.
+
+Current methods include:
+
+- Direct provider integrations
+- Secure API credential verification
+- Read-only revenue synchronization
+
+As additional providers are introduced, new verification methods may be incorporated without changing the overall verification workflow.
+
+---
+
+## 6.5 Verification States
+
+Throughout its lifecycle, a startup may transition through several verification states.
+
+Typical states include:
+
+- Pending
+- Verification in Progress
+- Verified
+- Verification Failed
+- Review Required
+
+These states communicate verification progress while allowing backend systems to manage synchronization independently.
+
+---
+
+## 6.6 Verification Responsibilities
+
+The Verification System is responsible for:
+
+- Validating provider connectivity.
+- Coordinating revenue synchronization.
+- Normalizing provider responses.
+- Initiating trust evaluation.
+- Recording verification outcomes.
+- Maintaining verification history.
+- Supporting future re-verification.
+
+It is intentionally **not** responsible for publication decisions, subscription management, or public visibility.
+
+Those responsibilities belong to separate systems.
+
+---
+
+## 6.7 Failure Handling
+
+Verification may fail for several reasons, including:
+
+- Invalid provider credentials.
+- Authentication failures.
+- Network interruptions.
+- Provider-side errors.
+- Temporary service outages.
+
+Expected verification failures are presented to founders using clear, actionable messages.
+
+Unexpected system failures are logged for investigation while protecting sensitive platform information.
+
+The verification workflow is designed so that failures never expose private information or corrupt existing startup data.
+
+---
+
+## 6.8 Design Principles
+
+Several principles guide the implementation of the Verification System.
+
+### Independent Processing
+
+Verification remains independent from billing, publication, and dashboard functionality.
+
+---
+
+### Provider Agnostic
+
+The verification pipeline processes normalized provider data rather than depending on provider-specific implementations.
+
+This allows additional providers to be supported with minimal architectural changes.
+
+---
+
+### Auditability
+
+Verification results are preserved to support historical analysis, troubleshooting, and future platform improvements.
+
+---
+
+### Security First
+
+Verification operations always prioritize secure handling of credentials, ownership validation, and controlled backend execution.
+
+Sensitive provider information never relies solely on frontend validation.
+
+---
+
+## 6.9 Current Verification Architecture
+
+At the time of writing, the Verification System supports secure provider integrations, repeated synchronization, verification state management, and standardized processing of provider-backed revenue data.
+
+It serves as the foundation for the Trust Engine, Visibility System, Leaderboard, Startup Profiles, and every public trust signal displayed by Verifii.
+
+The following chapters describe the supporting systems that make the Verification System possible, beginning with the Provider Integration Layer.
+
+---
+
+# Chapter 7 — Provider Integration Layer
+
+The Provider Integration Layer is responsible for securely connecting Verifii to external payment providers and transforming provider-specific data into a standardized format that can be processed by the Verification System.
+
+Rather than allowing every subsystem to communicate directly with external payment providers, Verifii isolates provider-specific logic within a dedicated integration layer. This architecture improves maintainability, simplifies future provider additions, and ensures that the rest of the platform operates independently of provider-specific APIs.
+
+---
+
+## 7.1 Purpose
+
+The purpose of the Provider Integration Layer is to provide a secure and consistent interface between Verifii and supported payment providers.
+
+Instead of exposing the platform to multiple provider-specific implementations, the integration layer acts as a translation layer that converts external provider responses into a common internal format.
+
+This approach allows the Verification System, Trust Engine, and Revenue Processing pipeline to remain provider-agnostic.
+
+---
+
+## 7.2 Design Philosophy
+
+The Provider Integration Layer is built around several guiding principles.
+
+### Provider Independence
+
+Every payment provider exposes different APIs, authentication methods, and response formats.
+
+The integration layer hides these differences from the rest of the platform by exposing standardized internal interfaces.
+
+---
+
+### Secure Communication
+
+All communication with external providers occurs through authenticated backend requests.
+
+Sensitive credentials are never trusted from frontend applications and are handled exclusively by secure server-side processes.
+
+---
+
+### Read-Only Verification
+
+Provider integrations are designed for verification rather than account management.
+
+Wherever possible, Verifii requests only the minimum permissions required to verify recurring revenue and synchronize verification data.
+
+The platform never initiates financial transactions on behalf of founders.
+
+---
+
+### Extensibility
+
+The integration layer is designed so that new providers can be added without requiring major changes to the Verification System or other platform components.
+
+Each provider implements the same logical contract while handling its own authentication and data retrieval internally.
+
+---
+
+## 7.3 Supported Providers
+
+At the time of writing, Verifii supports the following providers.
+
+### Razorpay
+
+Razorpay is the primary verification provider for Verifii.
+
+As an India-first platform, Verifii prioritizes Razorpay because it is widely adopted by Indian SaaS businesses, supports INR transactions, and aligns closely with the platform's primary target audience.
+
+Founder onboarding, documentation, and verification workflows are optimized around Razorpay.
+
+---
+
+### Stripe
+
+Stripe is supported as an international payment provider.
+
+While Stripe remains an important part of the platform for founders operating globally, its verification experience is currently positioned as secondary to Razorpay in order to prioritize the needs of Indian founders.
+
+The underlying integration remains fully supported by the backend architecture.
+
+---
+
+## 7.4 Integration Workflow
+
+Every provider integration follows the same high-level workflow.
+
+Founder initiates verification.
+
+↓
+
+Provider credentials are securely submitted.
+
+↓
+
+Backend validates ownership.
+
+↓
+
+Credentials are verified.
+
+↓
+
+Provider data is retrieved.
+
+↓
+
+Provider-specific responses are normalized.
+
+↓
+
+Standardized verification data is returned to the Verification System.
+
+This standardized workflow allows downstream systems to operate consistently regardless of which payment provider supplied the data.
+
+---
+
+## 7.5 Credential Management
+
+Provider credentials are treated as highly sensitive information.
+
+The integration layer follows several security practices:
+
+- Credentials are processed only on the backend.
+- Sensitive values are encrypted before storage when persistence is required.
+- Secrets are never exposed to public APIs.
+- Ownership validation occurs before provider communication begins.
+- Provider credentials are isolated from unrelated platform systems.
+
+These controls reduce the attack surface while ensuring secure provider verification.
+
+---
+
+## 7.6 Error Handling
+
+External providers may return authentication errors, validation failures, rate limits, or temporary service interruptions.
+
+The Provider Integration Layer converts these provider-specific responses into standardized platform errors.
+
+This allows the frontend to display consistent, user-friendly messages regardless of which provider generated the original error.
+
+Expected authentication failures are presented as actionable guidance for founders, while unexpected failures are logged for investigation without exposing sensitive implementation details.
+
+---
+
+## 7.7 Provider Prioritization
+
+Verifii follows an India-first product strategy.
+
+Accordingly, provider presentation within the platform reflects the needs of the primary user base.
+
+Current prioritization is:
+
+1. Razorpay
+2. Stripe
+
+Razorpay is presented as the recommended provider for Indian founders, while Stripe remains available for founders operating internationally.
+
+This prioritization affects only the user experience and onboarding flow.
+
+Internally, both providers continue to use the same standardized verification architecture.
+
+---
+
+## 7.8 Current Architecture
+
+The Provider Integration Layer currently provides:
+
+- Secure provider authentication.
+- Standardized provider interfaces.
+- Credential validation.
+- Revenue data retrieval.
+- Provider-specific error normalization.
+- Secure credential handling.
+- Extensible provider architecture.
+
+Future providers can be integrated into this layer without requiring architectural changes to the Verification System or other downstream platform components.
+
+---
+
+# Chapter 8 — Revenue Processing
+
+The Revenue Processing System is responsible for transforming raw payment-provider data into standardized, reliable revenue metrics that can be used throughout Verifii.
+
+Payment providers expose revenue information in different formats, currencies, billing models, and API structures. The purpose of this system is to normalize that information into a consistent internal representation that can be verified, analyzed, and displayed across the platform.
+
+Rather than simply displaying provider responses, Verifii processes revenue through a controlled pipeline that prioritizes accuracy, consistency, and long-term historical tracking.
+
+---
+
+## 8.1 Purpose
+
+The purpose of the Revenue Processing System is to convert provider-specific financial information into standardized revenue data that can be consumed by the rest of the platform.
+
+This system acts as the bridge between provider integrations and downstream systems such as Trust Evaluation, Leaderboards, Startup Profiles, and Analytics.
+
+Every verified revenue metric displayed by Verifii originates from this processing pipeline.
+
+---
+
+## 8.2 Revenue Processing Philosophy
+
+The system is designed around several guiding principles.
+
+### Standardization
+
+Different providers expose different billing structures.
+
+The Revenue Processing System converts these provider-specific formats into a unified internal model so that every startup is evaluated consistently.
+
+---
+
+### Consistency
+
+Revenue calculations should produce predictable results regardless of which supported provider supplies the underlying data.
+
+Founders using different payment providers should receive equivalent treatment whenever possible.
+
+---
+
+### Historical Preservation
+
+Revenue should never be treated as a single static value.
+
+Instead, the platform preserves historical snapshots that allow future analysis of growth, trends, and verification history.
+
+---
+
+### Provider Independence
+
+Revenue processing should remain independent from provider implementations.
+
+Once provider data has been normalized, downstream systems no longer need to know which provider supplied the original information.
+
+---
+
+## 8.3 Revenue Processing Pipeline
+
+The high-level revenue workflow is:
+
+Provider Data
+
+↓
+
+Data Validation
+
+↓
+
+Normalization
+
+↓
+
+Revenue Calculation
+
+↓
+
+Snapshot Generation
+
+↓
+
+Historical Storage
+
+↓
+
+Trust Evaluation
+
+↓
+
+Platform Features
+
+Each stage performs a specific responsibility before handing processed information to the next subsystem.
+
+---
+
+## 8.4 Data Normalization
+
+Payment providers expose financial information using different naming conventions, currencies, timestamps, and billing structures.
+
+The normalization stage converts these differences into a common internal representation.
+
+Examples include:
+
+- Standardized recurring revenue values.
+- Unified timestamps.
+- Common revenue categories.
+- Consistent provider metadata.
+- Shared internal field definitions.
+
+This allows downstream systems to operate without provider-specific logic.
+
+---
+
+## 8.5 Revenue Snapshots
+
+Rather than replacing previously verified revenue, Verifii records revenue as a series of historical snapshots.
+
+Each snapshot represents the verified state of a startup's revenue at a particular point in time.
+
+Historical snapshots support:
+
+- Revenue history.
+- Growth analysis.
+- Trend visualization.
+- Future analytics.
+- Verification auditing.
+
+This approach preserves the evolution of a startup instead of only storing its latest value.
+
+---
+
+## 8.6 Revenue Metrics
+
+The Revenue Processing System produces standardized metrics that can be consumed throughout the platform.
+
+These metrics may include:
+
+- Monthly Recurring Revenue (MRR)
+- Annual Recurring Revenue (ARR)
+- Revenue growth
+- Verification timestamps
+- Provider metadata
+- Historical revenue records
+
+Additional metrics may be introduced as the platform evolves without changing the overall architecture.
+
+---
+
+## 8.7 Error Handling
+
+Revenue processing is designed to tolerate temporary provider inconsistencies while protecting data integrity.
+
+Examples include:
+
+- Missing provider fields.
+- Temporary synchronization failures.
+- Partial provider responses.
+- Currency inconsistencies.
+- Invalid provider data.
+
+Unexpected processing failures do not overwrite previously verified information.
+
+Instead, processing failures are isolated, logged, and surfaced through appropriate verification states.
+
+---
+
+## 8.8 Design Principles
+
+The Revenue Processing System follows several architectural principles.
+
+### Accuracy Before Speed
+
+Correct revenue calculations are prioritized over processing speed.
+
+---
+
+### Immutable History
+
+Historical verification data should be preserved rather than replaced.
+
+---
+
+### Deterministic Processing
+
+The same verified provider data should always produce the same processing result.
+
+---
+
+### Modular Architecture
+
+Revenue processing remains independent from trust scoring, visibility, billing, and presentation layers.
+
+Each downstream subsystem receives processed revenue rather than raw provider responses.
+
+---
+
+## 8.9 Current Architecture
+
+At the time of writing, the Revenue Processing System provides:
+
+- Provider data normalization.
+- Standardized recurring revenue calculations.
+- Historical revenue snapshots.
+- Verification timestamps.
+- Processed revenue metrics.
+- Consistent inputs for downstream systems.
+
+The processed output generated by this system becomes the primary input for the Trust & Fraud Engine, which evaluates the reliability and confidence of every verified startup.
+
+---
+
+# Chapter 9 — Trust & Fraud Engine
+
+The Trust & Fraud Engine is responsible for evaluating the reliability, integrity, and confidence of every verified startup on Verifii.
+
+Verification alone does not automatically establish trust. A startup may successfully connect a payment provider while still exhibiting unusual activity, incomplete verification, or inconsistencies that require additional evaluation.
+
+The Trust & Fraud Engine analyzes verification results, applies platform rules, and generates trust indicators that help determine how confidently a startup's information can be presented to the public.
+
+This system transforms raw verification into meaningful trust.
+
+---
+
+## 9.1 Purpose
+
+The purpose of the Trust & Fraud Engine is to provide an objective assessment of the reliability of a startup's verified information.
+
+Rather than relying solely on successful provider connections, the platform evaluates multiple trust signals before assigning trust metrics and determining publication eligibility.
+
+The engine is designed to answer two questions:
+
+- Can this startup's verification be trusted?
+- How confident is the platform in the published information?
+
+---
+
+## 9.2 Trust Philosophy
+
+The Trust & Fraud Engine is built around several core principles.
+
+### Trust Is Earned
+
+Verification is the starting point, not the final destination.
+
+Trust is established through consistent verification, reliable provider data, secure ownership, and adherence to platform rules.
+
+---
+
+### Automation Over Manual Judgement
+
+Whenever possible, trust evaluation is performed automatically using objective platform rules.
+
+Manual review is reserved for exceptional cases where automated systems cannot confidently determine the appropriate outcome.
+
+---
+
+### Continuous Evaluation
+
+Trust is not permanent.
+
+As startups continue synchronizing revenue and interacting with the platform, trust indicators may improve or decline depending on new information.
+
+---
+
+### Explainability
+
+Trust decisions should be understandable.
+
+Platform-generated trust metrics should be based on identifiable factors rather than opaque or arbitrary scoring.
+
+---
+
+## 9.3 Trust Evaluation Pipeline
+
+The Trust & Fraud Engine operates after successful revenue processing.
+
+The high-level workflow is:
+
+Verified Revenue
+
+↓
+
+Verification Analysis
+
+↓
+
+Fraud Detection
+
+↓
+
+Trust Evaluation
+
+↓
+
+Confidence Assessment
+
+↓
+
+Trust Metrics
+
+↓
+
+Publication Eligibility
+
+↓
+
+Public Trust Signals
+
+This sequence ensures that public trust indicators are based on processed and verified information rather than raw provider data.
+
+---
+
+## 9.4 Trust Signals
+
+Trust evaluation considers multiple independent signals.
+
+Examples include:
+
+- Verification success.
+- Provider authenticity.
+- Revenue consistency.
+- Historical verification stability.
+- Ownership validation.
+- Verification history.
+- Platform activity.
+
+No single signal determines trust independently.
+
+Instead, multiple signals contribute to an overall assessment.
+
+---
+
+## 9.5 Fraud Detection
+
+The Fraud Detection subsystem identifies patterns that may reduce confidence in verification results.
+
+Its purpose is not to accuse founders of misconduct but to protect the integrity of the platform.
+
+Potential indicators include:
+
+- Unusual verification behavior.
+- Suspicious verification patterns.
+- Inconsistent provider responses.
+- Repeated verification failures.
+- Unexpected revenue anomalies.
+
+Detected anomalies may reduce trust, require additional verification, or trigger administrative review.
+
+---
+
+## 9.6 Trust Metrics
+
+The Trust & Fraud Engine produces several standardized metrics used throughout Verifii.
+
+These may include:
+
+- Trust Score
+- Confidence Score
+- Fraud Score
+- Risk Level
+- Trust Tier
+- Trust Breakdown
+
+These metrics are consumed by multiple platform systems including:
+
+- Startup Profiles
+- Leaderboard
+- Verification Status
+- Administrative Dashboard
+- Internal Analytics
+
+---
+
+## 9.7 Administrative Review
+
+Most startups are evaluated automatically.
+
+However, certain situations may require administrative review before publication.
+
+Examples include:
+
+- Conflicting verification signals.
+- High fraud indicators.
+- Incomplete verification data.
+- Exceptional platform conditions.
+
+Administrative review supplements automated evaluation rather than replacing it.
+
+---
+
+## 9.8 Design Principles
+
+The Trust & Fraud Engine follows several architectural principles.
+
+### Independence
+
+Trust evaluation remains independent from provider integrations and revenue processing.
+
+It consumes processed verification data rather than interacting directly with payment providers.
+
+---
+
+### Consistency
+
+Equivalent verification conditions should produce equivalent trust outcomes.
+
+This ensures fairness across different founders and supported providers.
+
+---
+
+### Transparency
+
+Trust metrics should reflect identifiable platform signals rather than arbitrary decisions.
+
+---
+
+### Extensibility
+
+The engine is designed to incorporate additional trust signals and fraud detection rules as the platform evolves without requiring major architectural changes.
+
+---
+
+## 9.9 Current Architecture
+
+At the time of writing, the Trust & Fraud Engine provides:
+
+- Automated trust evaluation.
+- Fraud signal analysis.
+- Confidence assessment.
+- Trust metric generation.
+- Risk classification.
+- Administrative escalation when required.
+
+The Trust & Fraud Engine serves as the final quality assessment before verified startups become eligible for public visibility.
+
+The following chapter describes how these trust decisions are translated into public visibility through Verifii's Visibility System.
+
+---
+
+# Chapter 10 — Visibility System
+
+The Visibility System is responsible for determining whether a startup is accessible through Verifii's public platform.
+
+Unlike traditional startup directories where submissions become public immediately after creation, Verifii follows a controlled publication model. Every startup begins as a private record that is visible only to its owner. Public visibility is granted only after the platform's publication requirements have been satisfied and the founder explicitly chooses to publish the startup.
+
+This architecture protects the integrity of the platform while giving founders complete control over their public presence.
+
+---
+
+## 10.1 Purpose
+
+The purpose of the Visibility System is to separate startup creation, verification, and publication into independent stages.
+
+This ensures that:
+
+- founders can safely create startups without immediate public exposure,
+- verification can be completed at any time,
+- only eligible startups appear on public surfaces,
+- founders remain in control of publication decisions.
+
+Visibility is therefore treated as an independent platform concern rather than a side effect of verification.
+
+---
+
+## 10.2 Visibility Philosophy
+
+The Visibility System is built around several core principles.
+
+### Private by Default
+
+Every startup begins its lifecycle as a private resource.
+
+Private startups are visible only to their owner through authenticated founder interfaces.
+
+No startup becomes public automatically.
+
+---
+
+### Verification Before Publication
+
+Verification and publication are separate decisions.
+
+Completing verification makes a startup eligible for publication, but publication remains a founder-controlled action.
+
+---
+
+### Founder Control
+
+Founders decide whether a verified startup should remain public or private.
+
+The platform never forces publication after successful verification.
+
+Likewise, founders may choose to hide previously published startups whenever they wish.
+
+---
+
+### Centralized Visibility
+
+Public visibility is controlled through a single platform-wide visibility model.
+
+Every public surface relies on the same visibility rules rather than implementing independent publication logic.
+
+This guarantees consistent behavior throughout the platform.
+
+---
+
+## 10.3 Startup Visibility Lifecycle
+
+Every startup progresses through the following visibility lifecycle.
+
+Startup Submitted
+
+↓
+
+Private Startup
+
+↓
+
+Verification (Now or Later)
+
+↓
+
+Publication Eligible
+
+↓
+
+Founder Publishes
+
+↓
+
+Public Startup
+
+↓
+
+Founder May Hide Again
+
+This lifecycle separates operational progress from public visibility, allowing founders to manage verification without exposing incomplete or unverified startups.
+
+---
+
+## 10.4 Public Visibility Rules
+
+A startup becomes publicly accessible only after satisfying the platform's publication requirements.
+
+Current publication requirements include:
+
+- Successful verification.
+- Eligibility determined by platform verification systems.
+- Founder approval to publish.
+
+If any requirement is not satisfied, the startup remains private.
+
+These rules apply consistently across the entire platform.
+
+---
+
+## 10.5 Protected Public Surfaces
+
+The Visibility System protects every public-facing resource.
+
+Examples include:
+
+- Leaderboard.
+- Startup profiles.
+- Public APIs.
+- Verification badges.
+- Open Graph images.
+- Search engine indexing.
+- Public startup counts.
+
+Every public query must respect the same visibility rules.
+
+This centralized approach prevents accidental exposure of private or incomplete startup information.
+
+---
+
+## 10.6 Founder Access
+
+Visibility restrictions apply only to public users.
+
+Startup owners retain full access to their own startups regardless of publication status.
+
+This allows founders to:
+
+- Resume verification.
+- Edit startup information.
+- Review verification progress.
+- Manage provider connections.
+- Publish or hide their startup.
+
+Owner access is validated through authenticated backend authorization rather than frontend controls.
+
+---
+
+## 10.7 Visibility Enforcement
+
+Visibility is enforced entirely on the backend.
+
+Frontend interfaces may hide unavailable actions to improve user experience, but all public access decisions are validated by server-side authorization before data is returned.
+
+This prevents unauthorized access through manually constructed requests or direct API calls.
+
+---
+
+## 10.8 Design Principles
+
+The Visibility System follows several architectural principles.
+
+### Security Before Convenience
+
+Protecting founder information takes precedence over maximizing public exposure.
+
+---
+
+### Consistency
+
+Every public feature follows the same publication rules.
+
+A startup that is private on one public surface is private everywhere.
+
+---
+
+### Explicit Publication
+
+Visibility is always an intentional founder decision.
+
+The platform never assumes that successful verification implies consent for publication.
+
+---
+
+### Extensibility
+
+The visibility architecture is designed to support future publication models, organization accounts, and advanced privacy controls without fundamental architectural changes.
+
+---
+
+## 10.9 Current Architecture
+
+At the time of writing, the Visibility System provides:
+
+- Private-by-default startup creation.
+- Founder-controlled publication.
+- Centralized visibility enforcement.
+- Owner-only access to private startups.
+- Consistent protection across all public endpoints.
+- Backend authorization for every public resource.
+- Separation between verification and publication.
+
+This architecture ensures that every publicly visible startup has intentionally passed through Verifii's verification and publication workflow while preserving founder privacy throughout the process.
+
+The Visibility System completes the core verification pipeline and serves as the foundation for every public experience offered by Verifii.
+
+---
+
+# Chapter 11 — Subscription & Billing System
+
+The Subscription & Billing System manages access to premium platform capabilities through subscription plans, billing lifecycle management, and payment processing.
+
+Rather than simply collecting payments, this system determines feature eligibility, enforces subscription rules, and provides a consistent billing experience across the platform.
+
+The billing architecture is designed to remain independent from the Verification System while integrating with platform permissions where required.
+
+---
+
+## 11.1 Purpose
+
+The purpose of the Subscription & Billing System is to control access to premium functionality while providing founders with a secure and transparent subscription experience.
+
+The system is responsible for:
+
+- Managing subscription plans.
+- Controlling premium feature access.
+- Handling subscription lifecycle events.
+- Processing payments.
+- Supporting upgrades and downgrades.
+- Maintaining billing history.
+
+Billing determines what founders can access, but it never affects ownership of startup data.
+
+---
+
+## 11.2 Billing Philosophy
+
+The Subscription & Billing System is built around several guiding principles.
+
+### Feature Access Through Subscription
+
+Subscriptions unlock platform capabilities rather than ownership.
+
+A founder always retains ownership of their startup regardless of subscription status.
+
+---
+
+### Independent Architecture
+
+Billing operates independently from verification, trust evaluation, and visibility.
+
+Each subsystem communicates through well-defined interfaces without tightly coupling business logic.
+
+---
+
+### Transparent Billing
+
+Subscription status, billing history, and plan information should always be clearly visible to founders.
+
+Unexpected billing behavior should be avoided through predictable lifecycle management.
+
+---
+
+### Extensibility
+
+The billing architecture is designed to support additional plans, payment providers, promotional offers, and future pricing models without significant architectural changes.
+
+---
+
+## 11.3 Subscription Lifecycle
+
+A typical subscription progresses through the following lifecycle.
+
+Visitor
+
+↓
+
+Account Creation
+
+↓
+
+Plan Selection
+
+↓
+
+Payment
+
+↓
+
+Active Subscription
+
+↓
+
+Subscription Management
+
+↓
+
+Renewal, Upgrade, Downgrade or Cancellation
+
+↓
+
+Subscription Ends or Continues
+
+Throughout this lifecycle, startup ownership remains unchanged regardless of subscription status.
+
+---
+
+## 11.4 Subscription Plans
+
+Verifii supports multiple subscription tiers designed for different founder needs.
+
+Each plan defines access to platform capabilities such as:
+
+- Startup verification.
+- Premium analytics.
+- Provider integrations.
+- Advanced platform features.
+- Future premium services.
+
+Plan definitions remain independent from payment processing.
+
+---
+
+## 11.5 Payment Providers
+
+Billing is processed through supported payment providers.
+
+Current providers include:
+
+### Razorpay
+
+Primary payment provider for Indian founders.
+
+Supports domestic payment methods and aligns with Verifii's India-first product strategy.
+
+---
+
+### Stripe
+
+Supported for international founders.
+
+Provides global payment support while integrating with the same subscription lifecycle as Razorpay.
+
+Although founders may verify revenue using different providers, subscription billing remains independent from the verification process.
+
+---
+
+## 11.6 Subscription Enforcement
+
+Subscription checks are performed on the backend before premium functionality is executed.
+
+Examples include:
+
+- Premium verification features.
+- Provider connection eligibility.
+- Billing management.
+- Future premium platform capabilities.
+
+Frontend interfaces may hide unavailable actions, but authorization is always enforced server-side.
+
+---
+
+## 11.7 Billing Security
+
+The Subscription & Billing System follows several security principles.
+
+- Payment processing is delegated to trusted payment providers.
+- Sensitive billing operations occur on secure backend endpoints.
+- Subscription ownership is validated before changes are permitted.
+- Billing events are verified before affecting platform state.
+- Payment credentials are never exposed to client applications.
+
+---
+
+## 11.8 Design Principles
+
+The billing architecture follows several engineering principles.
+
+### Separation of Concerns
+
+Billing remains independent from verification and trust evaluation.
+
+---
+
+### Provider Agnostic
+
+Subscription management is designed to work consistently regardless of the underlying payment provider.
+
+---
+
+### Reliability
+
+Subscription state changes should remain predictable and recoverable.
+
+Unexpected failures should never corrupt subscription ownership or platform permissions.
+
+---
+
+### Scalability
+
+The billing system is designed to support future subscription models, organizational plans, enterprise licensing, and promotional pricing without architectural redesign.
+
+---
+
+## 11.9 Current Architecture
+
+At the time of writing, the Subscription & Billing System provides:
+
+- Subscription lifecycle management.
+- Plan-based feature access.
+- Backend subscription enforcement.
+- Multi-provider payment support.
+- Secure billing operations.
+- Independent subscription architecture.
+
+The Subscription & Billing System enables Verifii to provide premium capabilities while remaining separate from the platform's verification and trust infrastructure.
+
+---
+
+# Chapter 12 — API Architecture
+
+The API Architecture provides the communication layer between Verifii's frontend applications, backend services, database, and external providers.
+
+Rather than allowing frontend components to interact directly with the database or payment providers, every platform operation is executed through secure server-side APIs that enforce authentication, authorization, business rules, and security policies.
+
+This architecture centralizes business logic, improves maintainability, and ensures consistent behavior across all platform interfaces.
+
+---
+
+## 12.1 Purpose
+
+The purpose of the API Architecture is to provide a secure, standardized, and scalable interface between every major subsystem within Verifii.
+
+The API layer is responsible for:
+
+- Receiving client requests.
+- Authenticating users.
+- Authorizing operations.
+- Executing business logic.
+- Coordinating backend systems.
+- Returning standardized responses.
+
+The API layer acts as the single entry point for every operation performed by the platform.
+
+---
+
+## 12.2 API Philosophy
+
+The API Architecture follows several guiding principles.
+
+### Backend as the Source of Truth
+
+The frontend is responsible for presentation.
+
+The backend is responsible for decision making.
+
+Every business rule is enforced on the server regardless of frontend behavior.
+
+---
+
+### Security First
+
+Every protected endpoint validates authentication, ownership, and authorization before executing business logic.
+
+Client requests are never trusted solely because they originate from authenticated sessions.
+
+---
+
+### Consistency
+
+All APIs follow consistent request handling, response structures, validation, and error handling wherever practical.
+
+This provides predictable behavior throughout the platform.
+
+---
+
+### Separation of Concerns
+
+Each API endpoint owns a specific responsibility.
+
+Verification APIs do not perform billing.
+
+Billing APIs do not calculate trust.
+
+Visibility APIs do not process provider data.
+
+This separation keeps the platform modular and maintainable.
+
+---
+
+## 12.3 API Categories
+
+The platform exposes several logical groups of APIs.
+
+### Authentication APIs
+
+Responsible for:
+
+- User authentication.
+- Session management.
+- Identity validation.
+
+---
+
+### Startup Management APIs
+
+Responsible for:
+
+- Startup creation.
+- Editing startup information.
+- Startup retrieval.
+- Founder ownership operations.
+
+---
+
+### Verification APIs
+
+Responsible for:
+
+- Provider verification.
+- Verification lifecycle.
+- Revenue synchronization.
+- Verification state updates.
+
+---
+
+### Provider APIs
+
+Responsible for:
+
+- Secure provider communication.
+- Credential validation.
+- Provider-specific operations.
+
+---
+
+### Billing APIs
+
+Responsible for:
+
+- Subscription management.
+- Plan enforcement.
+- Payment lifecycle.
+- Billing operations.
+
+---
+
+### Administrative APIs
+
+Responsible for:
+
+- Moderation.
+- Administrative review.
+- Platform management.
+- Internal tooling.
+
+---
+
+### Public APIs
+
+Responsible for exposing publicly available platform information while respecting the Visibility System.
+
+Examples include:
+
+- Public startup profiles.
+- Leaderboard data.
+- Public statistics.
+- Verification badges.
+
+Public APIs never expose private startup information.
+
+---
+
+## 12.4 Request Lifecycle
+
+A typical API request follows the same execution pattern.
+
+Client Request
+
+↓
+
+Route Resolution
+
+↓
+
+Authentication
+
+↓
+
+Authorization
+
+↓
+
+Input Validation
+
+↓
+
+Business Logic
+
+↓
+
+Database Operations
+
+↓
+
+Response Generation
+
+↓
+
+Client Response
+
+Each stage performs a specific responsibility before passing execution to the next stage.
+
+---
+
+## 12.5 Validation Strategy
+
+Input validation occurs before business logic executes.
+
+Validation includes:
+
+- Request structure.
+- Required fields.
+- Data types.
+- Ownership validation.
+- Permission checks.
+- Business rule enforcement.
+
+Invalid requests are rejected before any database modifications occur.
+
+---
+
+## 12.6 Error Handling
+
+The API layer standardizes error handling across the platform.
+
+Expected failures include:
+
+- Authentication failures.
+- Authorization failures.
+- Validation errors.
+- Provider authentication failures.
+- Subscription restrictions.
+- Resource not found.
+
+Unexpected failures are logged internally while returning safe error responses to clients.
+
+Sensitive implementation details are never exposed through public API responses.
+
+---
+
+## 12.7 API Security
+
+Every protected endpoint follows common security practices.
+
+These include:
+
+- Authentication verification.
+- Ownership validation.
+- Authorization enforcement.
+- Rate limiting.
+- Input validation.
+- Secure error handling.
+- Protection against unauthorized resource access.
+
+Security policies are enforced server-side for every request.
+
+---
+
+## 12.8 Integration with Platform Systems
+
+The API layer coordinates communication between multiple platform systems.
+
+Typical interactions include:
+
+- Authentication → Startup Management.
+- Verification → Provider Integration.
+- Revenue Processing → Trust Engine.
+- Trust Engine → Visibility System.
+- Billing → Subscription Enforcement.
+
+This orchestration allows each subsystem to remain independent while participating in larger workflows.
+
+---
+
+## 12.9 Current Architecture
+
+At the time of writing, Verifii's API Architecture provides:
+
+- Modular route organization.
+- Secure backend processing.
+- Centralized business logic.
+- Standardized validation.
+- Consistent authorization.
+- Protected public endpoints.
+- Secure provider communication.
+
+The API layer forms the operational backbone of the platform and enables secure communication between every major subsystem documented throughout this handbook.
+
+---
+
+# Chapter 12 — API Architecture
+
+The API Architecture provides the communication layer between Verifii's frontend applications, backend services, database, and external providers.
+
+Rather than allowing frontend components to interact directly with the database or payment providers, every platform operation is executed through secure server-side APIs that enforce authentication, authorization, business rules, and security policies.
+
+This architecture centralizes business logic, improves maintainability, and ensures consistent behavior across all platform interfaces.
+
+---
+
+## 12.1 Purpose
+
+The purpose of the API Architecture is to provide a secure, standardized, and scalable interface between every major subsystem within Verifii.
+
+The API layer is responsible for:
+
+- Receiving client requests.
+- Authenticating users.
+- Authorizing operations.
+- Executing business logic.
+- Coordinating backend systems.
+- Returning standardized responses.
+
+The API layer acts as the single entry point for every operation performed by the platform.
+
+---
+
+## 12.2 API Philosophy
+
+The API Architecture follows several guiding principles.
+
+### Backend as the Source of Truth
+
+The frontend is responsible for presentation.
+
+The backend is responsible for decision making.
+
+Every business rule is enforced on the server regardless of frontend behavior.
+
+---
+
+### Security First
+
+Every protected endpoint validates authentication, ownership, and authorization before executing business logic.
+
+Client requests are never trusted solely because they originate from authenticated sessions.
+
+---
+
+### Consistency
+
+All APIs follow consistent request handling, response structures, validation, and error handling wherever practical.
+
+This provides predictable behavior throughout the platform.
+
+---
+
+### Separation of Concerns
+
+Each API endpoint owns a specific responsibility.
+
+Verification APIs do not perform billing.
+
+Billing APIs do not calculate trust.
+
+Visibility APIs do not process provider data.
+
+This separation keeps the platform modular and maintainable.
+
+---
+
+## 12.3 API Categories
+
+The platform exposes several logical groups of APIs.
+
+### Authentication APIs
+
+Responsible for:
+
+- User authentication.
+- Session management.
+- Identity validation.
+
+---
+
+### Startup Management APIs
+
+Responsible for:
+
+- Startup creation.
+- Editing startup information.
+- Startup retrieval.
+- Founder ownership operations.
+
+---
+
+### Verification APIs
+
+Responsible for:
+
+- Provider verification.
+- Verification lifecycle.
+- Revenue synchronization.
+- Verification state updates.
+
+---
+
+### Provider APIs
+
+Responsible for:
+
+- Secure provider communication.
+- Credential validation.
+- Provider-specific operations.
+
+---
+
+### Billing APIs
+
+Responsible for:
+
+- Subscription management.
+- Plan enforcement.
+- Payment lifecycle.
+- Billing operations.
+
+---
+
+### Administrative APIs
+
+Responsible for:
+
+- Moderation.
+- Administrative review.
+- Platform management.
+- Internal tooling.
+
+---
+
+### Public APIs
+
+Responsible for exposing publicly available platform information while respecting the Visibility System.
+
+Examples include:
+
+- Public startup profiles.
+- Leaderboard data.
+- Public statistics.
+- Verification badges.
+
+Public APIs never expose private startup information.
+
+---
+
+## 12.4 Request Lifecycle
+
+A typical API request follows the same execution pattern.
+
+Client Request
+
+↓
+
+Route Resolution
+
+↓
+
+Authentication
+
+↓
+
+Authorization
+
+↓
+
+Input Validation
+
+↓
+
+Business Logic
+
+↓
+
+Database Operations
+
+↓
+
+Response Generation
+
+↓
+
+Client Response
+
+Each stage performs a specific responsibility before passing execution to the next stage.
+
+---
+
+## 12.5 Validation Strategy
+
+Input validation occurs before business logic executes.
+
+Validation includes:
+
+- Request structure.
+- Required fields.
+- Data types.
+- Ownership validation.
+- Permission checks.
+- Business rule enforcement.
+
+Invalid requests are rejected before any database modifications occur.
+
+---
+
+## 12.6 Error Handling
+
+The API layer standardizes error handling across the platform.
+
+Expected failures include:
+
+- Authentication failures.
+- Authorization failures.
+- Validation errors.
+- Provider authentication failures.
+- Subscription restrictions.
+- Resource not found.
+
+Unexpected failures are logged internally while returning safe error responses to clients.
+
+Sensitive implementation details are never exposed through public API responses.
+
+---
+
+## 12.7 API Security
+
+Every protected endpoint follows common security practices.
+
+These include:
+
+- Authentication verification.
+- Ownership validation.
+- Authorization enforcement.
+- Rate limiting.
+- Input validation.
+- Secure error handling.
+- Protection against unauthorized resource access.
+
+Security policies are enforced server-side for every request.
+
+---
+
+## 12.8 Integration with Platform Systems
+
+The API layer coordinates communication between multiple platform systems.
+
+Typical interactions include:
+
+- Authentication → Startup Management.
+- Verification → Provider Integration.
+- Revenue Processing → Trust Engine.
+- Trust Engine → Visibility System.
+- Billing → Subscription Enforcement.
+
+This orchestration allows each subsystem to remain independent while participating in larger workflows.
+
+---
+
+## 12.9 Current Architecture
+
+At the time of writing, Verifii's API Architecture provides:
+
+- Modular route organization.
+- Secure backend processing.
+- Centralized business logic.
+- Standardized validation.
+- Consistent authorization.
+- Protected public endpoints.
+- Secure provider communication.
+
+The API layer forms the operational backbone of the platform and enables secure communication between every major subsystem documented throughout this handbook.
+
+---
+
+# Chapter 14 — Founder Dashboard
+
+The Founder Dashboard serves as the central workspace for startup founders within Verifii.
+
+It provides a unified interface where founders can manage their startups, monitor verification progress, control public visibility, manage subscriptions, and access every major feature available to their account.
+
+Rather than acting as a simple navigation page, the dashboard functions as the operational control center for the entire founder experience.
+
+---
+
+## 14.1 Purpose
+
+The primary purpose of the Founder Dashboard is to provide founders with a single location from which they can manage every aspect of their startup's lifecycle.
+
+The dashboard allows founders to:
+
+- View all owned startups.
+- Monitor verification progress.
+- Resume incomplete verification.
+- Manage startup visibility.
+- Review verification status.
+- Access billing and subscription settings.
+- Navigate platform features.
+
+The dashboard eliminates the need for founders to interact directly with backend systems or individual workflows.
+
+---
+
+## 14.2 Dashboard Philosophy
+
+The Founder Dashboard is designed around four guiding principles.
+
+### Startup-Centric Experience
+
+The startup—not the user account—is the primary object within the dashboard.
+
+Every action is performed in the context of managing one or more startups.
+
+---
+
+### Clear Status Communication
+
+Founders should immediately understand the current state of each startup.
+
+Important information such as verification status, visibility, provider connection, and publication readiness should always be visible without requiring additional navigation.
+
+---
+
+### Guided Progress
+
+Rather than presenting every possible action at once, the dashboard guides founders toward the next logical step in their startup's journey.
+
+Examples include:
+
+- Resume Verification
+- Complete Startup Information
+- Publish Startup
+- Upgrade Subscription
+
+---
+
+### Single Control Center
+
+The dashboard should become the primary location founders return to after creating their startup.
+
+Every major founder workflow should either begin or end within the dashboard.
+
+---
+
+## 14.3 Dashboard Components
+
+The dashboard consists of several logical sections.
+
+### Startup Overview
+
+Provides a summary of every startup owned by the authenticated founder.
+
+Displays key information including:
+
+- Startup identity.
+- Verification status.
+- Visibility status.
+- Provider connection.
+- Publication state.
+
+---
+
+### Verification Management
+
+Allows founders to:
+
+- Start verification.
+- Resume verification.
+- Monitor verification progress.
+- Review verification outcomes.
+- Resolve verification issues.
+
+Verification remains the primary action for newly submitted startups.
+
+---
+
+### Startup Management
+
+Provides controls for managing startup information including:
+
+- Editing startup details.
+- Updating founder information.
+- Managing branding assets.
+- Reviewing verification history.
+
+---
+
+### Subscription Management
+
+Provides access to:
+
+- Current subscription.
+- Plan information.
+- Billing settings.
+- Payment history.
+- Subscription upgrades.
+
+---
+
+### Quick Actions
+
+Frequently used actions are surfaced prominently to reduce navigation.
+
+Examples include:
+
+- Add Startup.
+- Resume Verification.
+- Edit Startup.
+- Publish Startup.
+- View Public Profile.
+
+---
+
+## 14.4 Founder Workflow
+
+The dashboard supports the complete founder lifecycle.
+
+Founder Login
+
+↓
+
+Dashboard
+
+↓
+
+Startup Overview
+
+↓
+
+Verification (Now or Later)
+
+↓
+
+Verification Complete
+
+↓
+
+Publication Decision
+
+↓
+
+Public Startup
+
+↓
+
+Ongoing Startup Management
+
+This workflow allows founders to manage their startups continuously after initial submission.
+
+---
+
+## 14.5 Verification Integration
+
+The dashboard is tightly integrated with the Verification System.
+
+It displays verification progress in real time and guides founders toward completing outstanding verification tasks.
+
+Examples include:
+
+- Verification Pending.
+- Verification In Progress.
+- Verification Complete.
+- Verification Failed.
+- Resume Verification.
+
+The dashboard does not perform verification itself but acts as the primary interface for initiating and monitoring the verification process.
+
+---
+
+## 14.6 Visibility Integration
+
+Visibility controls are surfaced directly within the dashboard.
+
+Founders can immediately determine whether each startup is:
+
+- Private.
+- Eligible for publication.
+- Public.
+
+Visibility changes remain subject to backend authorization and publication rules.
+
+The dashboard reflects platform state rather than defining it.
+
+---
+
+## 14.7 User Experience Principles
+
+The dashboard is designed to reduce founder friction.
+
+Key objectives include:
+
+- Minimize unnecessary navigation.
+- Clearly communicate startup status.
+- Highlight next recommended actions.
+- Reduce verification abandonment.
+- Surface important platform events.
+
+The interface prioritizes clarity over complexity.
+
+---
+
+## 14.8 Current Architecture
+
+At the time of writing, the Founder Dashboard provides:
+
+- Multi-startup management.
+- Verification progress tracking.
+- Resume verification workflows.
+- Visibility management.
+- Subscription access.
+- Startup editing.
+- Founder navigation.
+
+The dashboard acts as the operational hub for founders and connects every major platform subsystem into a unified management experience.
+
+# Chapter 15 — Public Startup Profiles
+
+Public Startup Profiles are the primary public representation of a verified startup within Verifii.
+
+Each profile serves as a transparent and verifiable source of information about a startup's identity, verification status, and revenue metrics while allowing founders to control whether their startup is publicly visible.
+
+Rather than functioning as a traditional company profile page, Public Startup Profiles are designed to communicate trust through independently verified information.
+
+---
+
+## 15.1 Purpose
+
+The purpose of Public Startup Profiles is to provide a trustworthy and standardized representation of verified startups.
+
+Every profile allows visitors to:
+
+- Learn about a startup.
+- View verification status.
+- Understand trust indicators.
+- Review verified revenue information.
+- Evaluate founder-provided details.
+- Share startup profiles publicly.
+
+Profiles act as the primary destination for every publicly visible startup on Verifii.
+
+---
+
+## 15.2 Profile Philosophy
+
+Public Startup Profiles are designed around several guiding principles.
+
+### Trust Before Promotion
+
+The profile exists to communicate verified information rather than act as a marketing page.
+
+Trust signals receive greater emphasis than promotional content.
+
+---
+
+### Transparency
+
+Visitors should immediately understand what information has been verified and what information has been provided directly by the founder.
+
+Verification status should always be clearly communicated.
+
+---
+
+### Founder Ownership
+
+Although profiles become publicly accessible after publication, founders remain responsible for managing profile content and deciding whether their startup remains public.
+
+---
+
+### Consistency
+
+Every public startup follows the same profile structure to ensure visitors can compare startups using consistent information.
+
+---
+
+## 15.3 Profile Components
+
+Each Public Startup Profile is composed of several logical sections.
+
+### Startup Identity
+
+Displays the startup's core identity, including:
+
+- Startup name.
+- Logo.
+- Founder information.
+- Industry or business category.
+- Website.
+- Location.
+
+---
+
+### Verification Information
+
+Provides visitors with an overview of the startup's verification state.
+
+Examples include:
+
+- Verification status.
+- Verification provider.
+- Verification date.
+- Trust indicators.
+- Confidence information.
+
+---
+
+### Revenue Information
+
+Displays verified revenue metrics generated by the Verification System.
+
+Depending on available data, profiles may present:
+
+- Monthly Recurring Revenue (MRR).
+- Annual Recurring Revenue (ARR).
+- Historical revenue trends.
+- Verification timestamps.
+
+Only verified revenue information is presented.
+
+---
+
+### Trust Signals
+
+Public profiles expose trust-related information generated by the Trust & Fraud Engine.
+
+Examples include:
+
+- Trust Score.
+- Confidence Score.
+- Trust Tier.
+- Risk Classification.
+- Verification Summary.
+
+These indicators help visitors understand the reliability of the displayed information.
+
+---
+
+### Founder Information
+
+Founders may provide additional profile information including:
+
+- Founder biography.
+- Social links.
+- Startup description.
+- Branding assets.
+
+Founder-supplied content complements—but never replaces—platform-generated verification information.
+
+---
+
+## 15.4 Visibility Rules
+
+Public Startup Profiles are protected by the Visibility System.
+
+Profiles become publicly accessible only after:
+
+- Verification requirements have been satisfied.
+- Publication eligibility has been established.
+- The founder has chosen to publish the startup.
+
+Private startups remain inaccessible to public visitors.
+
+Startup owners retain access regardless of publication state.
+
+---
+
+## 15.5 Profile Lifecycle
+
+A Public Startup Profile progresses through the following lifecycle.
+
+Startup Submission
+
+↓
+
+Private Startup
+
+↓
+
+Verification
+
+↓
+
+Publication Eligible
+
+↓
+
+Founder Publishes
+
+↓
+
+Public Startup Profile
+
+↓
+
+Revenue Synchronization
+
+↓
+
+Profile Updates
+
+↓
+
+Optional Unpublish
+
+Throughout this lifecycle, the profile continues to evolve as verification data is synchronized and founder information is updated.
+
+---
+
+## 15.6 Profile Updates
+
+Public profiles are dynamic rather than static.
+
+Information may change as:
+
+- Revenue is reverified.
+- Startup details are updated.
+- Founder information changes.
+- Verification status evolves.
+- Trust metrics are recalculated.
+
+The profile always reflects the latest verified platform state.
+
+---
+
+## 15.7 Design Principles
+
+Public Startup Profiles follow several architectural principles.
+
+### Verification-Centered
+
+Verification information receives higher priority than marketing content.
+
+---
+
+### Privacy Respect
+
+Only information intentionally published by founders and approved by platform visibility rules becomes publicly accessible.
+
+---
+
+### Consistency
+
+Every profile follows the same information hierarchy regardless of startup size or industry.
+
+---
+
+### Future Extensibility
+
+Profiles are designed to support future additions such as:
+
+- Revenue charts.
+- Milestone timelines.
+- Team members.
+- Product showcases.
+- Community verification.
+- Additional trust indicators.
+
+---
+
+## 15.8 Current Architecture
+
+At the time of writing, Public Startup Profiles provide:
+
+- Startup identity.
+- Founder information.
+- Verified revenue.
+- Trust indicators.
+- Verification status.
+- Public sharing.
+- Controlled visibility.
+
+Public Startup Profiles represent the primary destination for verified startups on Verifii and serve as the foundation for discovery throughout the platform.
+
+The next chapter explains how these profiles are organized, ranked, and discovered through the Verifii Leaderboard.
+
+---
+
+# Chapter 16 — Leaderboard
+
+The Leaderboard is Verifii's primary discovery platform for verified startups.
+
+It provides a transparent, searchable, and trustworthy view of publicly published startups by presenting standardized verification information, revenue metrics, and trust indicators in a consistent format.
+
+Unlike traditional startup directories, inclusion within the leaderboard is earned through successful verification and publication rather than simple registration.
+
+---
+
+## 16.1 Purpose
+
+The purpose of the Leaderboard is to make verified startups easily discoverable while preserving the integrity of the platform.
+
+It allows visitors to:
+
+- Discover verified startups.
+- Compare businesses using consistent metrics.
+- Explore verified founder profiles.
+- Identify growing companies.
+- Evaluate startups using trusted information instead of marketing claims.
+
+The leaderboard represents the public face of Verifii.
+
+---
+
+## 16.2 Leaderboard Philosophy
+
+The leaderboard is built around several core principles.
+
+### Verification Before Visibility
+
+Only startups that satisfy the platform's publication requirements appear on the leaderboard.
+
+Registration alone does not qualify a startup for inclusion.
+
+---
+
+### Fair Representation
+
+Every publicly listed startup follows the same verification standards regardless of company size, industry, or subscription plan.
+
+---
+
+### Transparency
+
+Visitors should immediately understand why a startup appears on the leaderboard and which information has been independently verified.
+
+---
+
+### Founder Control
+
+Founders retain complete control over whether their verified startup appears publicly.
+
+Removing a startup from public visibility immediately removes it from the leaderboard.
+
+---
+
+## 16.3 Leaderboard Components
+
+The leaderboard presents standardized information for every published startup.
+
+Typical information includes:
+
+- Startup name.
+- Logo.
+- Founder.
+- Industry.
+- Verified revenue.
+- Trust indicators.
+- Verification status.
+- Public profile link.
+
+This standardized presentation allows visitors to compare startups consistently.
+
+---
+
+## 16.4 Inclusion Rules
+
+A startup is eligible for the leaderboard only after satisfying the platform's publication requirements.
+
+Current requirements include:
+
+- Successful verification.
+- Publication eligibility.
+- Founder approval for public visibility.
+
+Private startups never appear within leaderboard results.
+
+---
+
+## 16.5 Ranking Philosophy
+
+The leaderboard is designed to rank startups using objective platform data rather than subjective popularity.
+
+Ranking factors may include:
+
+- Verified revenue.
+- Verification quality.
+- Trust indicators.
+- Platform-defined ordering rules.
+
+The exact ranking algorithm may evolve as the platform grows.
+
+---
+
+## 16.6 Search & Discovery
+
+The leaderboard serves as the primary discovery interface for the public platform.
+
+Visitors can explore startups using filters and search capabilities designed to simplify navigation as the platform grows.
+
+Future discovery features may include:
+
+- Industry filters.
+- Revenue ranges.
+- Geographic filters.
+- Verification filters.
+- Sorting options.
+
+---
+
+## 16.7 Visibility Integration
+
+The leaderboard is fully integrated with the Visibility System.
+
+Every displayed startup has passed the platform's publication requirements.
+
+Visibility changes are reflected automatically without requiring manual intervention.
+
+This ensures consistent behavior across all public platform surfaces.
+
+---
+
+## 16.8 Design Principles
+
+The leaderboard follows several engineering principles.
+
+### Trust First
+
+Verification information receives higher priority than promotional content.
+
+---
+
+### Consistency
+
+Every startup is displayed using the same information hierarchy.
+
+---
+
+### Scalability
+
+The leaderboard is designed to accommodate significant platform growth while maintaining performance and usability.
+
+---
+
+### Discoverability
+
+The interface should make it easy for visitors to discover relevant startups without compromising trust or clarity.
+
+---
+
+## 16.9 Current Architecture
+
+At the time of writing, the Leaderboard provides:
+
+- Public startup discovery.
+- Verified startup listings.
+- Standardized startup information.
+- Public profile navigation.
+- Trust indicators.
+- Visibility enforcement.
+
+The Leaderboard serves as the primary public gateway to the Verifii ecosystem and represents the culmination of the platform's verification, trust, and visibility systems.
+
+---
+
+## Future Evolution
+
+Planned enhancements include:
+
+- Advanced search and filtering.
+- Industry-specific leaderboards.
+- India and Global leaderboard views.
+- Interactive revenue visualizations.
+- Growth trend indicators.
+- Founder achievements and milestones.
+- Saved searches and personalized discovery.
+- Additional ranking insights.
+
+---
+
+# Chapter 17 — Admin System
+
+The Admin System provides Verifii's internal operational interface for managing platform integrity, reviewing verification outcomes, moderating content, and supporting founders.
+
+Unlike founder-facing features, the Admin System is designed exclusively for authorized platform administrators and exists to maintain the quality, security, and trustworthiness of the ecosystem.
+
+The administrative interface complements automated platform systems by providing controlled human oversight when exceptional situations require manual intervention.
+
+---
+
+## 17.1 Purpose
+
+The purpose of the Admin System is to provide secure operational tools for managing the Verifii platform.
+
+The Admin System allows authorized administrators to:
+
+- Review startup submissions.
+- Moderate platform content.
+- Investigate verification anomalies.
+- Review fraud indicators.
+- Assist founders during exceptional cases.
+- Monitor platform health.
+- Perform operational maintenance.
+
+The Admin System is not intended to replace automated verification or trust evaluation. Instead, it provides oversight where automation alone is insufficient.
+
+---
+
+## 17.2 Administration Philosophy
+
+The Admin System is designed around four guiding principles.
+
+### Automation First
+
+Routine platform operations should be handled automatically.
+
+Administrative intervention is reserved for exceptional cases that require human judgement.
+
+---
+
+### Least Privilege
+
+Administrative capabilities are granted only to authorized personnel.
+
+Every administrative action operates within defined permission boundaries.
+
+---
+
+### Transparency
+
+Administrative decisions should be traceable and based on objective platform data rather than subjective judgement.
+
+Whenever possible, administrators should review evidence produced by automated platform systems before taking action.
+
+---
+
+### Platform Integrity
+
+The primary objective of every administrative workflow is to protect the trustworthiness and reliability of the Verifii ecosystem.
+
+---
+
+## 17.3 Administrative Components
+
+The Admin System consists of several operational areas.
+
+### Startup Review
+
+Allows administrators to review startup submissions requiring manual attention.
+
+Typical review scenarios include:
+
+- Verification anomalies.
+- Fraud alerts.
+- Exceptional verification cases.
+- Platform policy violations.
+
+---
+
+### Verification Oversight
+
+Provides visibility into verification activity across the platform.
+
+Administrators can review:
+
+- Verification status.
+- Provider synchronization outcomes.
+- Verification history.
+- Failed verification attempts.
+
+The verification process itself remains automated.
+
+---
+
+### Trust & Fraud Monitoring
+
+Allows administrators to inspect platform-generated trust and fraud signals.
+
+Examples include:
+
+- Elevated fraud indicators.
+- Confidence anomalies.
+- Risk classifications.
+- Suspicious platform activity.
+
+Administrative review supplements automated trust evaluation rather than replacing it.
+
+---
+
+### Platform Operations
+
+Provides operational controls used to maintain platform health.
+
+Examples include:
+
+- Monitoring platform activity.
+- Reviewing operational alerts.
+- Supporting internal maintenance.
+- Managing administrative workflows.
+
+---
+
+## 17.4 Administrative Workflow
+
+The Admin System supports the following operational workflow.
+
+Platform Activity
+
+↓
+
+Automated Detection
+
+↓
+
+Administrative Review (when required)
+
+↓
+
+Decision
+
+↓
+
+Platform Update
+
+↓
+
+Operational Logging
+
+Most platform activity never reaches administrative review because automated systems resolve the majority of verification and trust decisions independently.
+
+---
+
+## 17.5 Integration with Platform Systems
+
+The Admin System integrates with several core platform subsystems.
+
+### Verification System
+
+Receives verification outcomes requiring human review.
+
+---
+
+### Trust & Fraud Engine
+
+Provides fraud indicators and confidence assessments to assist administrative decision making.
+
+---
+
+### Visibility System
+
+Allows administrators to review publication-related issues while respecting platform visibility rules.
+
+---
+
+### Subscription & Billing
+
+Supports investigation of billing-related operational issues when necessary.
+
+---
+
+### Founder Dashboard
+
+Administrative actions may influence founder workflows by resolving issues that prevent verification or publication.
+
+---
+
+## 17.6 Design Principles
+
+The Admin System follows several architectural principles.
+
+### Operational Safety
+
+Administrative tools should never bypass platform security controls without explicit authorization.
+
+---
+
+### Auditability
+
+Administrative actions should be recorded to support accountability and future investigation.
+
+---
+
+### Separation of Responsibilities
+
+Administrative capabilities remain isolated from founder-facing functionality.
+
+Operational tooling should never interfere with standard founder workflows.
+
+---
+
+### Scalability
+
+The Admin System should continue supporting platform growth through improved moderation tools, analytics, and operational automation.
+
+---
+
+## 17.7 Current Architecture
+
+At the time of writing, the Admin System provides:
+
+- Startup review.
+- Verification oversight.
+- Fraud monitoring.
+- Administrative moderation.
+- Platform operations.
+- Secure administrative access.
+
+The system works alongside Verifii's automated verification pipeline to maintain platform integrity while minimizing the need for manual intervention.
+
+---
+
+## Future Evolution
+
+Planned enhancements include:
+
+- Administrative analytics dashboard.
+- Advanced moderation tools.
+- Comprehensive audit logs.
+- Verification replay capabilities.
+- Platform health monitoring.
+- Internal operational metrics.
+- Bulk administrative actions.
+- AI-assisted fraud investigation.
+
+---
+
+# Chapter 18 — Security Architecture
+
+Security is a foundational design principle of Verifii rather than a feature added after development.
+
+Every major subsystem—including authentication, verification, provider integrations, billing, public visibility, and administrative operations—has been designed with security as a primary consideration.
+
+The objective of Verifii's Security Architecture is to protect founder data, preserve the integrity of verified information, and ensure that every public trust signal displayed on the platform is backed by secure engineering practices.
+
+---
+
+## 18.1 Purpose
+
+The purpose of the Security Architecture is to establish a consistent framework for protecting platform resources, sensitive information, and public trust.
+
+The security architecture is responsible for:
+
+- Protecting founder accounts.
+- Securing payment provider integrations.
+- Preventing unauthorized access.
+- Preserving verification integrity.
+- Protecting sensitive credentials.
+- Enforcing backend authorization.
+- Maintaining platform availability.
+
+Security is considered throughout the entire platform lifecycle rather than within isolated components.
+
+---
+
+## 18.2 Security Philosophy
+
+Verifii follows several guiding security principles.
+
+### Security by Design
+
+Security considerations are incorporated during system design instead of being introduced after implementation.
+
+Every new feature should be evaluated from a security perspective before development begins.
+
+---
+
+### Backend Trust
+
+The backend is the authoritative source of truth for every security-sensitive operation.
+
+Frontend applications improve usability but never replace backend validation.
+
+---
+
+### Least Privilege
+
+Every user, service, and subsystem receives only the permissions necessary to perform its intended responsibilities.
+
+Limiting permissions reduces the impact of potential failures or misuse.
+
+---
+
+### Defense in Depth
+
+No individual security control is assumed to be sufficient on its own.
+
+Authentication, authorization, validation, encryption, rate limiting, and auditing work together to protect the platform.
+
+---
+
+## 18.3 Authentication Security
+
+Authentication is managed through secure identity services.
+
+Key principles include:
+
+- Verified user identities.
+- Secure session management.
+- Protected authentication flows.
+- Session validation.
+- Secure account ownership.
+
+Authentication establishes identity before any protected platform operation is performed.
+
+---
+
+## 18.4 Authorization Security
+
+Authorization protects platform resources after authentication has succeeded.
+
+Every protected request performs:
+
+- Ownership validation.
+- Permission verification.
+- Role validation.
+- Resource access checks.
+
+Authorization decisions are enforced entirely on the backend.
+
+---
+
+## 18.5 Provider Credential Security
+
+Payment provider credentials represent some of the platform's most sensitive information.
+
+The Provider Integration Layer protects these credentials through several measures:
+
+- Backend-only processing.
+- Secure storage.
+- Encryption where persistence is required.
+- Restricted access.
+- Ownership validation before use.
+
+Credentials are never exposed through public APIs or frontend applications.
+
+---
+
+## 18.6 Data Protection
+
+Verifii protects sensitive platform data throughout its lifecycle.
+
+Examples include:
+
+- Founder information.
+- Verification data.
+- Billing information.
+- Provider credentials.
+- Administrative information.
+
+Protection mechanisms include:
+
+- Encryption.
+- Secure storage.
+- Controlled access.
+- Server-side validation.
+- Principle of least privilege.
+
+---
+
+## 18.7 API Security
+
+Every API request passes through multiple security layers before business logic executes.
+
+These include:
+
+- Authentication.
+- Authorization.
+- Input validation.
+- Rate limiting.
+- Ownership verification.
+- Secure error handling.
+
+No protected API trusts client-provided data without independent validation.
+
+---
+
+## 18.8 Public Surface Protection
+
+Public resources are protected through centralized visibility enforcement.
+
+Examples include:
+
+- Leaderboard.
+- Startup Profiles.
+- Public APIs.
+- Verification Badges.
+- Open Graph Images.
+- Search Engine Indexing.
+
+Only startups satisfying the platform's publication requirements become publicly accessible.
+
+Private resources remain inaccessible to unauthorized users.
+
+---
+
+## 18.9 Fraud Resistance
+
+The platform incorporates automated mechanisms that help detect suspicious activity and preserve the integrity of verification.
+
+These mechanisms include:
+
+- Trust evaluation.
+- Fraud indicators.
+- Verification consistency checks.
+- Administrative review when required.
+- Controlled publication workflows.
+
+Fraud detection complements—not replaces—the Verification System.
+
+---
+
+## 18.10 Operational Security
+
+Security extends beyond application code into operational practices.
+
+Examples include:
+
+- Secure deployment.
+- Environment variable protection.
+- Controlled administrative access.
+- Infrastructure monitoring.
+- Secure backups.
+- Dependency management.
+
+Operational security ensures that platform integrity is maintained throughout deployment and maintenance.
+
+---
+
+## 18.11 Security Principles
+
+The Security Architecture follows several long-term principles.
+
+### Protect Founders
+
+Founder information should never be exposed unnecessarily.
+
+---
+
+### Preserve Trust
+
+Every public trust signal must be backed by secure verification processes.
+
+---
+
+### Minimize Risk
+
+Every subsystem should minimize its attack surface by exposing only the functionality required for its responsibilities.
+
+---
+
+### Continuous Improvement
+
+Security is an ongoing process.
+
+As Verifii evolves, new threats, providers, and platform capabilities will require continuous security improvements.
+
+---
+
+## 18.12 Current Architecture
+
+At the time of writing, Verifii's Security Architecture includes:
+
+- Secure authentication.
+- Backend authorization.
+- Ownership validation.
+- Provider credential protection.
+- Visibility enforcement.
+- Rate limiting.
+- Fraud detection.
+- Administrative controls.
+- Secure API architecture.
+- Defense-in-depth principles.
+
+Security is not implemented as a standalone subsystem. Instead, it forms a foundational layer that supports every architectural component documented throughout this handbook.
+
+---
+
+## Future Evolution
+
+Planned security enhancements include:
+
+- Two-factor authentication (2FA).
+- Audit logging for security-sensitive actions.
+- Security event monitoring.
+- Advanced anomaly detection.
+- Fine-grained administrative permissions.
+- Organization and team-based access control.
+- Automated security health checks.
+- Expanded penetration testing and security reviews.
+
+---
+
+# Chapter 19 — Operations & Deployment
+
+Operations and Deployment define how Verifii is built, deployed, monitored, maintained, and operated in production.
+
+While previous chapters describe the application's architecture and business systems, this chapter focuses on the infrastructure and operational practices that ensure the platform remains reliable, secure, and continuously available.
+
+The objective is to establish repeatable operational procedures that support long-term product growth while minimizing downtime, deployment risk, and operational complexity.
+
+---
+
+## 19.1 Purpose
+
+The purpose of the Operations & Deployment architecture is to provide a reliable process for delivering changes from development into production while maintaining platform stability.
+
+The operational architecture is responsible for:
+
+- Continuous deployment.
+- Infrastructure management.
+- Environment configuration.
+- Production monitoring.
+- Incident response.
+- Backup and recovery.
+- Operational maintenance.
+
+These responsibilities ensure that Verifii remains available, secure, and maintainable as the platform evolves.
+
+---
+
+## 19.2 Operational Philosophy
+
+Operations within Verifii are guided by several core principles.
+
+### Reliability Before Speed
+
+New features should never compromise platform stability.
+
+Every deployment should prioritize predictable behavior over rapid delivery.
+
+---
+
+### Automation First
+
+Wherever practical, operational tasks should be automated.
+
+Examples include:
+
+- Production deployments.
+- Build validation.
+- Database migrations.
+- Backup routines.
+- Monitoring.
+
+Automation reduces human error and improves consistency.
+
+---
+
+### Small, Incremental Changes
+
+Large deployments introduce unnecessary risk.
+
+The preferred approach is to release smaller, independently testable changes whenever possible.
+
+---
+
+### Recoverability
+
+Every deployment should have a clear recovery path.
+
+If a deployment introduces unexpected behavior, the platform should be capable of returning to a stable state with minimal downtime.
+
+---
+
+## 19.3 Environment Strategy
+
+Verifii operates across multiple environments.
+
+### Local Development
+
+Used for feature development, experimentation, and debugging.
+
+Characteristics include:
+
+- Local application runtime.
+- Local environment variables.
+- Developer testing.
+- Rapid iteration.
+
+---
+
+### Staging (Future)
+
+A production-like environment used for validating changes before public release.
+
+Typical uses include:
+
+- End-to-end testing.
+- QA validation.
+- Integration testing.
+- Release verification.
+
+---
+
+### Production
+
+The live platform used by founders and public visitors.
+
+Production prioritizes:
+
+- Stability.
+- Security.
+- Performance.
+- High availability.
+- Data integrity.
+
+Production changes should occur only after successful validation.
+
+---
+
+## 19.4 Deployment Workflow
+
+The standard deployment lifecycle follows these stages.
+
+Feature Development
+
+↓
+
+Local Testing
+
+↓
+
+Type Checking
+
+↓
+
+Production Build Validation
+
+↓
+
+Git Commit
+
+↓
+
+GitHub Push
+
+↓
+
+Automatic Deployment
+
+↓
+
+Production Verification
+
+↓
+
+Monitoring
+
+Each deployment must pass validation before reaching production.
+
+---
+
+## 19.5 Infrastructure
+
+The current infrastructure consists of several major services.
+
+### Application Hosting
+
+The frontend and backend are deployed using Vercel.
+
+Responsibilities include:
+
+- Application hosting.
+- Serverless execution.
+- Automatic deployments.
+- Environment management.
+
+---
+
+### Database
+
+Supabase PostgreSQL serves as the primary persistent datastore.
+
+Responsibilities include:
+
+- Application data.
+- Authentication.
+- Storage.
+- Row Level Security.
+- Database functions.
+
+---
+
+### External Services
+
+Additional services support the platform, including:
+
+- Payment providers.
+- Email delivery.
+- Domain management.
+- Third-party APIs.
+
+Each external dependency is isolated behind dedicated integration layers wherever practical.
+
+---
+
+## 19.6 Monitoring
+
+Production systems require continuous monitoring.
+
+Operational monitoring includes:
+
+- Application availability.
+- Deployment status.
+- API health.
+- Verification failures.
+- Provider availability.
+- Billing events.
+- Error rates.
+
+Monitoring allows operational issues to be detected before they significantly affect founders.
+
+---
+
+## 19.7 Backup & Recovery
+
+Platform reliability depends on preserving critical data.
+
+Operational practices include:
+
+- Database backups.
+- Recovery planning.
+- Migration safety.
+- Deployment rollback procedures.
+- Infrastructure redundancy where practical.
+
+Recovery procedures should be tested periodically rather than assumed to function correctly.
+
+---
+
+## 19.8 Incident Management
+
+Operational incidents are handled using a structured process.
+
+Typical workflow:
+
+Incident Detected
+
+↓
+
+Impact Assessment
+
+↓
+
+Root Cause Investigation
+
+↓
+
+Mitigation
+
+↓
+
+Recovery
+
+↓
+
+Post-Incident Review
+
+↓
+
+Preventive Improvements
+
+Every operational issue should result in long-term platform improvements.
+
+---
+
+## 19.9 Operational Security
+
+Operational practices follow the same security principles described in Chapter 18.
+
+Examples include:
+
+- Protected environment variables.
+- Restricted production access.
+- Secure deployment pipelines.
+- Infrastructure access control.
+- Secret management.
+- Dependency updates.
+
+Operational security protects both infrastructure and founder data.
+
+---
+
+## 19.10 Design Principles
+
+The Operations & Deployment architecture follows several engineering principles.
+
+### Predictability
+
+Deployments should behave consistently across environments.
+
+---
+
+### Observability
+
+Operational systems should provide sufficient visibility into platform behavior to support rapid diagnosis.
+
+---
+
+### Maintainability
+
+Infrastructure should remain understandable and easy to operate as the platform grows.
+
+---
+
+### Scalability
+
+Operational processes should support increasing numbers of users, startups, providers, and deployments without requiring fundamental redesign.
+
+---
+
+## 19.11 Current Architecture
+
+At the time of writing, Verifii's operational infrastructure includes:
+
+- Automated production deployments.
+- Vercel hosting.
+- Supabase database infrastructure.
+- Production build validation.
+- Environment configuration.
+- Monitoring foundations.
+- Secure operational practices.
+
+These systems provide the operational foundation required to deliver Verifii as a reliable production platform.
+
+---
+
+## Future Evolution
+
+Planned operational improvements include:
+
+- Dedicated staging environment.
+- Automated rollback strategies.
+- Health check dashboards.
+- Centralized application logging.
+- Performance monitoring.
+- Error tracking and alerting.
+- Disaster recovery testing.
+- Infrastructure automation.
+- Deployment analytics.
+- Continuous operational audits.
+
+---
+
+# Chapter 20 — Development Standards & Best Practices
+
+This chapter establishes the engineering standards that govern how Verifii is designed, developed, tested, documented, and maintained.
+
+The objective is to ensure that every contributor follows consistent engineering practices, regardless of when or by whom a feature is developed.
+
+These standards are intended to improve code quality, maintainability, security, and long-term scalability while reducing technical debt.
+
+---
+
+# 20.1 Engineering Philosophy
+
+Every engineering decision within Verifii should support the following goals:
+
+- Simplicity over unnecessary complexity.
+- Readability over cleverness.
+- Security before convenience.
+- Long-term maintainability.
+- Modular architecture.
+- Predictable behaviour.
+- Documentation alongside development.
+
+Code is written for future engineers—not just for the current implementation.
+
+---
+
+# 20.2 Project Structure
+
+Every feature should have a clear responsibility.
+
+The project structure should remain organized around domains rather than individual pages.
+
+Examples include:
+
+- Authentication
+- Verification
+- Provider Integrations
+- Billing
+- Dashboard
+- Public Platform
+- Administration
+
+Files should be located near the functionality they support.
+
+Business logic should not be duplicated across multiple locations.
+
+---
+
+# 20.3 Naming Conventions
+
+Naming should prioritize clarity.
+
+### Variables
+
+Use descriptive names.
+
+Good examples:
+
+- startupSubmission
+- providerConnection
+- verificationStatus
+
+Avoid abbreviations unless universally understood.
+
+---
+
+### Functions
+
+Functions should describe actions.
+
+Examples:
+
+- verifyStartup()
+- calculateTrustScore()
+- publishStartup()
+
+Function names should clearly communicate intent.
+
+---
+
+### Components
+
+React components should use PascalCase.
+
+Examples:
+
+- FounderVerificationFlow
+- LeaderboardCard
+- StartupProfile
+
+---
+
+### Files
+
+File names should remain consistent with the surrounding project structure.
+
+---
+
+# 20.4 Architecture Guidelines
+
+Every new feature should follow the existing platform architecture.
+
+Frontend responsibilities:
+
+- UI
+- User interaction
+- Temporary state
+
+Backend responsibilities:
+
+- Business logic
+- Authorization
+- Validation
+- Security
+- Database interaction
+
+Business logic should never be duplicated inside frontend components.
+
+---
+
+# 20.5 API Standards
+
+Every API endpoint should:
+
+- Validate authentication.
+- Validate authorization.
+- Validate ownership.
+- Validate request payloads.
+- Return consistent responses.
+- Handle expected failures gracefully.
+- Log unexpected failures.
+
+Protected APIs must never trust client input without independent verification.
+
+---
+
+# 20.6 Database Standards
+
+Database changes should follow several principles.
+
+- Prefer additive migrations.
+- Preserve backwards compatibility whenever practical.
+- Avoid destructive schema changes.
+- Protect historical information.
+- Maintain data integrity.
+
+Every migration should be reviewed before production deployment.
+
+---
+
+# 20.7 Git Workflow
+
+Development follows a Git-based workflow.
+
+Typical lifecycle:
+
+Feature Development
+
+↓
+
+Local Testing
+
+↓
+
+Type Checking
+
+↓
+
+Production Build Validation
+
+↓
+
+Commit
+
+↓
+
+Push
+
+↓
+
+Deployment
+
+Small commits are preferred over large unrelated changes.
+
+Each commit should represent one logical improvement.
+
+---
+
+# 20.8 Commit Message Standards
+
+Commit messages should describe the purpose of a change.
+
+Preferred format:
+
+```
+type(scope): short description
+```
+
+Examples:
+
+```
+feat(verification): support Razorpay API validation
+
+fix(visibility): enforce public visibility rules
+
+refactor(api): simplify provider routing
+```
+
+Common commit types include:
+
+- feat
+- fix
+- refactor
+- docs
+- test
+- chore
+- perf
+
+---
+
+# 20.9 Testing Standards
+
+Every feature should be validated before deployment.
+
+Minimum expectations include:
+
+- TypeScript compilation.
+- Production build.
+- Functional testing.
+- Regression testing where appropriate.
+
+No feature should be merged without confirming that existing functionality remains operational.
+
+---
+
+# 20.10 Documentation Standards
+
+Every significant architectural change should update documentation.
+
+Examples include:
+
+- Engineering Handbook
+- Architecture Decision Records
+- Implementation Plan
+- API documentation
+
+Documentation should evolve together with the platform.
+
+---
+
+# 20.11 Security Standards
+
+Security is everyone's responsibility.
+
+Developers should:
+
+- Validate every request.
+- Protect sensitive information.
+- Minimize exposed data.
+- Follow least-privilege principles.
+- Avoid trusting frontend input.
+- Review security implications before merging features.
+
+---
+
+# 20.12 AI-Assisted Development
+
+AI tools are used to accelerate development but do not replace engineering judgement.
+
+Current development workflow may include:
+
+- ChatGPT
+- Claude
+- Cursor
+- Antigravity
+
+Every AI-generated change must be:
+
+- Reviewed.
+- Understood.
+- Tested.
+- Validated before production.
+
+Generated code should never be accepted without engineering review.
+
+---
+
+# 20.13 Pull Request Guidelines
+
+Every pull request should answer:
+
+- What problem is being solved?
+- Why is this solution appropriate?
+- Which systems are affected?
+- Has documentation been updated?
+- Has the feature been tested?
+
+Review quality is more important than review speed.
+
+---
+
+# 20.14 Definition of Done
+
+A feature is considered complete only when:
+
+- Functionality is implemented.
+- Code is reviewed.
+- Types compile successfully.
+- Production build succeeds.
+- Security considerations have been reviewed.
+- Documentation is updated.
+- No existing functionality has regressed.
+
+Completion is determined by platform quality rather than implementation speed.
+
+---
+
+# 20.15 Technical Debt
+
+Technical debt should be acknowledged rather than ignored.
+
+When shortcuts are unavoidable:
+
+- Document the limitation.
+- Record the reason.
+- Define future improvements.
+- Prevent repeated workarounds.
+
+Technical debt should be intentional—not accidental.
+
+---
+
+# 20.16 Engineering Culture
+
+The long-term success of Verifii depends on maintaining high engineering standards.
+
+Engineers are encouraged to:
+
+- Build simple systems.
+- Prefer clarity over cleverness.
+- Leave the codebase better than they found it.
+- Challenge architectural decisions respectfully.
+- Document important knowledge.
+- Think about future maintainers.
+
+Every contribution should improve both the product and the engineering foundation supporting it.
+
+---
+
+## Future Evolution
+
+As Verifii grows, these standards will expand to include:
+
+- Multi-team development workflows.
+- Organization-wide coding standards.
+- Automated quality gates.
+- Continuous integration policies.
+- Architecture review processes.
+- Security review checklists.
+- Performance budgets.
+- Contributor onboarding guides.
+
+This chapter serves as the engineering foundation that will guide Verifii's development as the platform evolves.
+
+---
+
+# Chapter 21 — Architecture Decision Records (ADR)
+
+Architecture Decision Records (ADRs) preserve the reasoning behind the most significant technical and product decisions made during Verifii's development.
+
+Unlike implementation documentation, ADRs explain **why** decisions were made, what alternatives were considered, and the long-term consequences of each choice.
+
+The purpose of this chapter is to ensure that future contributors understand the context behind important architectural decisions rather than repeating the same discussions or unintentionally reversing intentional design choices.
+
+Every ADR follows the same structure:
+
+- Context
+- Decision
+- Alternatives Considered
+- Consequences
+- Status
+
+---
+
+# ADR-001 — India-First Platform Strategy
+
+## Context
+
+Verifii was originally envisioned as a global startup verification platform.
+
+However, early product research revealed that Indian founders lacked a platform specifically designed around the tools, payment providers, currencies, and workflows commonly used within the Indian startup ecosystem.
+
+Most existing products prioritized international payment providers while offering limited support for Indian founders.
+
+---
+
+## Decision
+
+Verifii adopted an India-first strategy while maintaining global compatibility.
+
+This decision influences:
+
+- Provider prioritization.
+- Founder onboarding.
+- Currency presentation.
+- Product messaging.
+- Documentation.
+- Future roadmap.
+
+Razorpay became the primary verification provider while Stripe remained fully supported for international founders.
+
+---
+
+## Alternatives Considered
+
+- Global-first launch.
+- Stripe-first implementation.
+- India-only platform.
+
+---
+
+## Consequences
+
+### Positive
+
+- Better product-market fit.
+- Clear differentiation.
+- Simpler onboarding for Indian founders.
+
+### Trade-offs
+
+- Additional localization work.
+- More provider-specific engineering.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR-002 — Verification Before Publication
+
+## Context
+
+Traditional startup directories publish startups immediately after submission.
+
+This approach allows unverified companies to appear publicly without establishing credibility.
+
+---
+
+## Decision
+
+Startup creation, verification, and publication were separated into independent stages.
+
+Every startup now follows:
+
+Submission
+
+↓
+
+Private Startup
+
+↓
+
+Verification
+
+↓
+
+Publication Eligibility
+
+↓
+
+Founder Publishes
+
+---
+
+## Alternatives Considered
+
+- Publish immediately.
+- Publish after submission approval.
+- Manual moderation.
+
+---
+
+## Consequences
+
+### Positive
+
+- Higher platform trust.
+- Cleaner verification workflow.
+- Better founder control.
+
+### Trade-offs
+
+- Slightly longer onboarding.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR-003 — Private by Default
+
+## Context
+
+Early audits revealed that public queries exposed startups regardless of verification state.
+
+This created privacy risks and weakened the platform's trust model.
+
+---
+
+## Decision
+
+The `is_public` field became the single source of truth for public visibility.
+
+Every public surface—including profiles, leaderboard, badges, APIs, sitemap, and Open Graph images—must respect this visibility gate.
+
+New startups remain private until founders intentionally publish them after satisfying publication requirements.
+
+---
+
+## Alternatives Considered
+
+- Multiple visibility flags.
+- Verification status as visibility control.
+- Manual publication lists.
+
+---
+
+## Consequences
+
+### Positive
+
+- Centralized visibility logic.
+- Strong privacy guarantees.
+- Easier maintenance.
+- Consistent public behaviour.
+
+### Trade-offs
+
+- Additional publication workflow.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR-004 — Razorpay as the Primary Verification Provider
+
+## Context
+
+The original verification interface treated Stripe as the primary provider.
+
+This conflicted with Verifii's India-first strategy.
+
+---
+
+## Decision
+
+Razorpay became the primary provider presented throughout founder verification.
+
+Stripe remains fully supported but is positioned as the international alternative.
+
+---
+
+## Alternatives Considered
+
+- Equal provider presentation.
+- Stripe-first interface.
+- Automatic provider selection.
+
+---
+
+## Consequences
+
+### Positive
+
+- Better experience for Indian founders.
+- Stronger product positioning.
+- Consistent onboarding.
+
+### Trade-offs
+
+- International founders perform one additional selection.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR-005 — Manual Stripe Verification
+
+## Context
+
+The original Stripe OAuth experience introduced unnecessary complexity and reliability issues for founders.
+
+---
+
+## Decision
+
+The founder verification interface now prioritizes manual API credential verification for Stripe.
+
+Backend support for OAuth remains available but is no longer exposed as the primary founder workflow.
+
+---
+
+## Alternatives Considered
+
+- OAuth only.
+- Manual keys only.
+- Hybrid interface.
+
+---
+
+## Consequences
+
+### Positive
+
+- Simpler verification.
+- Fewer onboarding failures.
+- More predictable user experience.
+
+### Trade-offs
+
+- OAuth remains unused until future improvements.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR-006 — Trust Before Growth
+
+## Context
+
+Many startup platforms optimize for rapid growth by allowing immediate publication.
+
+Verifii was designed around long-term trust rather than maximum listing volume.
+
+---
+
+## Decision
+
+Platform integrity always takes precedence over startup count.
+
+Verification, trust evaluation, fraud detection, and visibility enforcement remain mandatory parts of the publication workflow.
+
+---
+
+## Alternatives Considered
+
+- Growth-first marketplace.
+- Open startup directory.
+- Community moderation.
+
+---
+
+## Consequences
+
+### Positive
+
+- Higher credibility.
+- Stronger differentiation.
+- More reliable public information.
+
+### Trade-offs
+
+- Slower platform growth.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR-007 — Backend as the Source of Truth
+
+## Context
+
+Frontend applications can improve user experience but cannot be trusted to enforce security or business rules.
+
+---
+
+## Decision
+
+Every security-sensitive decision is enforced by backend systems.
+
+Examples include:
+
+- Authentication.
+- Authorization.
+- Verification.
+- Billing.
+- Visibility.
+- Publication.
+- Ownership validation.
+
+Frontend interfaces remain responsible only for presentation and interaction.
+
+---
+
+## Alternatives Considered
+
+- Client-side validation.
+- Shared frontend/backend business rules.
+
+---
+
+## Consequences
+
+### Positive
+
+- Stronger security.
+- Consistent behaviour.
+- Easier auditing.
+- Reduced attack surface.
+
+### Trade-offs
+
+- Slightly more backend complexity.
+
+---
+
+## Status
+
+**Accepted**
+
+---
+
+# ADR Index
+
+| ADR | Title | Status |
+|------|-------|--------|
+| ADR-001 | India-First Platform Strategy | Accepted |
+| ADR-002 | Verification Before Publication | Accepted |
+| ADR-003 | Private by Default | Accepted |
+| ADR-004 | Razorpay as Primary Provider | Accepted |
+| ADR-005 | Manual Stripe Verification | Accepted |
+| ADR-006 | Trust Before Growth | Accepted |
+| ADR-007 | Backend as Source of Truth | Accepted |
+
+---
+
+# Chapter 22 — Product Roadmap
+
+The Product Roadmap defines the long-term direction of Verifii and outlines the major phases planned for the platform's evolution.
+
+Unlike the Implementation Plan, which contains detailed engineering tasks and execution steps, the roadmap focuses on strategic milestones and product objectives.
+
+Its purpose is to provide a high-level understanding of how Verifii is expected to evolve over time while preserving flexibility in implementation.
+
+Detailed development tasks, priorities, and timelines are maintained separately within the project's Implementation Plan.
+
+---
+
+# 22.1 Roadmap Philosophy
+
+Verifii is developed incrementally through clearly defined phases.
+
+Each phase builds upon the architectural foundations established by previous work while maintaining backwards compatibility wherever practical.
+
+Rather than pursuing rapid feature expansion, the roadmap prioritizes:
+
+- Platform trust.
+- Product quality.
+- Security.
+- Founder experience.
+- Long-term maintainability.
+
+Every new capability should strengthen the platform's core mission of trustworthy startup verification.
+
+---
+
+# 22.2 Current Platform Status
+
+At the time of writing, Verifii has completed its foundational platform architecture.
+
+Major completed areas include:
+
+- Product architecture.
+- Verification system.
+- Provider integrations.
+- Revenue processing.
+- Trust evaluation.
+- Visibility system.
+- Subscription infrastructure.
+- API architecture.
+- Founder dashboard.
+- Public profiles.
+- Leaderboard.
+- Administrative tooling.
+- Security architecture.
+- Operational foundations.
+
+The platform is now positioned to transition from infrastructure development toward product expansion and ecosystem growth.
+
+---
+
+# 22.3 Development Phases
+
+The Verifii roadmap is organized into sequential development phases.
+
+### Phase 1 — Platform Foundation
+
+Status: ✅ Completed
+
+Focus:
+
+- Core architecture.
+- Verification pipeline.
+- Authentication.
+- Billing.
+- Visibility.
+- Public platform.
+- Security.
+- Engineering foundations.
+
+---
+
+### Phase 2 — Founder Experience
+
+Status: 🟡 Planned
+
+Primary objectives:
+
+- Dashboard improvements.
+- Enhanced startup profiles.
+- Better verification experience.
+- Analytics.
+- Search and filtering.
+- Improved onboarding.
+- Founder productivity tools.
+
+---
+
+### Phase 3 — Trust Intelligence
+
+Status: 🔵 Planned
+
+Primary objectives:
+
+- Advanced trust scoring.
+- Fraud intelligence.
+- AI-assisted verification.
+- Reputation systems.
+- Verification insights.
+- Platform analytics.
+
+---
+
+### Phase 4 — Community & Discovery
+
+Status: 🔵 Planned
+
+Primary objectives:
+
+- Community features.
+- Public discovery.
+- Startup collections.
+- Founder following.
+- Enhanced leaderboards.
+- Public APIs.
+- Ecosystem growth.
+
+---
+
+### Phase 5 — Enterprise & Scale
+
+Status: 🔵 Planned
+
+Primary objectives:
+
+- Team workspaces.
+- Organization accounts.
+- Enterprise verification.
+- Advanced permissions.
+- Enterprise billing.
+- Platform scalability.
+- Operational automation.
+
+---
+
+# 22.4 Long-Term Vision
+
+The long-term vision for Verifii extends beyond revenue verification.
+
+The platform aims to become the trusted infrastructure through which founders demonstrate credibility, investors discover reliable opportunities, and startup growth is communicated using independently verified information rather than unverifiable claims.
+
+Future platform capabilities will continue supporting this mission while expanding the range of verified business signals available to the startup ecosystem.
+
+---
+
+# 22.5 Relationship to the Implementation Plan
+
+This handbook intentionally avoids documenting detailed engineering tasks.
+
+The authoritative source for execution planning is:
+
+**IMPLEMENTATION_PLAN.md**
+
+The roadmap defines strategic direction.
+
+The Implementation Plan defines execution.
+
+Whenever roadmap priorities change, the Implementation Plan should be updated accordingly while preserving the long-term architectural principles documented throughout this handbook.
+
+---
+
+# 22.6 Maintaining the Handbook
+
+The Engineering Handbook is a living document.
+
+It should evolve whenever significant architectural decisions, platform capabilities, or engineering standards change.
+
+Routine bug fixes and implementation details do not require handbook updates unless they alter the documented architecture or engineering principles.
+
+Major architectural decisions should also be recorded through new Architecture Decision Records (ADRs).
+
+---
+
+# 22.7 Closing Notes
+
+The purpose of this handbook is not simply to document Verifii as it exists today.
+
+Its purpose is to preserve the reasoning, architecture, engineering standards, and product philosophy that guide the platform's development.
+
+As Verifii grows, this handbook should remain the single source of truth for understanding how the platform is designed, why key decisions were made, and how future contributors should continue building it.
+
+Technology will evolve.
+
+Features will change.
+
+Architectures will mature.
+
+The principles documented in this handbook should provide continuity throughout that evolution.
+
+---
+
+# Appendix A — Glossary
+
+This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
+
+The objective is to ensure that all contributors use consistent terminology when discussing the platform.
+
+---
+
+## API
+
+Application Programming Interface.
+
+The communication layer between the frontend, backend services, external providers, and the database.
+
+---
+
+## ADR
+
+Architecture Decision Record.
+
+A document that records an important architectural decision, the alternatives considered, the reasoning behind the decision, and its long-term consequences.
+
+---
+
+## ARR
+
+Annual Recurring Revenue.
+
+The normalized annual value of recurring subscription revenue.
+
+---
+
+## Billing System
+
+The subsystem responsible for subscription management, payment processing, and premium feature access.
+
+---
+
+## Dashboard
+
+The authenticated workspace where founders manage startups, verification, billing, and publication.
+
+---
+
+## Founder
+
+An authenticated user who owns one or more startup submissions within Verifii.
+
+---
+
+## Leaderboard
+
+The public directory of verified startups that have satisfied publication requirements.
+
+---
+
+## MRR
+
+Monthly Recurring Revenue.
+
+The normalized monthly recurring revenue calculated through supported verification providers.
+
+---
+
+## Provider
+
+A supported payment platform that Verifii uses for revenue verification.
+
+Current providers include:
+
+- Razorpay
+- Stripe
+
+---
+
+## Provider Connection
+
+The secure relationship between a startup and a supported payment provider.
+
+---
+
+## Public Startup
+
+A startup that has completed verification, satisfied publication requirements, and has been intentionally published by its founder.
+
+---
+
+## Publication
+
+The process of making a verified startup publicly visible throughout Verifii.
+
+Publication is separate from verification.
+
+---
+
+## Revenue Snapshot
+
+A historical record of verified revenue generated during synchronization.
+
+Snapshots preserve historical verification data over time.
+
+---
+
+## Startup Submission
+
+The primary platform entity representing a founder's startup.
+
+A startup progresses through submission, verification, publication, and ongoing management throughout its lifecycle.
+
+---
+
+## Trust Engine
+
+The subsystem responsible for evaluating verification quality, confidence, fraud indicators, and trust metrics.
+
+---
+
+## Verification
+
+The process of confirming startup revenue using supported payment providers rather than screenshots or manually entered metrics.
+
+---
+
+## Verification Provider
+
+A payment provider capable of supplying data required for revenue verification.
+
+---
+
+## Visibility System
+
+The subsystem responsible for determining whether a startup is publicly accessible.
+
+Visibility is controlled independently from verification.
+
+---
+
+## is_public
+
+The platform-wide visibility flag that determines whether a startup may appear on public surfaces.
+
+Public visibility is granted only after the startup satisfies publication requirements and the founder chooses to publish it.
+
+---
+
+## Owner Bypass
+
+A platform rule allowing founders to access their own private startups while preventing access by public visitors.
+
+---
+
+## Source of Truth
+
+The authoritative system responsible for maintaining a specific category of information.
+
+Examples include:
+
+- Authentication → Supabase Auth
+- Startup Data → Startup Submissions
+- Revenue → Revenue Snapshots
+- Visibility → is_public
+
+---
+
+# Appendix B — Project Structure
+
+This appendix documents the high-level organization of the Verifii codebase.
+
+Rather than listing every individual file, it explains the responsibility of each major directory so contributors can quickly understand where new functionality belongs.
+
+The project structure is organized around platform domains rather than isolated pages or features, improving maintainability and reducing duplication.
+
+---
+
+# B.1 Root Directory
+
+The root directory contains project configuration, documentation, and development tooling.
+
+Typical contents include:
+
+- Source code (`src/`)
+- Database migrations
+- Public assets
+- Documentation
+- Configuration files
+- Package management
+- Build configuration
+
+The root should remain clean and contain only project-wide resources.
+
+---
+
+# B.2 Source Directory (`src/`)
+
+The `src/` directory contains the primary application code.
+
+Major areas include:
+
+- Application routes
+- React components
+- Business logic
+- Utility libraries
+- Hooks
+- Types
+- Middleware
+
+This directory represents the core of the Verifii application.
+
+---
+
+# B.3 Application Layer (`src/app/`)
+
+The App Router contains all application routes and server-side functionality.
+
+Typical responsibilities include:
+
+- Public pages
+- Founder pages
+- Administrative pages
+- API routes
+- Metadata generation
+- Route-specific layouts
+
+Every route should have a clearly defined responsibility.
+
+---
+
+# B.4 Components (`src/components/`)
+
+The components directory contains reusable user interface components.
+
+Examples include:
+
+- Dashboard components
+- Verification components
+- Billing components
+- Startup components
+- Shared UI components
+
+Components should remain reusable and independent whenever practical.
+
+---
+
+# B.5 Library (`src/lib/`)
+
+The library directory contains reusable business logic and platform services.
+
+Typical modules include:
+
+- Authentication
+- Verification
+- Billing
+- Provider integrations
+- Revenue processing
+- Trust scoring
+- Visibility
+- Utilities
+
+Business logic belongs here rather than inside page components.
+
+---
+
+# B.6 API Routes
+
+API routes expose secure backend functionality.
+
+Responsibilities include:
+
+- Authentication
+- Startup management
+- Verification
+- Billing
+- Public APIs
+- Administrative operations
+
+Every API route should perform:
+
+- Authentication
+- Authorization
+- Validation
+- Business logic
+- Response generation
+
+---
+
+# B.7 Database
+
+Database resources include:
+
+- Schema
+- Migrations
+- Row Level Security (RLS)
+- SQL functions
+- Storage configuration
+
+Database changes should always be performed through migrations.
+
+---
+
+# B.8 Public Assets
+
+The public directory stores static assets such as:
+
+- Images
+- Icons
+- Logos
+- Favicons
+- Static files
+
+Sensitive information must never be stored here.
+
+---
+
+# B.9 Documentation
+
+Documentation includes:
+
+- Product Requirements Document (PRD)
+- Engineering Handbook
+- Implementation Plan
+- Architecture Decision Records
+- Supporting documentation
+
+Documentation should evolve alongside the platform.
+
+---
+
+# B.10 Configuration
+
+Configuration files define project-wide behavior.
+
+Examples include:
+
+- TypeScript configuration
+- Next.js configuration
+- Tailwind configuration
+- ESLint configuration
+- Package configuration
+- Environment variable definitions
+
+Configuration should remain centralized whenever possible.
+
+---
+
+# B.11 Folder Organization Principles
+
+The project follows several organizational principles.
+
+### Domain-Oriented Structure
+
+Folders are organized by business domain rather than technical layer wherever practical.
+
+---
+
+### Separation of Concerns
+
+Frontend, backend, business logic, and infrastructure remain clearly separated.
+
+---
+
+### Reusability
+
+Shared functionality should exist in one location only.
+
+Avoid duplicating components or business logic.
+
+---
+
+### Discoverability
+
+New contributors should be able to locate functionality without extensive project knowledge.
+
+Folder names should clearly communicate their purpose.
+
+---
+
+# B.12 Current Project Organization
+
+At the time of writing, the Verifii project is organized around the following major areas:
+
+- Application Layer
+- Components
+- Business Logic
+- Database
+- Public Assets
+- Documentation
+- Configuration
+- Development Tooling
+
+As the platform evolves, new directories may be introduced while preserving the same architectural principles described in this appendix.
+
+---
+
+# Appendix C — Technology Stack
+
+This appendix documents the primary technologies used throughout the Verifii platform and explains the role each technology plays within the overall architecture.
+
+Rather than simply listing dependencies, this appendix provides context for why each technology was selected and where it fits within the platform.
+
+As Verifii evolves, new technologies may be introduced while maintaining the architectural principles established throughout this handbook.
+
+---
+
+# C.1 Technology Philosophy
+
+Verifii follows several guiding principles when selecting technologies.
+
+- Prefer mature and well-supported technologies.
+- Minimize unnecessary dependencies.
+- Choose tools that improve developer productivity.
+- Prioritize scalability and long-term maintainability.
+- Favor technologies with strong community support.
+
+Technology decisions should support the product rather than define it.
+
+---
+
+# C.2 Frontend
+
+### Next.js
+
+Role:
+
+- Application framework.
+- Routing.
+- Server-side rendering.
+- API routes.
+- Metadata generation.
+
+Reason for Selection:
+
+Provides a production-ready React framework with strong performance, SEO support, and an integrated backend suitable for SaaS applications.
+
+---
+
+### React
+
+Role:
+
+- User Interface.
+- Component Architecture.
+- Client-side interactions.
+
+Reason for Selection:
+
+Provides a flexible component model that supports scalable frontend development.
+
+---
+
+### TypeScript
+
+Role:
+
+- Static typing.
+- Improved maintainability.
+- Better developer experience.
+
+Reason for Selection:
+
+Reduces runtime errors and improves long-term code quality.
+
+---
+
+### Tailwind CSS
+
+Role:
+
+- Styling.
+- Responsive layouts.
+- Design consistency.
+
+Reason for Selection:
+
+Allows rapid UI development while maintaining a consistent design system.
+
+---
+
+### shadcn/ui
+
+Role:
+
+- Reusable UI components.
+
+Reason for Selection:
+
+Provides accessible, customizable components without locking the project into a specific design system.
+
+---
+
+# C.3 Backend
+
+### Next.js Server Components
+
+Role:
+
+- Backend rendering.
+- Secure server execution.
+
+Reason for Selection:
+
+Allows business logic to execute securely while remaining closely integrated with the frontend.
+
+---
+
+### Next.js API Routes
+
+Role:
+
+- Backend APIs.
+- Business logic.
+- Secure platform operations.
+
+Reason for Selection:
+
+Provides a unified development experience while simplifying deployment.
+
+---
+
+# C.4 Database
+
+### Supabase PostgreSQL
+
+Role:
+
+- Primary relational database.
+
+Responsibilities include:
+
+- Startup data.
+- Revenue data.
+- Authentication support.
+- Provider connections.
+- Billing records.
+
+Reason for Selection:
+
+Offers a fully managed PostgreSQL environment with modern developer tooling.
+
+---
+
+### Row Level Security (RLS)
+
+Role:
+
+- Database authorization.
+
+Reason for Selection:
+
+Adds an additional layer of security by enforcing access policies directly within the database.
+
+---
+
+### Supabase Storage
+
+Role:
+
+- File storage.
+
+Examples include:
+
+- Verification proofs.
+- Uploaded assets.
+- Future media resources.
+
+---
+
+# C.5 Authentication
+
+### Supabase Auth
+
+Role:
+
+- User authentication.
+- Session management.
+- Identity verification.
+
+Reason for Selection:
+
+Provides secure authentication while integrating directly with the platform database.
+
+---
+
+# C.6 Payment Providers
+
+### Razorpay
+
+Role:
+
+- Primary Indian payment provider.
+
+Current Usage:
+
+- Revenue verification.
+- Subscription billing.
+
+Reason for Selection:
+
+Supports Indian founders through native INR and UPI workflows.
+
+---
+
+### Stripe
+
+Role:
+
+- International payment provider.
+
+Current Usage:
+
+- Revenue verification.
+- Subscription billing.
+
+Reason for Selection:
+
+Provides global payment support for international founders.
+
+---
+
+# C.7 Email Services
+
+### Resend
+
+Role:
+
+- Transactional email delivery.
+
+Examples include:
+
+- Verification emails.
+- Notifications.
+- Platform communications.
+
+Reason for Selection:
+
+Simple API with reliable delivery and excellent developer experience.
+
+---
+
+# C.8 Hosting & Infrastructure
+
+### Vercel
+
+Role:
+
+- Application hosting.
+- Continuous deployment.
+- Serverless execution.
+
+Reason for Selection:
+
+Provides seamless deployment for Next.js applications with integrated infrastructure management.
+
+---
+
+# C.9 Development Tools
+
+Development is supported through modern engineering tools.
+
+Examples include:
+
+- Git
+- GitHub
+- npm
+- ESLint
+- Prettier
+- TypeScript Compiler
+
+These tools improve consistency, collaboration, and code quality.
+
+---
+
+# C.10 AI-Assisted Development
+
+Verifii incorporates AI-assisted development to improve engineering productivity.
+
+Current tools include:
+
+- ChatGPT
+- Claude
+- Cursor
+- Antigravity
+
+AI tools assist with:
+
+- Architecture discussions.
+- Code generation.
+- Refactoring.
+- Documentation.
+- Debugging.
+
+Every AI-generated contribution must be reviewed, understood, tested, and validated before production deployment.
+
+---
+
+# C.11 Technology Selection Principles
+
+When introducing new technologies, contributors should evaluate:
+
+- Long-term maintenance.
+- Community support.
+- Security.
+- Performance.
+- Scalability.
+- Developer experience.
+- Compatibility with existing architecture.
+
+Technologies should be introduced only when they provide meaningful value to the platform.
+
+---
+
+# C.12 Current Technology Stack
+
+At the time of writing, Verifii is built using:
+
+Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+
+Backend
+
+- Next.js API Routes
+- Server Components
+
+Database
+
+- Supabase PostgreSQL
+- Row Level Security
+- Supabase Storage
+
+Authentication
+
+- Supabase Auth
+
+Payments
+
+- Razorpay
+- Stripe
+
+Infrastructure
+
+- Vercel
+
+Email
+
+- Resend
+
+Development
+
+- Git
+- GitHub
+- npm
+- ESLint
+- AI-assisted development
+
+This technology stack has been selected to balance performance, maintainability, scalability, and long-term product growth while supporting Verifii's India-first strategy.
+
+---
+
+## Future Evolution
+
+Future technology additions may include:
+
+- Redis for caching.
+- Background job processing.
+- Advanced monitoring platforms.
+- Analytics infrastructure.
+- Search indexing.
+- AI-powered trust intelligence.
+- Enterprise infrastructure components.
+
+Technology adoption will continue to prioritize simplicity, reliability, and maintainability over unnecessary complexity.
+
+---
+
+# Appendix D — External Services
+
+This appendix documents the third-party services integrated with the Verifii platform and explains the responsibility of each service within the overall architecture.
+
+External services are selected to provide specialized capabilities while allowing Verifii to remain focused on its core mission of startup verification and trust.
+
+Each external dependency should have a clearly defined purpose, limited scope, and well-documented integration.
+
+---
+
+# D.1 External Service Philosophy
+
+Verifii follows several principles when integrating external services.
+
+- Prefer best-in-class providers.
+- Minimize vendor lock-in where practical.
+- Protect sensitive credentials.
+- Isolate integrations behind service layers.
+- Replace providers with minimal architectural impact.
+
+Every external dependency should provide measurable value to the platform.
+
+---
+
+# D.2 Supabase
+
+Category
+
+Backend Platform
+
+Responsibilities
+
+- PostgreSQL Database
+- Authentication
+- Row Level Security (RLS)
+- File Storage
+- Database Functions
+- SQL Migrations
+
+Reason for Selection
+
+Supabase provides a modern backend platform built on PostgreSQL while significantly reducing infrastructure management overhead.
+
+---
+
+# D.3 Vercel
+
+Category
+
+Application Hosting
+
+Responsibilities
+
+- Frontend Hosting
+- API Hosting
+- Continuous Deployment
+- Serverless Functions
+- Environment Management
+
+Reason for Selection
+
+Vercel provides seamless deployment and infrastructure optimized for Next.js applications.
+
+---
+
+# D.4 Razorpay
+
+Category
+
+Payment Provider
+
+Responsibilities
+
+- Startup Revenue Verification
+- Subscription Billing
+- Indian Payment Processing
+
+Reason for Selection
+
+Razorpay is the primary payment provider for Verifii and aligns with the platform's India-first strategy through native INR and UPI support.
+
+---
+
+# D.5 Stripe
+
+Category
+
+Payment Provider
+
+Responsibilities
+
+- Startup Revenue Verification
+- Subscription Billing
+- International Payment Processing
+
+Reason for Selection
+
+Stripe provides global payment support for founders operating outside India.
+
+Although fully supported, Stripe currently serves as the secondary provider within the founder verification experience.
+
+---
+
+# D.6 Resend
+
+Category
+
+Email Delivery
+
+Responsibilities
+
+- Transactional Emails
+- Founder Notifications
+- Verification Emails
+- Platform Communications
+
+Reason for Selection
+
+Resend provides reliable email delivery with a simple developer experience.
+
+---
+
+# D.7 GitHub
+
+Category
+
+Version Control
+
+Responsibilities
+
+- Source Code Management
+- Commit History
+- Branch Management
+- Collaboration
+- Release History
+
+Reason for Selection
+
+GitHub serves as the central repository for Verifii's source code and development workflow.
+
+---
+
+# D.8 AI Development Tools
+
+Verifii incorporates several AI-assisted development tools.
+
+### ChatGPT
+
+Responsibilities
+
+- Architecture discussions
+- Engineering documentation
+- Product planning
+- Technical reviews
+- Problem solving
+
+---
+
+### Claude
+
+Responsibilities
+
+- Large-scale code analysis
+- Refactoring
+- Implementation planning
+- Technical validation
+
+---
+
+### Cursor
+
+Responsibilities
+
+- AI-assisted coding
+- Code completion
+- Local development
+- Refactoring support
+
+---
+
+### Antigravity
+
+Responsibilities
+
+- Feature implementation
+- Engineering execution
+- Large codebase modifications
+- Automated development assistance
+
+AI tools assist engineering workflows but never replace human review, testing, or architectural decision-making.
+
+---
+
+# D.9 Domain & DNS
+
+Responsibilities
+
+- Domain management
+- DNS configuration
+- SSL certificates
+- Production routing
+
+Domains should always use secure HTTPS connections.
+
+---
+
+# D.10 Analytics (Future)
+
+Planned Responsibilities
+
+- Platform usage analytics
+- Founder engagement
+- Feature adoption
+- Performance monitoring
+
+Analytics should respect user privacy while providing actionable product insights.
+
+---
+
+# D.11 Monitoring (Future)
+
+Planned Responsibilities
+
+- Error tracking
+- Performance monitoring
+- Operational alerts
+- Infrastructure health
+
+Monitoring services should provide early visibility into production issues before they affect founders.
+
+---
+
+# D.12 Integration Principles
+
+Every external integration should follow these engineering principles.
+
+### Isolation
+
+External services should communicate through dedicated integration modules rather than directly from UI components.
+
+---
+
+### Security
+
+Credentials must remain protected using secure environment variables and encrypted storage where appropriate.
+
+---
+
+### Reliability
+
+External service failures should degrade gracefully without compromising platform integrity.
+
+---
+
+### Replaceability
+
+Where practical, integrations should be designed so providers can be replaced with minimal impact on the overall architecture.
+
+---
+
+# D.13 Current External Services
+
+At the time of writing, Verifii integrates with:
+
+| Service | Category | Primary Responsibility |
+|----------|----------|------------------------|
+| Supabase | Backend Platform | Database, Authentication, Storage |
+| Vercel | Hosting | Application Deployment |
+| Razorpay | Payments | Primary Indian Payment Provider |
+| Stripe | Payments | International Payment Provider |
+| Resend | Email | Transactional Emails |
+| GitHub | Development | Version Control |
+| ChatGPT | AI Development | Architecture & Documentation |
+| Claude | AI Development | Code Analysis & Planning |
+| Cursor | AI Development | AI Coding Assistant |
+| Antigravity | AI Development | Feature Implementation |
+
+---
+
+## Future Evolution
+
+As Verifii grows, additional external services may be introduced for:
+
+- Advanced analytics
+- Search infrastructure
+- AI trust intelligence
+- Monitoring and alerting
+- Background job processing
+- Enterprise integrations
+- CRM integrations
+- Marketing automation
+
+Every new integration should be evaluated against the engineering principles defined throughout this handbook before adoption.
+
+---
+
+# Appendix E — Development Commands
+
+This appendix documents the most commonly used development commands, workflows, and operational procedures used throughout the Verifii project.
+
+The commands listed here are intended to provide contributors with a quick reference during day-to-day development.
+
+Command syntax may evolve over time as the platform grows.
+
+---
+
+# E.1 Installing Dependencies
+
+Install project dependencies.
+
+```bash
+npm install
+```
+
+---
+
+# E.2 Start Development Server
+
+Run the local development server.
+
+```bash
+npm run dev
+```
+
+Default:
+
+```
+http://localhost:3000
+```
+
+---
+
+# E.3 Production Build
+
+Create a production build.
+
+```bash
+npm run build
+```
+
+Every feature should successfully build before being committed.
+
+---
+
+# E.4 Start Production Server
+
+Run the production build locally.
+
+```bash
+npm run start
+```
+
+---
+
+# E.5 TypeScript Validation
+
+Run TypeScript compilation without generating output.
+
+```bash
+npx tsc --noEmit
+```
+
+This command should always succeed before production deployment.
+
+---
+
+# E.6 Linting
+
+Run ESLint.
+
+```bash
+npm run lint
+```
+
+Resolve all significant lint issues before merging changes.
+
+---
+
+# E.7 Git Workflow
+
+Check repository status.
+
+```bash
+git status
+```
+
+---
+
+View changes.
+
+```bash
+git diff
+```
+
+---
+
+View summarized changes.
+
+```bash
+git diff --stat
+```
+
+---
+
+Stage files.
+
+```bash
+git add .
+```
+
+Or stage specific files.
+
+```bash
+git add path/to/file
+```
+
+---
+
+Create a commit.
+
+```bash
+git commit -m "feat(scope): description"
+```
+
+---
+
+Push changes.
+
+```bash
+git push origin main
+```
+
+---
+
+View recent commits.
+
+```bash
+git log --oneline
+```
+
+---
+
+# E.8 Branch Management
+
+Create a new branch.
+
+```bash
+git checkout -b feature/feature-name
+```
+
+Switch branches.
+
+```bash
+git checkout branch-name
+```
+
+List branches.
+
+```bash
+git branch
+```
+
+---
+
+# E.9 Restore Changes
+
+Discard changes to a file.
+
+```bash
+git restore filename
+```
+
+Restore all unstaged changes.
+
+```bash
+git restore .
+```
+
+---
+
+# E.10 Database Development
+
+Run database migrations according to the project's migration workflow.
+
+Always:
+
+- Review migrations.
+- Backup production data when appropriate.
+- Validate migrations locally before deployment.
+
+Database modifications should never be performed directly in production without proper review.
+
+---
+
+# E.11 Environment Variables
+
+Environment variables should be stored securely.
+
+Examples include:
+
+- Supabase
+- Razorpay
+- Stripe
+- Resend
+
+Secrets must never be committed to version control.
+
+---
+
+# E.12 Deployment Workflow
+
+Typical deployment process.
+
+```
+Feature Development
+
+↓
+
+Local Testing
+
+↓
+
+TypeScript Validation
+
+↓
+
+Production Build
+
+↓
+
+Git Commit
+
+↓
+
+Git Push
+
+↓
+
+Automatic Deployment
+
+↓
+
+Production Verification
+```
+
+---
+
+# E.13 Verification Checklist
+
+Before committing code, verify:
+
+- Project builds successfully.
+- TypeScript passes.
+- Linting passes.
+- Existing functionality still works.
+- Documentation is updated if required.
+- New functionality has been tested.
+
+---
+
+# E.14 Common Development Workflow
+
+Recommended engineering workflow.
+
+```
+Identify Requirement
+
+↓
+
+Architecture Discussion
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Documentation
+
+↓
+
+Git Commit
+
+↓
+
+Deployment
+
+↓
+
+Verification
+```
+
+---
+
+# E.15 AI-Assisted Development Workflow
+
+Verifii incorporates AI into the engineering process.
+
+Typical workflow:
+
+```
+Requirement
+
+↓
+
+Architecture Planning
+
+↓
+
+Implementation
+
+↓
+
+Manual Review
+
+↓
+
+Testing
+
+↓
+
+Documentation
+
+↓
+
+Commit
+
+↓
+
+Deployment
+```
+
+AI-generated code should always be:
+
+- Reviewed.
+- Understood.
+- Tested.
+- Validated.
+
+---
+
+# E.16 Troubleshooting
+
+If unexpected issues occur:
+
+1. Check build output.
+2. Run TypeScript validation.
+3. Review recent Git changes.
+4. Verify environment variables.
+5. Review server logs.
+6. Confirm database migrations.
+7. Reproduce the issue locally.
+8. Document the root cause if significant.
+
+Avoid applying temporary fixes without understanding the underlying issue.
+
+---
+
+# E.17 Development Principles
+
+During development, contributors should:
+
+- Build incrementally.
+- Commit frequently.
+- Keep changes focused.
+- Document architectural decisions.
+- Test before deploying.
+- Prefer clarity over complexity.
+
+Every contribution should leave the codebase in a better state than it was found.
+
+---
+
+## Future Evolution
+
+As Verifii grows, this appendix may expand to include:
+
+- CI/CD commands.
+- Docker workflows.
+- Automated testing commands.
+- Monitoring utilities.
+- Backup procedures.
+- Release management commands.
+- Performance profiling tools.
+- Infrastructure automation commands.
+
+This appendix should remain the primary operational reference for day-to-day development.
+
+---
+
+# Appendix F — Revision History
+
+This appendix records significant revisions made to the Verifii Engineering Handbook and highlights major architectural milestones in the platform's development.
+
+Minor edits such as spelling corrections, formatting improvements, and documentation refinements do not require an entry unless they materially change the meaning or structure of the handbook.
+
+The objective of this appendix is to preserve the historical evolution of both the documentation and the platform.
+
+---
+
+# F.1 Revision Policy
+
+A revision entry should be created when any of the following occurs:
+
+- A major architectural decision is introduced.
+- A new handbook chapter is added.
+- Existing architectural guidance changes significantly.
+- Platform-wide engineering standards are updated.
+- Core platform systems are redesigned.
+- A major development phase is completed.
+
+Routine implementation work should not require a handbook revision.
+
+---
+
+# F.2 Versioning Strategy
+
+The handbook follows semantic-style versioning.
+
+### Major Version
+
+Incremented when significant architectural changes or handbook restructuring occurs.
+
+Examples:
+
+- Version 1.0
+- Version 2.0
+
+---
+
+### Minor Version
+
+Incremented when substantial new chapters or architectural guidance are added.
+
+Examples:
+
+- Version 1.1
+- Version 1.2
+
+---
+
+### Patch Version
+
+Incremented for documentation improvements that do not alter architectural meaning.
+
+Examples:
+
+- Version 1.0.1
+- Version 1.0.2
+
+---
+
+# F.3 Revision Log
+
+| Version | Date | Summary | Author |
+|----------|------|---------|--------|
+| 1.0 | July 2026 | Initial Engineering Handbook completed | Eshan Maurya |
+
+---
+
+# F.4 Platform Milestones
+
+Major platform milestones should also be recorded.
+
+Examples include:
+
+- Initial platform architecture completed.
+- Verification System completed.
+- Trust & Fraud Engine introduced.
+- Visibility System implemented.
+- Founder Dashboard released.
+- Public Leaderboard launched.
+- Engineering Handbook Version 1.0 published.
+
+This timeline provides historical context for future contributors.
+
+---
+
+# F.5 Architecture Milestones
+
+Record important architectural changes that affect multiple systems.
+
+Examples:
+
+- India-first platform strategy adopted.
+- Private-by-default visibility model introduced.
+- Razorpay promoted as the primary verification provider.
+- Stripe OAuth replaced by manual verification flow.
+- Backend established as the single source of truth.
+- Centralized Visibility System implemented.
+
+Each milestone should reference the corresponding Architecture Decision Record (ADR) whenever applicable.
+
+---
+
+# F.6 Roadmap Milestones
+
+Major product phases should be recorded as they are completed.
+
+Example format:
+
+| Phase | Status | Completion Date |
+|---------|---------|----------------|
+| Phase 1 – Platform Foundation | Completed | July 2026 |
+| Phase 2 – Founder Experience | Planned | — |
+| Phase 3 – Trust Intelligence | Planned | — |
+| Phase 4 – Community & Discovery | Planned | — |
+| Phase 5 – Enterprise & Scale | Planned | — |
+
+This provides a concise history of the platform's overall progress.
+
+---
+
+# F.7 Documentation Maintenance
+
+The handbook should be reviewed whenever:
+
+- A new architecture decision is accepted.
+- A major subsystem changes.
+- Engineering standards evolve.
+- New development phases are completed.
+- Platform infrastructure changes significantly.
+
+Documentation should evolve alongside the platform rather than being updated only after large development efforts.
+
+---
+
+# F.8 Maintaining Historical Accuracy
+
+Historical revision entries should never be deleted.
+
+If information becomes outdated:
+
+- Add a new revision.
+- Preserve previous entries.
+- Explain why the change occurred.
+- Reference the relevant ADR where appropriate.
+
+Maintaining historical context is as important as documenting the current architecture.
+
+---
+
+# F.9 Current Revision Status
+
+At the time of writing:
+
+- Handbook Version: **1.0**
+- Status: **Active**
+- Product Phase: **Phase 1 Complete**
+- Next Scheduled Review: **After Phase 2 Completion**
+
+---
+
+# Closing Statement
+
+The Verifii Engineering Handbook is intended to serve as the long-term engineering reference for the platform.
+
+As Verifii grows, new technologies will be adopted, features will evolve, and architectural decisions will continue to shape the product.
+
+This handbook should evolve alongside those changes while preserving the engineering principles, architectural reasoning, and development standards that define the platform.
+
+The goal is not merely to document the codebase, but to preserve the knowledge required to build, maintain, and evolve Verifii for years to come.
