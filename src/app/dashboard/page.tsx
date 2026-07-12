@@ -22,6 +22,10 @@ import { getDashboardInsights } from "@/lib/dashboard/founder-insights-presenter
 import { FounderInsightsCard } from "@/components/founder-dashboard/FounderInsightsCard";
 import { buildStartupStatus } from "@/lib/dashboard/startup-status";
 import { getRecommendations } from "@/lib/dashboard/recommendation-engine";
+import { getStartupMetrics, getRevenueHistory } from "@/lib/revenue-aggregation";
+import { buildRevenueSnapshot } from "@/lib/dashboard/revenue-engine";
+import { presentRevenueDashboard } from "@/lib/dashboard/revenue-presenter";
+import { RevenueDashboard } from "@/components/founder-dashboard/RevenueDashboard";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -99,6 +103,22 @@ export default async function DashboardPage() {
     const insightsSnapshot = getFounderInsightsSnapshot(status);
     const dashboardInsights = getDashboardInsights(insightsSnapshot, insightsRecommendations);
 
+    // Revenue Analytics Dashboard
+    const [revenueMetrics, revenueHistory, { data: latestConnection }] = await Promise.all([
+      getStartupMetrics(primaryStartup.id),
+      getRevenueHistory(primaryStartup.id),
+      supabaseServer
+        .from("provider_connections")
+        .select("last_synced_at")
+        .eq("startup_id", primaryStartup.id)
+        .order("last_synced_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+    ]);
+    const lastSyncedAt = latestConnection?.last_synced_at ? new Date(latestConnection.last_synced_at) : null;
+    const revenueSnapshot = buildRevenueSnapshot(revenueMetrics, revenueHistory, lastSyncedAt);
+    const revenueViewModel = presentRevenueDashboard(revenueSnapshot);
+
     content = (
       <>
         <DashboardHero
@@ -121,6 +141,12 @@ export default async function DashboardPage() {
         <FounderInsightsCard 
           insights={dashboardInsights} 
         />
+        {revenueSnapshot.hasData && (
+          <div className="mt-8 mb-4">
+            <h2 className="text-xl font-semibold tracking-tight mb-4">Revenue Analytics</h2>
+            <RevenueDashboard viewModel={revenueViewModel} />
+          </div>
+        )}
         <StatusCards
           status={status}
           trustTier={primaryStartup.trust_tier}
