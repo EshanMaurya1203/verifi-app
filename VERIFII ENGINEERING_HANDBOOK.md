@@ -9,13 +9,13 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 1.0 |
+| **Version** | 2.0 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
 | **Started** | July 2026 |
 | **Last Updated** | July 2026 |
-| **Next Review** | After Phase 2 Completion |
+| **Next Review** | After Phase 3 Completion |
 
 ---
 
@@ -127,7 +127,7 @@ The goal is to retain engineering knowledge, not just describe the latest code.
 
 ## Chapter 1 — Product Overview
 
-## Chapter 2 — Product Evolution
+## Chapter 2 — Product & Architecture Evolution
 
 ## Chapter 3 — Platform Architecture
 
@@ -137,33 +137,39 @@ The goal is to retain engineering knowledge, not just describe the latest code.
 
 ## Chapter 6 — Verification System
 
-## Chapter 7 — Visibility System
+## Chapter 7 — Provider Integration Layer
 
-## Chapter 8 — Revenue Aggregation
+## Chapter 8 — Revenue Processing
 
-## Chapter 9 — Fraud & Trust Engine
+## Chapter 9 — Trust & Fraud Engine
 
-## Chapter 10 — Provider Integrations
+## Chapter 10 — Visibility System
 
-## Chapter 11 — Security
+## Chapter 11 — Subscription & Billing System
 
 ## Chapter 12 — API Architecture
 
-## Chapter 13 — Frontend Architecture
+## Chapter 14 — Founder Dashboard
 
-## Chapter 14 — Dashboard System
+## Chapter 15 — Public Startup Profiles
 
-## Chapter 15 — Leaderboard System
-
-## Chapter 16 — Subscription & Billing
+## Chapter 16 — Leaderboard
 
 ## Chapter 17 — Admin System
 
-## Chapter 18 — Operational Playbooks
+## Chapter 18 — Security Architecture
 
-## Chapter 19 — Architecture Decision Records (ADR)
+## Chapter 19 — Operations & Deployment
 
-## Chapter 20 — Engineering Changelog
+## Chapter 20 — Development Standards & Best Practices
+
+## Chapter 21 — Architecture Decision Records (ADR)
+
+## Chapter 22 — Product Roadmap
+
+## Chapter 23 — Core Engineering Principles
+
+## Chapter 24 — Testing Philosophy
 
 --
 
@@ -338,6 +344,24 @@ From the beginning, the platform was designed around five core principles:
 The long-term objective has always been larger than simply displaying revenue numbers. Verifii aims to become a trusted infrastructure layer where founders can confidently prove business traction while allowing the community to evaluate startups using independently verified information rather than marketing claims.
 
 Although the earliest concept was global in scope, the platform would later evolve into an India-first product while maintaining compatibility with international founders and payment providers.
+
+---
+
+## 2.8 Architecture Evolution
+
+Document the evolution of Verifii's architecture.
+
+As the platform evolved, the architecture transitioned into a strictly layered model.
+
+The progression:
+- Initial implementation
+- Business logic inside pages/components
+- Need for deterministic revenue calculations
+- Revenue Aggregation logic separated into engines
+- Dashboard logic separated into orchestration, presentation, and widgets
+- Current unified, decoupled architecture
+
+This progression ensured the platform remained extensible, testable, and robust against UI changes affecting business facts.
 
 --
 
@@ -639,6 +663,36 @@ This separation reduces coupling and allows individual systems to evolve indepen
 At the time of writing, Verifii consists of a modular verification platform built around secure provider integrations, automated trust evaluation, founder-controlled publication, and an India-first verification experience.
 
 The chapters that follow describe each subsystem individually, including its responsibilities, architecture, implementation, and future evolution.
+
+---
+
+## 3.8 Layered Dashboard Architecture
+
+As the platform evolved, the dashboard architecture transitioned into a strictly layered model.
+
+Responsibilities are explicitly separated to prevent business logic from leaking into presentation code.
+
+The layered pipeline follows a unidirectional flow:
+
+Dashboard Layer -> Revenue Aggregation Layer -> Snapshot Layer -> Business Logic Layer -> Presentation Layer
+
+### Dashboard Page (Orchestration)
+The dashboard page acts purely as an orchestrator. It fetches raw data and passes it to the underlying engines. It never performs financial calculations.
+
+### Revenue Aggregation
+The single source of truth for all financial data. It standardizes revenue across all providers and handles complex scenarios like suspicious zero detection.
+
+### Snapshot Layer
+Revenue is persisted as immutable snapshots rather than live calculations, ensuring historical determinism and decoupling the dashboard from provider APIs.
+
+### Business Logic (Engines)
+Engines transform raw database snapshots into business-facts.
+
+### Presentation (Presenters)
+Presenters transform business-facts into view models optimized for UI consumption. They handle formatting, grouping, and display logic.
+
+### Widgets (Rendering)
+Client components that receive pre-formatted view models. They contain zero business logic or provider SDK code.
 
 ---
 
@@ -1309,6 +1363,46 @@ The following chapters describe the supporting systems that make the Verificatio
 
 ---
 
+## 6.10 Verification Pipeline Architecture
+
+The Verification System is implemented as a sequential pipeline.
+
+Rather than a single monolithic operation, verification progresses through distinct architectural stages:
+
+Provider Identification
+↓
+Connection Validation
+↓
+Revenue Synchronization
+↓
+Aggregation
+↓
+Snapshot Creation
+↓
+Trust Evaluation
+↓
+Verification Status Assignment
+↓
+Dashboard Publication
+↓
+Public Profile Rendering
+
+This pipeline ensures that verification is deterministic. Each stage must succeed before the next stage begins.
+
+## 6.11 Snapshot-Based Verification
+
+Verifii utilizes a snapshot-first architecture for verification.
+
+Instead of querying live provider APIs when a profile is loaded, the Verification System relies exclusively on immutable snapshots generated during the synchronization phase.
+
+This architectural decision ensures that:
+- Public profiles load instantly without waiting for external APIs.
+- Historical verification records are preserved permanently.
+- The platform remains resilient to temporary provider outages.
+- Trust scoring operates on deterministic, unchanging historical data.
+
+---
+
 # Chapter 7 — Provider Integration Layer
 
 The Provider Integration Layer is responsible for securely connecting Verifii to external payment providers and transforming provider-specific data into a standardized format that can be processed by the Verification System.
@@ -1483,6 +1577,28 @@ The Provider Integration Layer currently provides:
 - Extensible provider architecture.
 
 Future providers can be integrated into this layer without requiring architectural changes to the Verification System or other downstream platform components.
+
+---
+
+## 7.9 Unified Provider Interface
+
+To enforce provider isolation, all payment integrations conform to a unified internal contract.
+
+This abstraction ensures that the rest of the platform never interacts with provider-specific APIs or SDKs directly. The Provider Integration Layer exposes a standardized registry that routes generalized commands to the appropriate provider implementation.
+
+## 7.10 Provider Isolation Architecture
+
+Provider isolation is a strict architectural boundary within Verifii.
+
+Provider SDKs (such as Stripe or Razorpay clients) are completely isolated to backend synchronization routes and webhook processors.
+
+Under no circumstances do provider SDKs execute within:
+- Dashboard components.
+- Client-side React code.
+- Trust evaluation engines.
+- Presentation layers.
+
+This isolation ensures that changes to a provider's API only affect the specific integration layer, leaving the broader platform untouched.
 
 ---
 
@@ -1693,6 +1809,55 @@ At the time of writing, the Revenue Processing System provides:
 - Consistent inputs for downstream systems.
 
 The processed output generated by this system becomes the primary input for the Trust & Fraud Engine, which evaluates the reliability and confidence of every verified startup.
+
+---
+
+## 8.10 Revenue Aggregation as Single Source of Truth
+
+The Revenue Aggregation Layer serves as the platform's Single Source of Truth for all financial calculations.
+
+No other system—including the dashboard, presentation layer, or public profiles—is permitted to calculate revenue, growth, or financial health.
+
+The Aggregation Layer exclusively owns:
+- Monthly Recurring Revenue (MRR) calculations.
+- Annual Recurring Revenue (ARR) calculations.
+- Revenue growth comparisons.
+- Currency normalization.
+- Provider data consolidation.
+
+By centralizing these calculations, Verifii ensures absolute financial consistency across the entire platform.
+
+## 8.11 Revenue Pipeline Architecture
+
+The complete revenue pipeline flows unidirectionally from external providers to the UI:
+
+Provider
+↓
+Synchronization
+↓
+Revenue Aggregation (Single Source of Truth)
+↓
+Revenue Snapshots (Immutable Storage)
+↓
+Dashboard Orchestration
+↓
+Business Model Transformation (Engines)
+↓
+Presentation Model (Presenters)
+↓
+UI Rendering (Widgets)
+
+## 8.12 Suspicious Zero Detection
+
+Because revenue calculations determine public trust, the aggregation layer must be resilient to external provider instability.
+
+The architecture includes fallback mechanisms to detect "Suspicious Zero" scenarios—situations where a provider's API returns zero revenue despite historical evidence of active subscriptions. When detected, the system safely falls back to the most recent verified state rather than immediately collapsing a startup's verified revenue.
+
+## 8.13 Snapshot Consistency Guards
+
+Before any newly aggregated revenue is persisted as an immutable snapshot, the system performs consistency validation.
+
+This prevents temporary synchronization failures, API rate limits, or partial provider responses from generating corrupted snapshots that would artificially alter a startup's historical trajectory.
 
 ---
 
@@ -2350,285 +2515,35 @@ The Subscription & Billing System enables Verifii to provide premium capabilitie
 
 ---
 
-# Chapter 12 — API Architecture
+## 11.10 Subscription Selection Architecture
 
-The API Architecture provides the communication layer between Verifii's frontend applications, backend services, database, and external providers.
+When a startup has multiple billing records (e.g., active, trialing, cancelled), the system must deterministically decide which subscription is currently in effect.
 
-Rather than allowing frontend components to interact directly with the database or payment providers, every platform operation is executed through secure server-side APIs that enforce authentication, authorization, business rules, and security policies.
+The architecture enforces a strict priority hierarchy:
+1. `active`
+2. `grace_period` (past due but still permitted)
+3. `trialing`
+4. `cancelled`
 
-This architecture centralizes business logic, improves maintainability, and ensures consistent behavior across all platform interfaces.
+When multiple subscriptions share the same priority level, the system selects the newest record. This guarantees that founders are always credited with their most recent active subscription.
 
----
+## 11.11 Subscription Replacement Workflow
 
-## 12.1 Purpose
+Founders can change their billing plan at any time.
 
-The purpose of the API Architecture is to provide a secure, standardized, and scalable interface between every major subsystem within Verifii.
+Rather than modifying an existing subscription in place, the architecture handles plan changes via replacement. A new subscription is created, and the previous subscription is terminated. The `change-plan` backend workflow manages this transition to ensure zero downtime.
 
-The API layer is responsible for:
+## 11.12 Trial Handling
 
-- Receiving client requests.
-- Authenticating users.
-- Authorizing operations.
-- Executing business logic.
-- Coordinating backend systems.
-- Returning standardized responses.
+The billing architecture includes native support for trial periods. 
 
-The API layer acts as the single entry point for every operation performed by the platform.
+Trials are bounded by a `trial_end` timestamp. Once this timestamp is surpassed without payment, the subscription transitions out of the `trialing` state. The UI consumes this data to render countdown banners, but enforcement happens entirely on the backend.
 
----
+## 11.13 Billing State Synchronization
 
-## 12.2 API Philosophy
+Verifii relies on webhook-driven state synchronization to maintain accurate billing records.
 
-The API Architecture follows several guiding principles.
-
-### Backend as the Source of Truth
-
-The frontend is responsible for presentation.
-
-The backend is responsible for decision making.
-
-Every business rule is enforced on the server regardless of frontend behavior.
-
----
-
-### Security First
-
-Every protected endpoint validates authentication, ownership, and authorization before executing business logic.
-
-Client requests are never trusted solely because they originate from authenticated sessions.
-
----
-
-### Consistency
-
-All APIs follow consistent request handling, response structures, validation, and error handling wherever practical.
-
-This provides predictable behavior throughout the platform.
-
----
-
-### Separation of Concerns
-
-Each API endpoint owns a specific responsibility.
-
-Verification APIs do not perform billing.
-
-Billing APIs do not calculate trust.
-
-Visibility APIs do not process provider data.
-
-This separation keeps the platform modular and maintainable.
-
----
-
-## 12.3 API Categories
-
-The platform exposes several logical groups of APIs.
-
-### Authentication APIs
-
-Responsible for:
-
-- User authentication.
-- Session management.
-- Identity validation.
-
----
-
-### Startup Management APIs
-
-Responsible for:
-
-- Startup creation.
-- Editing startup information.
-- Startup retrieval.
-- Founder ownership operations.
-
----
-
-### Verification APIs
-
-Responsible for:
-
-- Provider verification.
-- Verification lifecycle.
-- Revenue synchronization.
-- Verification state updates.
-
----
-
-### Provider APIs
-
-Responsible for:
-
-- Secure provider communication.
-- Credential validation.
-- Provider-specific operations.
-
----
-
-### Billing APIs
-
-Responsible for:
-
-- Subscription management.
-- Plan enforcement.
-- Payment lifecycle.
-- Billing operations.
-
----
-
-### Administrative APIs
-
-Responsible for:
-
-- Moderation.
-- Administrative review.
-- Platform management.
-- Internal tooling.
-
----
-
-### Public APIs
-
-Responsible for exposing publicly available platform information while respecting the Visibility System.
-
-Examples include:
-
-- Public startup profiles.
-- Leaderboard data.
-- Public statistics.
-- Verification badges.
-
-Public APIs never expose private startup information.
-
----
-
-## 12.4 Request Lifecycle
-
-A typical API request follows the same execution pattern.
-
-Client Request
-
-↓
-
-Route Resolution
-
-↓
-
-Authentication
-
-↓
-
-Authorization
-
-↓
-
-Input Validation
-
-↓
-
-Business Logic
-
-↓
-
-Database Operations
-
-↓
-
-Response Generation
-
-↓
-
-Client Response
-
-Each stage performs a specific responsibility before passing execution to the next stage.
-
----
-
-## 12.5 Validation Strategy
-
-Input validation occurs before business logic executes.
-
-Validation includes:
-
-- Request structure.
-- Required fields.
-- Data types.
-- Ownership validation.
-- Permission checks.
-- Business rule enforcement.
-
-Invalid requests are rejected before any database modifications occur.
-
----
-
-## 12.6 Error Handling
-
-The API layer standardizes error handling across the platform.
-
-Expected failures include:
-
-- Authentication failures.
-- Authorization failures.
-- Validation errors.
-- Provider authentication failures.
-- Subscription restrictions.
-- Resource not found.
-
-Unexpected failures are logged internally while returning safe error responses to clients.
-
-Sensitive implementation details are never exposed through public API responses.
-
----
-
-## 12.7 API Security
-
-Every protected endpoint follows common security practices.
-
-These include:
-
-- Authentication verification.
-- Ownership validation.
-- Authorization enforcement.
-- Rate limiting.
-- Input validation.
-- Secure error handling.
-- Protection against unauthorized resource access.
-
-Security policies are enforced server-side for every request.
-
----
-
-## 12.8 Integration with Platform Systems
-
-The API layer coordinates communication between multiple platform systems.
-
-Typical interactions include:
-
-- Authentication → Startup Management.
-- Verification → Provider Integration.
-- Revenue Processing → Trust Engine.
-- Trust Engine → Visibility System.
-- Billing → Subscription Enforcement.
-
-This orchestration allows each subsystem to remain independent while participating in larger workflows.
-
----
-
-## 12.9 Current Architecture
-
-At the time of writing, Verifii's API Architecture provides:
-
-- Modular route organization.
-- Secure backend processing.
-- Centralized business logic.
-- Standardized validation.
-- Consistent authorization.
-- Protected public endpoints.
-- Secure provider communication.
-
-The API layer forms the operational backbone of the platform and enables secure communication between every major subsystem documented throughout this handbook.
+External payment providers (Stripe and Razorpay) manage the actual billing lifecycle. As payments succeed, fail, or subscriptions cancel, webhook events are transmitted back to Verifii's backend. The synchronization layer processes these events and updates the internal database, ensuring that the platform always reflects the authoritative state provided by the payment gateway.
 
 ---
 
@@ -3153,6 +3068,31 @@ At the time of writing, the Founder Dashboard provides:
 - Founder navigation.
 
 The dashboard acts as the operational hub for founders and connects every major platform subsystem into a unified management experience.
+
+---
+
+## 14.9 Dashboard Architecture Refactor
+
+To decouple complex business logic from UI components, the dashboard was refactored into a strictly layered architecture.
+This ensures the UI layer only handles display concerns and never calculates financial metrics.
+
+## 14.10 Revenue Analytics Dashboard
+
+The dashboard implements a comprehensive revenue analytics view based on the layered architecture.
+It surfaces aggregated revenue, MRR movements, and recent verifications through isolated widgets that receive pre-computed view models.
+
+## 14.11 Founder Insights Pipeline
+
+To support actionable metrics, the backend pipelines extract business-facts (e.g., Suspicious Zero occurrences, rapid MRR growth) which the Presenter layer formats into insights.
+These insights are securely delivered to the dashboard orchestration layer.
+
+## 14.12 Dashboard Orchestration Rule
+
+By standard, the Dashboard Page (`page.tsx`) acts purely as an orchestrator.
+It only performs data fetching, instantiates Engines, executes Presenters, and passes View Models to Widgets.
+It never performs UI rendering directly.
+
+--
 
 # Chapter 15 — Public Startup Profiles
 
@@ -4104,6 +4044,24 @@ Security is not implemented as a standalone subsystem. Instead, it forms a found
 
 ---
 
+## 18.13 Implemented Security Improvements
+
+Since its initial design, Verifii has implemented significant security hardening measures across the platform.
+
+These improvements include:
+- **AES-256-GCM Encryption:** Upgraded provider credential encryption to AES-256-GCM using random initialization vectors and authentication tags.
+- **Legacy CTR Fallback:** Maintained fallback decryption for legacy AES-256-CTR to ensure seamless migration.
+- **Encrypted Provider Credentials:** Payment provider keys are never stored in plaintext.
+- **Signed URLs for Private Storage:** Verification proofs and internal documents are served via securely signed, time-limited URLs.
+- **CSRF Protection:** Implemented cross-site request forgery protection across sensitive mutations.
+- **Webhook Signature Verification:** Cryptographically verifying inbound webhooks from Stripe and Razorpay before processing state changes.
+- **Backend Ownership Validation:** Every modification to a startup strictly validates that the authenticated founder owns the requested resource.
+- **Server-Only Provider Communication:** Enforcing that provider SDKs execute exclusively on the backend.
+- **Rate Limiting:** Added rate limiting (`rate-limit.ts`) to mitigate automated abuse.
+- **Secure Network Layer:** Added a safe fetching abstraction (`safe-network.ts`) for external communications.
+
+---
+
 ## Future Evolution
 
 Planned security enhancements include:
@@ -4820,6 +4778,21 @@ Every contribution should improve both the product and the engineering foundatio
 
 ---
 
+# 20.17 Dashboard Engineering Standards
+
+To maintain architectural integrity, the dashboard is governed by permanent engineering rules:
+
+- **Dashboard pages orchestrate only.** They fetch data and pass it to downstream engines, but never perform calculations themselves.
+- **Business logic belongs outside UI.** Presentation code should never make decisions about financial aggregation or trust evaluation.
+- **Widgets never perform calculations.** They only receive pre-formatted values.
+- **Widgets never format business values.** Number formatting, currency conversion, and date rendering must happen in the presentation layer before the UI receives it.
+- **No duplicated financial logic.** The `getAggregatedRevenue()` function is the only place MRR or ARR is calculated.
+- **Server owns business logic.** Clients only render what the server instructs them to render.
+- **Revenue Aggregation remains the Single Source of Truth.** No other subsystem may infer or estimate revenue.
+- **Provider SDKs never execute inside UI.** All communication with payment gateways must happen securely on the backend.
+
+---
+
 ## Future Evolution
 
 As Verifii grows, these standards will expand to include:
@@ -5204,10 +5177,6 @@ Frontend interfaces remain responsible only for presentation and interaction.
 - Easier auditing.
 - Reduced attack surface.
 
-### Trade-offs
-
-- Slightly more backend complexity.
-
 ---
 
 ## Status
@@ -5227,6 +5196,146 @@ Frontend interfaces remain responsible only for presentation and interaction.
 | ADR-005 | Manual Stripe Verification | Accepted |
 | ADR-006 | Trust Before Growth | Accepted |
 | ADR-007 | Backend as Source of Truth | Accepted |
+| ADR-008 | Revenue Aggregation as Single Source of Truth | Accepted |
+| ADR-009 | Snapshot-Based Dashboard | Accepted |
+| ADR-010 | Business Logic Transformation Layer | Accepted |
+| ADR-011 | Presentation Transformation Layer | Accepted |
+| ADR-012 | Read/Write Separation | Accepted |
+| ADR-013 | Provider Isolation | Accepted |
+| ADR-014 | Dashboard as Orchestrator | Accepted |
+| ADR-015 | Snapshot First Architecture | Accepted |
+| ADR-016 | Financial Determinism | Accepted |
+| ADR-017 | Presentation Model Pattern | Accepted |
+
+---
+
+# ADR-008 — Revenue Aggregation as Single Source of Truth
+
+## Context
+Financial calculations were previously distributed across dashboard components and verification logic, leading to inconsistencies.
+
+## Decision
+Revenue aggregation was centralized into a single engine. All MRR, ARR, and financial health metrics are calculated exclusively in this layer.
+
+## Consequences
+Guarantees financial determinism but requires all other systems to depend on the aggregation output.
+
+---
+
+# ADR-009 — Snapshot-Based Dashboard
+
+## Context
+Loading external provider APIs directly into the dashboard caused slow rendering and exposed the platform to third-party rate limits.
+
+## Decision
+The dashboard was refactored to read exclusively from immutable snapshots stored in the database.
+
+## Consequences
+Instant dashboard load times, but requires robust synchronization to keep snapshots updated.
+
+---
+
+# ADR-010 — Business Logic Transformation Layer
+
+## Context
+Dashboard pages mixed data fetching and business decisions.
+
+## Decision
+Introduced an Engine layer (`revenue-engine.ts`) to extract business facts from raw database rows before passing them to the UI.
+
+## Consequences
+Stronger testing boundaries, but adds an intermediate pipeline stage.
+
+---
+
+# ADR-011 — Presentation Transformation Layer
+
+## Context
+UI components were burdened with complex formatting and conditional rendering logic based on raw data states.
+
+## Decision
+Introduced Presenters (`revenue-presenter.ts`) to transform business facts into view models optimized for immediate rendering.
+
+## Consequences
+UI components become purely declarative, but requires mapping boilerplate.
+
+---
+
+# ADR-012 — Read/Write Separation
+
+## Context
+Single endpoints were handling both complex mutations (sync) and heavy queries (dashboard rendering).
+
+## Decision
+Architectural separation between state synchronization (write operations) and dashboard presentation (read models).
+
+## Consequences
+Independent scaling of background synchronization and UI rendering.
+
+---
+
+# ADR-013 — Provider Isolation
+
+## Context
+Provider SDK logic (like Stripe client initialization) was mixed into UI components or general utility files.
+
+## Decision
+Provider SDKs are strictly isolated to backend synchronization API routes and webhook handlers.
+
+## Consequences
+Complete provider abstraction for the rest of the platform.
+
+---
+
+# ADR-014 — Dashboard as Orchestrator
+
+## Context
+Dashboard pages were becoming monoliths responsible for data fetching, business logic, formatting, and rendering.
+
+## Decision
+The dashboard page file serves solely as an orchestrator that passes data through the Engine -> Presenter -> Widget pipeline.
+
+## Consequences
+Enforces the Single Responsibility Principle for the dashboard layer.
+
+---
+
+# ADR-015 — Snapshot First Architecture
+
+## Context
+Historical revenue tracking was difficult when relying on live API calls.
+
+## Decision
+Verification and analytics rely entirely on persisted, immutable snapshots.
+
+## Consequences
+Permanent historical records, enabling complex retrospective analytics.
+
+---
+
+# ADR-016 — Financial Determinism
+
+## Context
+Handling provider API instabilities (e.g., suspicious zeroes) inconsistently caused trust scores to fluctuate.
+
+## Decision
+Aggregation logic must be 100% deterministic, implementing standard fallbacks for known provider anomalies.
+
+## Consequences
+Trust engine inputs remain stable even during temporary provider outages.
+
+---
+
+# ADR-017 — Presentation Model Pattern
+
+## Context
+Passing raw backend types to frontend components caused tight coupling between the database schema and the UI.
+
+## Decision
+The system utilizes presentation models (View Models) to decouple the UI from the underlying domain objects.
+
+## Consequences
+UI components can evolve independently of the database schema.
 
 ---
 
@@ -5308,7 +5417,13 @@ Focus:
 
 ### Phase 2 — Founder Experience
 
-Status: 🟡 Planned
+Status: 🟠 In Progress
+
+Progress:
+- Dashboard architecture refactored into strict layers (Orchestration, Engine, Presenter, Widget).
+- Revenue Analytics Dashboard implemented with robust state management.
+- Suspicious Zero Detection and snapshot consistency guards implemented.
+- Foundation laid for actionable Founder Insights.
 
 Primary objectives:
 
@@ -5422,6 +5537,75 @@ Features will change.
 Architectures will mature.
 
 The principles documented in this handbook should provide continuity throughout that evolution.
+
+---
+
+# Chapter 23 — Core Engineering Principles
+
+Verifii is built on enduring engineering principles designed to maintain architectural integrity as the platform scales. These principles are permanent and govern all technical decisions.
+
+## Single Source of Truth
+Financial data and business logic must exist in exactly one location. The Revenue Aggregation layer owns all financial calculations.
+
+## Snapshot First
+The platform prioritizes reading from immutable historical snapshots over querying live external APIs. This guarantees speed, resilience, and historical accuracy.
+
+## Backend Owns Business Logic
+The server is the authoritative source for all decisions. Frontend applications never enforce security, authorization, or financial rules.
+
+## Thin Pages
+Pages act as orchestrators. They fetch data and distribute it to dedicated layers, remaining as thin as possible.
+
+## Provider Isolation
+Payment provider implementations are completely abstracted behind standardized interfaces. The core platform remains unaware of provider-specific mechanics.
+
+## Read Model Architecture
+The data structures used for database persistence are intentionally decoupled from the structures used for UI rendering, separated by the presentation transformation layer.
+
+## Presentation Models
+UI components consume pre-computed View Models rather than raw backend entities, enforcing a strict boundary between domain logic and rendering logic.
+
+## Immutable Revenue Snapshots
+Verified revenue is recorded permanently and never overwritten. The platform tracks history through sequential snapshots rather than mutable state.
+
+## Deterministic Financial Calculations
+Given the same provider data, the platform must always produce the identical revenue output. Complex scenarios like suspicious zero detection follow strict, predictable rules.
+
+## Server-First Rendering
+React Server Components are the primary mechanism for data fetching, minimizing client-side javascript and ensuring secure execution environments.
+
+## Explicit Architectural Boundaries
+Every subsystem has clearly defined responsibilities. Engines do not format strings, Presenters do not calculate MRR, and Widgets do not call provider APIs.
+
+---
+
+# Chapter 24 — Testing Philosophy
+
+Engineering validation at Verifii extends beyond traditional unit testing to focus on holistic system correctness.
+
+## Architecture Reviews
+Before implementation begins, architectural designs are evaluated against the core engineering principles. Code that violates separation of concerns is rejected during code review.
+
+## Runtime Validation
+The system relies heavily on runtime type checking and input validation (e.g., Zod schemas) at every external boundary, including APIs and database interactions.
+
+## Regression Testing
+The Revenue Aggregation and Trust Engine subsystems require strict regression validation, as modifications to these layers can alter historical trust scores.
+
+## Network Inspection
+All provider communication is inspected for resilience. The `safe-network` layer ensures that external API failures do not cascade into platform outages.
+
+## Database Verification
+Database migrations are treated as immutable state changes. Schema updates require rigorous validation to ensure backwards compatibility with historical snapshots.
+
+## Responsive Testing
+The Founder Dashboard and Public Profiles must render correctly across all device sizes, enforcing accessibility and mobile-first design constraints.
+
+## Security Testing
+Every new API endpoint undergoes ownership and authorization validation to guarantee that private data remains isolated.
+
+## Production Readiness Reviews
+Features are evaluated for logging, error handling, rate limiting, and observability before being promoted to production environments.
 
 ---
 
@@ -6964,6 +7148,7 @@ Examples:
 | Version | Date | Summary | Author |
 |----------|------|---------|--------|
 | 1.0 | July 2026 | Initial Engineering Handbook completed | Eshan Maurya |
+| 2.0 | July 2026 | Layered dashboard architecture, snapshot architecture, provider isolation, verification redesign, billing improvements, security hardening, new ADRs, and core engineering standards. | Eshan Maurya |
 
 ---
 
@@ -6997,6 +7182,10 @@ Examples:
 - Stripe OAuth replaced by manual verification flow.
 - Backend established as the single source of truth.
 - Centralized Visibility System implemented.
+- Dashboard restructured into layered orchestrator/engine/presenter architecture.
+- Revenue Aggregation established as Single Source of Truth.
+- Snapshot-first architecture implemented for public profiles and analytics.
+- Provider integration completely isolated to backend synchronization workflows.
 
 Each milestone should reference the corresponding Architecture Decision Record (ADR) whenever applicable.
 
@@ -7011,7 +7200,7 @@ Example format:
 | Phase | Status | Completion Date |
 |---------|---------|----------------|
 | Phase 1 – Platform Foundation | Completed | July 2026 |
-| Phase 2 – Founder Experience | Planned | — |
+| Phase 2 – Founder Experience | In Progress | — |
 | Phase 3 – Trust Intelligence | Planned | — |
 | Phase 4 – Community & Discovery | Planned | — |
 | Phase 5 – Enterprise & Scale | Planned | — |
