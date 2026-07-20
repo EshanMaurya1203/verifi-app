@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Clock, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
@@ -9,9 +10,16 @@ interface TrialCountdownBannerProps {
 }
 
 export function TrialCountdownBanner({ status, trialEnd }: TrialCountdownBannerProps) {
-  if (status !== "trialing" || !trialEnd) return null;
+  const [now, setNow] = useState<number | null>(null);
 
-  const daysLeft = Math.max(0, Math.ceil((new Date(trialEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
+  if (status !== "trialing" || !trialEnd) return null;
+  if (now === null) return null;
+
+  const daysLeft = Math.max(0, Math.ceil((new Date(trialEnd).getTime() - now) / (1000 * 60 * 60 * 24)));
 
   if (daysLeft > 14) return null; // Safety check
 

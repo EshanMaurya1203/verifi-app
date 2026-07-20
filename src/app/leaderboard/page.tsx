@@ -1,15 +1,13 @@
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { safeSupabaseQuery } from "@/lib/safe-network";
 import { Navbar } from "@/components/layout/Navbar";
-import { ShieldCheck, TrendingUp, AlertTriangle, ChevronRight, Info, Award, Clock, Activity } from "lucide-react";
+import { ShieldCheck, AlertTriangle, ChevronRight, Info, Activity } from "lucide-react";
 import Link from "next/link";
 import { getStartupMetrics } from "@/lib/revenue-aggregation";
 import { formatCurrency, formatGrowth, formatRank } from "@/lib/formatters";
 import type { Metadata } from "next";
 import { TrustBadge } from "@/components/startup/TrustBadge";
-import {
-  ConfidenceTier,
-} from "@/lib/verification-state";
+
 import { computeVerificationStatesForStartups } from "@/lib/verification-data";
 
 export const metadata: Metadata = {
@@ -45,7 +43,16 @@ export default async function LeaderboardPage() {
   const { data, error, ok } = await safeSupabaseQuery<any[]>(
     supabase
       .from("startup_submissions")
-      .select("*")
+      .select(`
+        id,
+        slug,
+        startup_name,
+        name,
+        founder_name,
+        city,
+        mrr,
+        verification_status
+      `)
       .eq("is_public", true)
       .order("mrr", { ascending: false })
   );
@@ -79,14 +86,12 @@ export default async function LeaderboardPage() {
   });
 
   const startupIds = sortedData.map((s) => Number(s.id)).filter(Number.isFinite);
-  const demoUserIds = new Map<number, string | null>();
   const verificationByStartup = await computeVerificationStatesForStartups(
     startupIds,
-    demoUserIds
+    new Map<number, string | null>()
   );
 
-  const realStartups = sortedData.filter(s => !s.user_id?.startsWith("00000000-0000-0000-0000-"));
-  const demoStartups = sortedData.filter(s => s.user_id?.startsWith("00000000-0000-0000-0000-"));
+  const startups = sortedData;
 
   return (
     <div className="min-h-screen bg-[#040406] text-white font-sans">
@@ -106,7 +111,7 @@ export default async function LeaderboardPage() {
           <div className="flex gap-2 w-full md:w-auto">
              <div className="px-5 py-3 bg-[#09090b]/40 border border-white/[0.06] backdrop-blur-md rounded-2xl flex flex-col min-w-[140px] shadow-lg">
                 <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.15em]">Active Pool</span>
-                <span className="text-lg font-black font-syne text-white mt-1">{realStartups.length} Companies</span>
+                <span className="text-lg font-black font-syne text-white mt-1">{startups.length} Companies</span>
              </div>
           </div>
         </div>
@@ -152,7 +157,7 @@ export default async function LeaderboardPage() {
           </div>
 
           <div className="divide-y divide-white/[0.04]">
-            {realStartups.map((row, i) => {
+            {startups.map((row, i) => {
               const isFlagged = row.verification_status === "flagged";
               const confidenceTier =
                 verificationByStartup.get(Number(row.id))?.confidenceTier ||
@@ -195,7 +200,7 @@ export default async function LeaderboardPage() {
 
                   <div className="col-span-4 md:col-span-3 text-right px-2 md:px-4">
                     <p className={`font-syne text-base md:text-xl font-extrabold tracking-tight tabular-nums leading-none ${isVerified ? "text-white" : "text-neutral-500"}`}>
-                      {formatCurrency(row.mrr || 0, row.currency || "INR", { compact: true })}
+                      {formatCurrency(row.mrr || 0, "INR", { compact: true })}
                     </p>
                     <p className="text-[10px] mt-1.5 space-x-1 md:space-x-2 leading-none flex flex-wrap justify-end gap-1">
                        <span className={`font-bold uppercase tracking-wider hidden sm:inline ${isVerified ? "text-neutral-500" : "text-neutral-700"}`}>
@@ -227,11 +232,12 @@ export default async function LeaderboardPage() {
                 <p className="text-xs uppercase font-bold tracking-widest text-amber-500">Ecosystem Offline</p>
                 <p className="text-xs text-neutral-500 font-medium mt-2 max-w-sm leading-relaxed">Verifii protocol is currently experiencing dynamic sync latency. Real-time ranking verification is temporarily paused. Please reload.</p>
               </div>
-            ) : realStartups.length === 0 ? (
+            ) : startups.length === 0 ? (
               <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
                 <ShieldCheck className="w-8 h-8 text-neutral-800 mb-4 animate-pulse" />
-                <p className="text-xs uppercase font-bold tracking-widest text-neutral-500">No verified startups yet</p>
-                <p className="text-xs text-neutral-600 font-medium mt-2 max-w-sm leading-relaxed">Be the first verified company. Connect your Stripe or Razorpay account to join the leaderboard!</p>
+                <p className="text-xs uppercase font-bold tracking-widest text-neutral-500">The leaderboard is waiting for its first verified startup.</p>
+                <p className="text-xs text-neutral-600 font-medium mt-2 max-w-sm leading-relaxed">You&apos;re early. Verify your startup by connecting Stripe or Razorpay, publish your verified revenue, and become the first company to earn a place on Verifii&apos;s public leaderboard.</p>
+                <p className="text-[10px] text-neutral-700 font-medium mt-4 max-w-xs leading-relaxed">Every company on this leaderboard is verified through live payment provider data. No self-reported revenue is ever published.</p>
                 <Link
                   href="/submit"
                   className="mt-6 px-5 py-2.5 bg-[#b9ff4b] hover:bg-[#b9ff4b]/95 text-black rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-lg"
@@ -243,75 +249,7 @@ export default async function LeaderboardPage() {
           </div>
         </section>
 
-        {/* Sandbox & Demo Listings */}
-        {demoStartups.length > 0 && (
-          <div className="mt-20 space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2 border-b border-white/[0.05] pb-4">
-              <div>
-                <h2 className="text-xl font-bold font-syne uppercase tracking-wider text-neutral-400 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-neutral-600 animate-pulse" />
-                  Sandbox & Demo Listings
-                </h2>
-                <p className="text-xs text-neutral-500 mt-1">Simulated example startups used to preview the Verifii interface, trust tiers, and analytics dashboard.</p>
-              </div>
-            </div>
-            
-            <section className="bg-[#09090b]/20 border border-white/[0.04] rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-md">
-              <div className="grid grid-cols-12 px-6 md:px-10 py-5 text-[11px] uppercase font-bold text-neutral-600 tracking-[0.2em] border-b border-white/[0.04] bg-[#09090b]/40">
-                <div className="col-span-2 md:col-span-1 text-center">#</div>
-                <div className="col-span-6 md:col-span-4">Sample Company</div>
-                <div className="col-span-4 md:col-span-3 text-right px-2 md:px-4">Simulated MRR</div>
-                <div className="col-span-3 hidden md:flex justify-center">Sandbox State</div>
-                <div className="col-span-1 hidden md:block"></div>
-              </div>
 
-              <div className="divide-y divide-white/[0.03]">
-                {demoStartups.map((row, i) => {
-                  const confidenceTier =
-                    verificationByStartup.get(Number(row.id))?.confidenceTier ||
-                    "SELF_REPORTED";
-                  return (
-                    <Link 
-                      href={`/startup/${row.slug}`} 
-                      key={row.id}
-                      className="grid grid-cols-12 px-6 md:px-10 py-5 items-center transition-all bg-transparent hover:bg-white/[0.01] group opacity-70 hover:opacity-100"
-                    >
-                      <div className="col-span-2 md:col-span-1 text-center font-syne text-xs font-bold text-neutral-600">
-                        S-{i + 1}
-                      </div>
-                      
-                      <div className="col-span-6 md:col-span-4 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm tracking-tight text-neutral-400 group-hover:text-primary transition-colors leading-none">
-                            {row.startup_name || row.name}
-                          </p>
-                          <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-[8px] font-black uppercase text-neutral-500 tracking-wider">Demo</span>
-                        </div>
-                        <p className="text-[10px] text-neutral-600 font-medium">
-                          {row.founder_name || "Example Founder"}
-                        </p>
-                      </div>
-
-                      <div className="col-span-4 md:col-span-3 text-right px-2 md:px-4">
-                        <p className="font-syne text-sm font-extrabold text-neutral-500 tracking-tight tabular-nums leading-none">
-                          {formatCurrency(row.mrr || 0, row.currency || "INR", { compact: true })}
-                        </p>
-                      </div>
-
-                      <div className="col-span-3 hidden md:flex justify-center">
-                        <TrustBadge tier={confidenceTier} size="sm" isDemo />
-                      </div>
-
-                      <div className="col-span-1 hidden md:flex justify-end">
-                        <ChevronRight className="w-3.5 h-3.5 text-neutral-700" />
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-        )}
       </main>
     </div>
   );

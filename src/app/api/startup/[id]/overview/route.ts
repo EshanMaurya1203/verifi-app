@@ -49,28 +49,39 @@ export async function GET(
             "id, startup_name, trust_score, penalty_count, verification_type, proof_url, user_id"
           )
           .eq("id", startupId)
-          .single(),
+          .single()
+          .then((r) => r, (err) => ({ data: null, error: err })),
         supabaseServer
           .from("provider_connections")
           .select("provider, status, last_synced_at, latest_revenue")
-          .eq("startup_id", startupId),
+          .eq("startup_id", startupId)
+          .then((r) => r, (err) => ({ data: null, error: err })),
         supabaseServer
           .from("revenue_snapshots")
           .select("total_revenue, created_at")
           .eq("startup_id", startupId)
           .order("created_at", { ascending: true })
-          .limit(30),
+          .limit(30)
+          .then((r) => r, (err) => ({ data: null, error: err })),
         supabaseServer
           .from("fraud_signals")
           .select("signal_type")
-          .eq("startup_id", startupId),
+          .eq("startup_id", startupId)
+          .then((r) => r, (err) => ({ data: null, error: err })),
         supabaseServer
           .from("revenue_transactions")
           .select("amount, created_at, provider")
           .eq("startup_id", startupId)
           .order("created_at", { ascending: true })
-          .limit(200),
+          .limit(200)
+          .then((r) => r, (err) => ({ data: null, error: err })),
       ]);
+
+    // Log non-critical query failures without crashing the route
+    if (connectionsRes.error) console.error("[Overview] connections query error:", connectionsRes.error);
+    if (revenueRes.error) console.error("[Overview] revenue query error:", revenueRes.error);
+    if (fraudRes.error) console.error("[Overview] fraud signals query error:", fraudRes.error);
+    if (txnRes.error) console.error("[Overview] transactions query error:", txnRes.error);
 
     if (startupRes.error || !startupRes.data) {
       return NextResponse.json({ error: "Startup not found" }, { status: 404 });

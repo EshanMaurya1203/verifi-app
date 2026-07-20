@@ -15,7 +15,7 @@ export async function POST(
   const { id } = await params;
 
   // Enforce authentication and strict startup ownership validation
-  const { authenticated, owned, startup, user } = await verifyStartupOwnership(id);
+  const { authenticated, owned, startup: _startup, user } = await verifyStartupOwnership(id);
   if (!authenticated) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
@@ -59,39 +59,67 @@ export async function POST(
         const stripe = isStripeConnectAccountId(conn.account_id)
           ? getPlatformStripe()
           : getStripeForSecretKey(decryptedKey);
-        const from = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+          
+        const { data: latestTx } = await supabase
+          .from("revenue_transactions")
+          .select("created_at")
+          .eq("startup_id", id)
+          .eq("provider", "stripe")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let from: number;
+        if (latestTx && latestTx.created_at) {
+          from = Math.floor(new Date(latestTx.created_at).getTime() / 1000);
+        } else {
+          from = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
+        }
+
         const requestOptions = isStripeConnectAccountId(conn.account_id)
           ? { stripeAccount: conn.account_id }
           : undefined;
-        const bTxns = await stripe.balanceTransactions.list(
-          { created: { gte: from }, limit: 100 },
-          requestOptions
-        );
 
-        for (const tx of bTxns.data) {
+        let batch: Record<string, unknown>[] = [];
+        const BATCH_SIZE = 500;
+
+        for await (const tx of stripe.balanceTransactions.list(
+          { created: { gt: from }, limit: 100 },
+          requestOptions
+        )) {
           if (tx.type === "charge" || tx.type === "payment") {
-            const { error: upsertError } = await supabase
-              .from("revenue_transactions")
-              .upsert(
-                {
-                  startup_id: id,
-                  provider: "stripe",
-                  amount: tx.amount / 100,
-                  currency: tx.currency?.toUpperCase() || "USD",
-                  status: "captured",
-                  external_id: tx.id,
-                  payment_id: tx.id,
-                  created_at: new Date(tx.created * 1000).toISOString(),
-                },
-                { onConflict: "external_id" }
-              );
-            if (!upsertError) snapshotsSynced++;
+            batch.push({
+              startup_id: id,
+              provider: "stripe",
+              amount: tx.amount / 100,
+              currency: tx.currency?.toUpperCase() || "USD",
+              status: "captured",
+              external_id: tx.id,
+              payment_id: tx.id,
+              created_at: new Date(tx.created * 1000).toISOString(),
+            });
+            
+            if (batch.length >= BATCH_SIZE) {
+              const { error: upsertError } = await supabase
+                .from("revenue_transactions")
+                .upsert(batch, { onConflict: "external_id" });
+              if (!upsertError) snapshotsSynced += batch.length;
+              batch = [];
+            }
           }
         }
+        
+        if (batch.length > 0) {
+          const { error: upsertError } = await supabase
+            .from("revenue_transactions")
+            .upsert(batch, { onConflict: "external_id" });
+          if (!upsertError) snapshotsSynced += batch.length;
+        }
       }
-    } catch (err: any) {
-      const isProviderError = err && err.name === "ProviderError";
-      console.error(`[Manual Sync] Error for connection ${conn.id}:`, isProviderError ? (err.originalError || err) : err);
+    } catch (err: unknown) {
+      const isProviderError = err instanceof Error && err.name === "ProviderError";
+      const logPayload = isProviderError ? ((err as unknown as Record<string, unknown>).originalError ?? err) : err;
+      console.error(`[Manual Sync] Error for connection ${conn.id}:`, logPayload);
     }
   }
 

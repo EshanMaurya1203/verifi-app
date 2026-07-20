@@ -1,5 +1,22 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Startup = any;
+import { VERIFIED_STATUSES, PENDING_STATUSES } from "./constants";
+
+export interface StartupSubmissionRow {
+  id: number;
+  user_id?: string;
+  startup_name?: string;
+  slug?: string;
+  is_public?: boolean;
+  payment_connected?: boolean;
+  verification_status?: string;
+  verification_source?: string;
+  trust_tier?: string;
+  mrr?: number | null;
+  last_synced_at?: string | null;
+  proof_url?: string | null;
+  created_at?: string;
+  connected_at?: string | null;
+  published_at?: string | null;
+}
 
 export interface StartupStatus {
   profile: "incomplete" | "complete";
@@ -10,7 +27,7 @@ export interface StartupStatus {
   proof: "none" | "submitted";
 }
 
-export function buildStartupStatus(startup: Startup): StartupStatus {
+export function buildStartupStatus(startup: Partial<StartupSubmissionRow> | null | undefined): StartupStatus {
   if (!startup) {
     return {
       profile: "incomplete",
@@ -27,25 +44,13 @@ export function buildStartupStatus(startup: Startup): StartupStatus {
   
   const payment = startup.payment_connected ? "connected" : "disconnected";
 
-  const verifiedStatuses = [
-    "api_verified",
-    "stripe_connected",
-    "PAYMENT_CONNECTED",
-    "REVENUE_VERIFIED",
-    "HIGH_CONFIDENCE",
-    "verified",
-    "approved",
-    "identity_verified"
-  ];
-  
-  const pendingStatuses = ["syncing", "proof_submitted"];
-  
-  const isVerified = startup.payment_connected || verifiedStatuses.includes(startup.verification_status);
+  const isVerified = startup.payment_connected || (startup.verification_status && VERIFIED_STATUSES.includes(startup.verification_status));
+  const isPending = startup.verification_status && PENDING_STATUSES.includes(startup.verification_status);
   
   let verification: "unverified" | "pending" | "verified" = "unverified";
   if (isVerified) {
     verification = "verified";
-  } else if (pendingStatuses.includes(startup.verification_status)) {
+  } else if (isPending) {
     verification = "pending";
   }
 
@@ -54,10 +59,7 @@ export function buildStartupStatus(startup: Startup): StartupStatus {
     revenue = startup.last_synced_at ? "synced" : "declared";
   }
 
-  let proof: "none" | "submitted" = "none";
-  if (startup.proof_url || startup.payment_connected || isVerified || pendingStatuses.includes(startup.verification_status)) {
-    proof = "submitted";
-  }
+  const proof: "none" | "submitted" = startup.proof_url ? "submitted" : "none";
 
   return {
     profile,

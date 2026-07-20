@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowUpRight, BadgeCheck, Activity, RefreshCw, Zap, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
+import { BadgeCheck, Activity, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
@@ -26,10 +26,9 @@ type StartupCard = {
 
 type ActivityEvent = {
   id: string;
-  type: "VERIFIED" | "SYNCED" | "MILESTONE";
+  event: string;
   startupName: string;
   timestamp: string;
-  detail: string;
 };
 
 const fadeUpContainer = {
@@ -51,7 +50,6 @@ const fadeUpItem = {
 
 export default function HomePage() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [demoLeaderboard, setDemoLeaderboard] = useState<any[]>([]);
   const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>([]);
   const [trendingData, setTrendingData] = useState<StartupCard[]>([]);
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
@@ -109,12 +107,8 @@ export default function HomePage() {
 
         const { success, data: list } = submissionsRes.data;
         if (success && list) {
-          // Split real vs demo startups securely
-          const realList = list.filter((item: any) => !item.user_id?.startsWith("00000000-0000-0000-0000-"));
-          const demoList = list.filter((item: any) => item.user_id?.startsWith("00000000-0000-0000-0000-"));
-
-          // Top 5 real startups for main leaderboard
-          const top5 = realList
+          // Top 5 startups for main leaderboard
+          const top5 = list
             .slice()
             .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
             .slice(0, 5)
@@ -123,28 +117,13 @@ export default function HomePage() {
               slug: s.slug || s.id,
               name: s.startup_name,
               founder: s.name || "Anonymous",
-              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
+              mrr: formatCurrency(s.mrr || 0, "INR", { compact: true }),
               trust_score: s.trust_score || 0,
             }));
           setLeaderboard(top5);
 
-          // Top 5 demo startups for sandbox leaderboard preview
-          const top5Demo = demoList
-            .slice()
-            .sort((a: any, b: any) => (b.mrr || 0) - (a.mrr || 0))
-            .slice(0, 5)
-            .map((s: any, idx: number) => ({
-              rank: idx + 1,
-              slug: s.slug || s.id,
-              name: s.startup_name,
-              founder: s.name || "Anonymous",
-              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
-              trust_score: s.trust_score || 0,
-            }));
-          setDemoLeaderboard(top5Demo);
-
-          // Recently listed (real only)
-          const recent = realList
+          // Recently listed
+          const recent = list
             .slice()
             .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 4)
@@ -154,14 +133,14 @@ export default function HomePage() {
               slug: s.slug || s.id,
               category: s.biz_type,
               description: s.notes || "No description provided.",
-              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
+              mrr: formatCurrency(s.mrr || 0, "INR", { compact: true }),
               growth: s.growth ? formatGrowth(s.growth, 2) : "Stable",
               badge: s.payment_connected ? 'Payment Connected' : 'Self Reported',
             }));
           setRecentlyListedData(recent);
 
-          // Trending (real only, sorted by growth)
-          const trending = realList
+          // Trending (sorted by growth)
+          const trending = list
             .slice()
             .filter((s: any) => s.growth !== undefined && s.growth > 0)
             .sort((a: any, b: any) => (b.growth || 0) - (a.growth || 0))
@@ -172,51 +151,21 @@ export default function HomePage() {
               slug: s.slug || s.id,
               category: s.biz_type,
               description: s.notes || "No description provided.",
-              mrr: formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true }),
+              mrr: formatCurrency(s.mrr || 0, "INR", { compact: true }),
               growth: s.growth ? formatGrowth(s.growth, 2) + " MoM" : "",
               badge: "Trending",
             }));
           setTrendingData(trending);
 
-          // Generate lightweight activity events from real data only
-          const eventStream: ActivityEvent[] = [];
-          
-          realList.slice(0, 6).forEach((s: any, i: number) => {
-            const updatedAt = new Date(s.created_at);
-            const createdAt = new Date(s.created_at);
-            
-            if (updatedAt.getTime() - createdAt.getTime() > 86400000) {
-              eventStream.push({
-                id: `sync-${s.id}-${i}`,
-                type: "SYNCED",
-                startupName: s.startup_name,
-                timestamp: updatedAt.toISOString(),
-                detail: `Payment provider sync completed`
-              });
-            } else {
-              eventStream.push({
-                id: `verify-${s.id}-${i}`,
-                type: "VERIFIED",
-                startupName: s.startup_name,
-                timestamp: createdAt.toISOString(),
-                detail: `Joined the verified leaderboard`
-              });
+          // Fetch authoritative activity events from verification_logs
+          try {
+            const feedRes = await safeFetch<ActivityEvent[]>("/api/live-feed");
+            if (feedRes.ok && feedRes.data) {
+              setActivities(feedRes.data);
             }
-
-            if (s.mrr && s.mrr > 500000 && i % 3 === 0) {
-              const milestoneTime = new Date(updatedAt.getTime() - 1000 * 60 * 60 * 2);
-              eventStream.push({
-                id: `mile-${s.id}-${i}`,
-                type: "MILESTONE",
-                startupName: s.startup_name,
-                timestamp: milestoneTime.toISOString(),
-                detail: `Crossed ${formatCurrency(s.mrr || 0, s.currency || "INR", { compact: true })} MRR milestone`
-              });
-            }
-          });
-
-          eventStream.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          setActivities(eventStream.slice(0, 5));
+          } catch {
+            // Live feed is non-critical; empty state will show
+          }
         }
       } catch (err) {
         if (process.env.NODE_ENV === "development") {
@@ -230,12 +179,28 @@ export default function HomePage() {
     loadHomepageData();
   }, []);
 
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case "VERIFIED": return <ShieldCheck className="w-3 h-3 text-emerald-400" />;
-      case "SYNCED": return <RefreshCw className="w-3 h-3 text-blue-400" />;
-      case "MILESTONE": return <Zap className="w-3 h-3 text-amber-400" />;
-      default: return <Activity className="w-3 h-3 text-neutral-400" />;
+  const getActivityIcon = (event: string) => {
+    switch (event) {
+      case "stripe_sync_success":
+      case "razorpay_sync_success":
+        return <ShieldCheck className="w-3 h-3 text-emerald-400" />;
+      case "listing_created":
+        return <RefreshCw className="w-3 h-3 text-blue-400" />;
+      default:
+        return <Activity className="w-3 h-3 text-neutral-400" />;
+    }
+  };
+
+  const getActivityDetail = (event: string): string => {
+    switch (event) {
+      case "stripe_sync_success":
+        return "Revenue verified via Stripe";
+      case "razorpay_sync_success":
+        return "Revenue verified via Razorpay";
+      case "listing_created":
+        return "Startup profile created";
+      default:
+        return "Verification event recorded";
     }
   };
 
@@ -530,14 +495,14 @@ export default function HomePage() {
                       className="flex items-start gap-3 p-3 rounded-2xl hover:bg-white/[0.02] transition-colors"
                     >
                       <div className="mt-1 w-6 h-6 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center shrink-0">
-                        {getActivityIcon(activity.type)}
+                        {getActivityIcon(activity.event)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-bold text-white truncate">
                           {activity.startupName}
                         </p>
                         <p className="text-[10px] text-neutral-400 mt-0.5 leading-snug">
-                          {activity.detail}
+                          {getActivityDetail(activity.event)}
                         </p>
                         <p className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider mt-1.5">
                           {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
@@ -576,55 +541,6 @@ export default function HomePage() {
           
         </div>
 
-        {/* Sandbox Sandbox Preview Section */}
-        {demoLeaderboard.length > 0 && (
-          <section className="mt-28">
-            <div className="rounded-3xl border border-white/[0.04] bg-[#09090b]/20 backdrop-blur-md overflow-hidden shadow-2xl p-6 md:p-8">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/[0.04] pb-5 mb-6 gap-4">
-                <div>
-                  <h3 className="font-syne text-base md:text-lg font-black text-neutral-400 uppercase tracking-tight flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-neutral-600 animate-pulse" />
-                    Sandbox Leaderboard Preview
-                  </h3>
-                  <p className="text-[9px] md:text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1">Simulated startups containing mock metrics for demonstration purposes</p>
-                </div>
-                <div className="px-3 py-1 rounded bg-primary/10 border border-primary/20 text-[9px] font-black uppercase text-primary tracking-wider">
-                  Developer Sandbox Mode
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {demoLeaderboard.map((startup) => (
-                  <Link
-                    href={`/startup/${startup.slug}`}
-                    key={startup.slug}
-                    className="p-5 bg-white/[0.01] hover:bg-white/[0.03] border border-white/[0.04] hover:border-white/10 rounded-2xl transition-all duration-200 group flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex justify-between items-start gap-4">
-                        <h4 className="font-bold text-sm text-neutral-300 group-hover:text-primary transition-colors truncate">
-                          {startup.name}
-                        </h4>
-                        <span className="px-1.5 py-0.5 rounded bg-neutral-800 text-[8px] font-black uppercase text-neutral-500 tracking-wider">Demo</span>
-                      </div>
-                      <p className="text-xs text-neutral-500 font-medium mt-1">
-                        by {startup.founder}
-                      </p>
-                    </div>
-
-                    <div className="flex justify-between items-end mt-6 pt-3 border-t border-white/[0.03]">
-                      <div>
-                        <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider block">Simulated MRR</span>
-                        <span className="font-syne text-sm font-extrabold text-neutral-400 tabular-nums">{startup.mrr}</span>
-                      </div>
-                      <ArrowUpRight className="w-3.5 h-3.5 text-neutral-700 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
 
         {/* Bottom CTA Card */}
         <section className="mt-28">

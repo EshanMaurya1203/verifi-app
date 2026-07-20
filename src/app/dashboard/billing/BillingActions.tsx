@@ -10,7 +10,7 @@ interface BillingActionsProps {
   currentCycle: "monthly" | "annual";
   status: string;
   currentPeriodEnd?: string | null;
-  pendingReplacement?: any;
+  pendingReplacement?: Record<string, unknown> | null;
 }
 
 export function BillingActions({ currentPlanCode, currentCycle, status, currentPeriodEnd, pendingReplacement }: BillingActionsProps) {

@@ -125,53 +125,67 @@ The goal is to retain engineering knowledge, not just describe the latest code.
 
 # Table of Contents
 
-## Chapter 1 — Product Overview
+## [Chapter 1 — Product Overview](#chapter-1-product-overview)
 
-## Chapter 2 — Product & Architecture Evolution
+## [Chapter 2 — Product & Architecture Evolution](#chapter-2-product-architecture-evolution)
 
-## Chapter 3 — Platform Architecture
+## [Chapter 3 — Platform Architecture](#chapter-3-platform-architecture)
 
-## Chapter 4 — Database Architecture
+## [Chapter 4 — Database Architecture](#chapter-4-database-architecture)
 
-## Chapter 5 — Authentication & Authorization
+## [Chapter 5 — Authentication & Authorization](#chapter-5-authentication-authorization)
 
-## Chapter 6 — Verification System
+## [Chapter 6 — Verification System](#chapter-6-verification-system)
 
-## Chapter 7 — Provider Integration Layer
+## [Chapter 7 — Provider Integration Layer](#chapter-7-provider-integration-layer)
 
-## Chapter 8 — Revenue Processing
+## [Chapter 8 — Revenue Processing](#chapter-8-revenue-processing)
 
-## Chapter 9 — Trust & Fraud Engine
+## [Chapter 9 — Trust & Fraud Engine](#chapter-9-trust-fraud-engine)
 
-## Chapter 10 — Visibility System
+## [Chapter 10 — Visibility System](#chapter-10-visibility-system)
 
-## Chapter 11 — Subscription & Billing System
+## [Chapter 11 — Subscription & Billing System](#chapter-11-subscription-billing-system)
 
-## Chapter 12 — API Architecture
+## [Chapter 12 — API Architecture](#chapter-12-api-architecture)
 
-## Chapter 14 — Founder Dashboard
+> Note: Chapter 13 is intentionally unused to preserve stable chapter numbering and historical references.
 
-## Chapter 15 — Public Startup Profiles
+## [Chapter 14 — Founder Dashboard](#chapter-14-founder-dashboard)
 
-## Chapter 16 — Leaderboard
+## [Chapter 15 — Public Startup Profiles](#chapter-15-public-startup-profiles)
 
-## Chapter 17 — Admin System
+## [Chapter 16 — Leaderboard](#chapter-16-leaderboard)
 
-## Chapter 18 — Security Architecture
+## [Chapter 17 — Admin System](#chapter-17-admin-system)
 
-## Chapter 19 — Operations & Deployment
+## [Chapter 18 — Security Architecture](#chapter-18-security-architecture)
 
-## Chapter 20 — Development Standards & Best Practices
+## [Chapter 19 — Operations & Deployment](#chapter-19-operations-deployment)
 
-## Chapter 21 — Architecture Decision Records (ADR)
+## [Chapter 20 — Development Standards & Best Practices](#chapter-20-development-standards-best-practices)
 
-## Chapter 22 — Product Roadmap
+## [Chapter 21 — Architecture Decision Records (ADR)](#chapter-21-architecture-decision-records-adr)
 
-## Chapter 23 — Core Engineering Principles
+## [Chapter 22 — Product Roadmap](#chapter-22-product-roadmap)
 
-## Chapter 24 — Testing Philosophy
+## [Chapter 23 — Core Engineering Principles](#chapter-23-core-engineering-principles)
 
---
+## [Chapter 24 — Testing Philosophy](#chapter-24-testing-philosophy)
+
+## [Appendix A — Glossary](#appendix-a-glossary)
+
+## [Appendix B — Project Structure](#appendix-b-project-structure)
+
+## [Appendix C — Technology Stack](#appendix-c-technology-stack)
+
+## [Appendix D — External Services](#appendix-d-external-services)
+
+## [Appendix E — Development Commands](#appendix-e-development-commands)
+
+## [Appendix F — Revision History](#appendix-f-revision-history)
+
+---
 
 # Chapter 1 — Product Overview
 
@@ -309,7 +323,7 @@ At the time of writing, Verifii provides:
 
 The platform continues to evolve, with additional capabilities documented throughout this handbook and in the product roadmap.
 
---
+---
 
 # Chapter 2 — Product & Architecture Evolution
 
@@ -363,7 +377,7 @@ The progression:
 
 This progression ensured the platform remained extensible, testable, and robust against UI changes affecting business facts.
 
---
+---
 
 # Chapter 3 — Platform Architecture
 
@@ -1400,6 +1414,69 @@ This architectural decision ensures that:
 - Historical verification records are preserved permanently.
 - The platform remains resilient to temporary provider outages.
 - Trust scoring operates on deterministic, unchanging historical data.
+
+---
+
+## 6.12 Startup Submission Pipeline
+
+The production Startup Submission pipeline ensures idempotent, secure, and reliable processing of new startup applications.
+
+The pipeline follows this specific flow:
+
+Authentication
+
+↓
+
+Rate Limiting
+
+↓
+
+Authenticated User Binding
+
+↓
+
+Payload Validation
+
+↓
+
+Startup Normalization
+
+↓
+
+Duplicate Detection
+
+↓
+
+Proof Validation
+
+↓
+
+Slug Generation
+
+↓
+
+Startup Creation
+
+↓
+
+Best-Effort Auxiliary Writes
+
+↓
+
+Response
+
+Each stage serves a distinct architectural purpose:
+- **Authentication**: Ensures only authenticated founders can submit startups.
+- **Rate Limiting**: Protects backend services from abuse.
+- **Authenticated User Binding**: Binds the submission explicitly to the server-verified user ID, preventing ownership spoofing.
+- **Payload Validation**: Ensures all required fields meet expected constraints before processing begins.
+- **Startup Normalization**: Standardizes the startup name (e.g., removing whitespace) to support accurate duplicate detection.
+- **Duplicate Detection**: Enforces idempotent submissions by returning an existing active startup if the user has already submitted it.
+- **Proof Validation**: Secures uploaded verification proofs through server-side ownership checks, storage metadata validation, and magic-byte verification.
+- **Slug Generation**: Generates a unique, URL-safe identifier for the startup.
+- **Startup Creation**: Executes the core transaction to persist the canonical startup record.
+- **Best-Effort Auxiliary Writes**: Records verification logs and provider connections in the background without risking the primary transaction if they fail.
+- **Response**: Returns a standardized, safe response to the client.
 
 ---
 
@@ -2829,6 +2906,21 @@ The API layer forms the operational backbone of the platform and enables secure 
 
 ---
 
+## 12.10 Startup Submission API Architecture
+
+The Startup Submission API implements several core architectural patterns to guarantee data integrity and platform security:
+
+- **Server-side ownership validation**: Client-provided user IDs are discarded. The API explicitly binds submissions to the authenticated session context.
+- **Idempotent submission behavior**: Network retries and concurrent requests return the identical, already-created resource instead of failing or duplicating.
+- **Duplicate recovery**: Race conditions bypassing application-level checks are caught by database constraints and handled through graceful duplicate recovery.
+- **Structured logging**: All lifecycle events use the centralized logging architecture, ensuring standardized metadata is attached to every transaction.
+- **Best-effort auxiliary writes**: Non-critical records (like verification logs) are processed asynchronously to prioritize core startup creation availability.
+- **Backend as source of truth**: The API is the final authority on proof validation, name normalization, and uniqueness enforcement.
+
+---
+
+> Note: Chapter 13 is intentionally unused to preserve stable chapter numbering and historical references.
+
 # Chapter 14 — Founder Dashboard
 
 The Founder Dashboard serves as the central workspace for startup founders within Verifii.
@@ -3092,7 +3184,7 @@ By standard, the Dashboard Page (`page.tsx`) acts purely as an orchestrator.
 It only performs data fetching, instantiates Engines, executes Presenters, and passes View Models to Widgets.
 It never performs UI rendering directly.
 
---
+---
 
 # Chapter 15 — Public Startup Profiles
 
@@ -4062,6 +4154,26 @@ These improvements include:
 
 ---
 
+## 18.14 Startup Submission Security
+
+The Startup Submission subsystem follows a defense-in-depth security architecture. No individual validation is considered sufficient to establish trust. Instead, ownership validation, namespace isolation, canonical proof storage, storage metadata verification, magic-byte validation, database constraints, and least-privilege database access work together as layered protections against unauthorized access, duplicate submissions, proof manipulation, and race-condition failures.
+
+The startup submission pipeline implements multi-layered security controls to protect the verification process and user data:
+
+- User ownership enforcement
+- Namespace isolation
+- Canonical proof storage
+- Private storage buckets
+- Signed URL access
+- Storage metadata validation
+- Magic-byte validation
+- Partial unique index
+- RPC security hardening
+- Least privilege
+- Race-condition resilience
+
+---
+
 ## Future Evolution
 
 Planned security enhancements include:
@@ -4439,7 +4551,7 @@ These standards are intended to improve code quality, maintainability, security,
 
 ---
 
-# 20.1 Engineering Philosophy
+## 20.1 Engineering Philosophy
 
 Every engineering decision within Verifii should support the following goals:
 
@@ -4455,7 +4567,7 @@ Code is written for future engineers—not just for the current implementation.
 
 ---
 
-# 20.2 Project Structure
+## 20.2 Project Structure
 
 Every feature should have a clear responsibility.
 
@@ -4477,7 +4589,7 @@ Business logic should not be duplicated across multiple locations.
 
 ---
 
-# 20.3 Naming Conventions
+## 20.3 Naming Conventions
 
 Naming should prioritize clarity.
 
@@ -4527,7 +4639,7 @@ File names should remain consistent with the surrounding project structure.
 
 ---
 
-# 20.4 Architecture Guidelines
+## 20.4 Architecture Guidelines
 
 Every new feature should follow the existing platform architecture.
 
@@ -4549,7 +4661,7 @@ Business logic should never be duplicated inside frontend components.
 
 ---
 
-# 20.5 API Standards
+## 20.5 API Standards
 
 Every API endpoint should:
 
@@ -4565,7 +4677,7 @@ Protected APIs must never trust client input without independent verification.
 
 ---
 
-# 20.6 Database Standards
+## 20.6 Database Standards
 
 Database changes should follow several principles.
 
@@ -4579,7 +4691,7 @@ Every migration should be reviewed before production deployment.
 
 ---
 
-# 20.7 Git Workflow
+## 20.7 Git Workflow
 
 Development follows a Git-based workflow.
 
@@ -4617,7 +4729,7 @@ Each commit should represent one logical improvement.
 
 ---
 
-# 20.8 Commit Message Standards
+## 20.8 Commit Message Standards
 
 Commit messages should describe the purpose of a change.
 
@@ -4649,7 +4761,7 @@ Common commit types include:
 
 ---
 
-# 20.9 Testing Standards
+## 20.9 Testing Standards
 
 Every feature should be validated before deployment.
 
@@ -4664,7 +4776,7 @@ No feature should be merged without confirming that existing functionality remai
 
 ---
 
-# 20.10 Documentation Standards
+## 20.10 Documentation Standards
 
 Every significant architectural change should update documentation.
 
@@ -4679,7 +4791,7 @@ Documentation should evolve together with the platform.
 
 ---
 
-# 20.11 Security Standards
+## 20.11 Security Standards
 
 Security is everyone's responsibility.
 
@@ -4694,7 +4806,7 @@ Developers should:
 
 ---
 
-# 20.12 AI-Assisted Development
+## 20.12 AI-Assisted Development
 
 AI tools are used to accelerate development but do not replace engineering judgement.
 
@@ -4716,7 +4828,7 @@ Generated code should never be accepted without engineering review.
 
 ---
 
-# 20.13 Pull Request Guidelines
+## 20.13 Pull Request Guidelines
 
 Every pull request should answer:
 
@@ -4730,7 +4842,7 @@ Review quality is more important than review speed.
 
 ---
 
-# 20.14 Definition of Done
+## 20.14 Definition of Done
 
 A feature is considered complete only when:
 
@@ -4746,7 +4858,7 @@ Completion is determined by platform quality rather than implementation speed.
 
 ---
 
-# 20.15 Technical Debt
+## 20.15 Technical Debt
 
 Technical debt should be acknowledged rather than ignored.
 
@@ -4761,7 +4873,7 @@ Technical debt should be intentional—not accidental.
 
 ---
 
-# 20.16 Engineering Culture
+## 20.16 Engineering Culture
 
 The long-term success of Verifii depends on maintaining high engineering standards.
 
@@ -4778,7 +4890,7 @@ Every contribution should improve both the product and the engineering foundatio
 
 ---
 
-# 20.17 Dashboard Engineering Standards
+## 20.17 Dashboard Engineering Standards
 
 To maintain architectural integrity, the dashboard is governed by permanent engineering rules:
 
@@ -4790,6 +4902,19 @@ To maintain architectural integrity, the dashboard is governed by permanent engi
 - **Server owns business logic.** Clients only render what the server instructs them to render.
 - **Revenue Aggregation remains the Single Source of Truth.** No other subsystem may infer or estimate revenue.
 - **Provider SDKs never execute inside UI.** All communication with payment gateways must happen securely on the backend.
+
+---
+
+## 20.18 Startup Submission Engineering Standards
+
+- Startup names must be normalized before duplicate evaluation.
+- Backend owns submission validation.
+- Duplicate submissions must be idempotent.
+- Auxiliary writes must never invalidate successful startup creation.
+- Route handlers must use centralized logger.
+- Proof ownership must always be validated server-side.
+- Business rules belong on the backend.
+- Public mutation endpoints should be designed to be idempotent whenever practical to ensure safe retries, concurrent execution, and predictable system behavior.
 
 ---
 
@@ -5206,6 +5331,10 @@ Frontend interfaces remain responsible only for presentation and interaction.
 | ADR-015 | Snapshot First Architecture | Accepted |
 | ADR-016 | Financial Determinism | Accepted |
 | ADR-017 | Presentation Model Pattern | Accepted |
+| ADR-021 | Idempotent Startup Submission | Accepted |
+| ADR-022 | Secure Proof Upload Pipeline | Accepted |
+| ADR-023 | Best-Effort Auxiliary Writes | Accepted |
+| ADR-024 | Centralized Logging Architecture | Accepted |
 
 ---
 
@@ -5339,6 +5468,167 @@ UI components can evolve independently of the database schema.
 
 ---
 
+# ADR-021 — Idempotent Startup Submission
+
+## Context
+
+- Duplicate startup submissions were possible.
+- Network retries created duplicate records.
+- Race conditions could bypass application-level duplicate checks.
+
+## Decision
+
+- One active startup per (user_id + normalized startup_name).
+- Rejected submissions remain resubmittable.
+- Startup names are normalized before uniqueness evaluation.
+- Duplicate requests return the existing startup.
+- Database uniqueness is enforced using a partial unique index.
+- Race conditions are handled through graceful recovery.
+- Application duplicate checks complement database constraints.
+
+## Alternatives Considered
+
+- Application-only duplicate detection
+- Global uniqueness
+- Rejecting all duplicate requests
+
+## Consequences
+
+### Positive
+
+- Idempotent API
+- Retry-safe
+- Race-safe
+- Better UX
+
+### Tradeoffs
+
+- Requires normalization
+- Requires partial unique index
+- Slightly more complex insert workflow
+
+## Status
+
+Accepted
+
+---
+
+# ADR-022 — Secure Proof Upload Pipeline
+
+## Context
+
+Need secure handling of uploaded verification proofs.
+
+## Decision
+
+- Proofs stored in private storage.
+- Namespace isolation per user.
+- Canonical proof object stored in database.
+- Ownership validated server-side.
+- Storage metadata validated.
+- Magic-byte validation performed.
+- Signed URLs required for viewing.
+- Service role performs authoritative verification.
+
+## Consequences
+
+### Positive
+
+- Prevents cross-user access
+- Prevents path manipulation
+- Prevents spoofed uploads
+- Improves auditability
+
+## Status
+
+Accepted
+
+---
+
+# ADR-023 — Best-Effort Auxiliary Writes
+
+## Context
+
+Verification logs and provider connection records should not prevent successful startup creation.
+
+## Decision
+
+Primary transaction
+
+startup_submissions
+
+Secondary operations
+
+verification_logs
+
+provider_connections
+
+Failures in secondary operations are logged but never roll back successful startup creation.
+
+## Consequences
+
+### Positive
+
+Higher reliability
+
+Improved availability
+
+Resilient architecture
+
+### Tradeoff
+
+Background inconsistencies may require later reconciliation.
+
+## Status
+
+Accepted
+
+---
+
+# ADR-024 — Centralized Logging Architecture
+
+## Context
+
+Direct console logging created inconsistent observability.
+
+## Decision
+
+Introduce centralized logger abstraction.
+
+All business logic logs must use logger.ts.
+
+Log events are standardized.
+
+Structured metadata is attached automatically.
+
+Logging provider is abstracted for future migration to Sentry/Axiom/BetterStack.
+
+## Consequences
+
+### Positive
+
+Consistent logs
+
+Easy provider replacement
+
+Improved observability
+
+### Operational Principle
+
+Logging is an observational concern rather than a business concern.
+
+Business transactions must not fail solely because logging fails.
+
+Logging failures should be isolated, reported, and handled independently unless regulatory, compliance, or audit requirements explicitly require logging to succeed before a transaction is considered complete.
+
+This principle ensures that observability never reduces platform availability while preserving the integrity of core business operations.
+
+## Status
+
+Accepted
+
+---
+
 # Chapter 22 — Product Roadmap
 
 The Product Roadmap defines the long-term direction of Verifii and outlines the major phases planned for the platform's evolution.
@@ -5351,7 +5641,7 @@ Detailed development tasks, priorities, and timelines are maintained separately 
 
 ---
 
-# 22.1 Roadmap Philosophy
+## 22.1 Roadmap Philosophy
 
 Verifii is developed incrementally through clearly defined phases.
 
@@ -5369,7 +5659,7 @@ Every new capability should strengthen the platform's core mission of trustworth
 
 ---
 
-# 22.2 Current Platform Status
+## 22.2 Current Platform Status
 
 At the time of writing, Verifii has completed its foundational platform architecture.
 
@@ -5394,7 +5684,7 @@ The platform is now positioned to transition from infrastructure development tow
 
 ---
 
-# 22.3 Development Phases
+## 22.3 Development Phases
 
 The Verifii roadmap is organized into sequential development phases.
 
@@ -5484,7 +5774,7 @@ Primary objectives:
 
 ---
 
-# 22.4 Long-Term Vision
+## 22.4 Long-Term Vision
 
 The long-term vision for Verifii extends beyond revenue verification.
 
@@ -5494,7 +5784,7 @@ Future platform capabilities will continue supporting this mission while expandi
 
 ---
 
-# 22.5 Relationship to the Implementation Plan
+## 22.5 Relationship to the Implementation Plan
 
 This handbook intentionally avoids documenting detailed engineering tasks.
 
@@ -5510,7 +5800,7 @@ Whenever roadmap priorities change, the Implementation Plan should be updated ac
 
 ---
 
-# 22.6 Maintaining the Handbook
+## 22.6 Maintaining the Handbook
 
 The Engineering Handbook is a living document.
 
@@ -5522,7 +5812,7 @@ Major architectural decisions should also be recorded through new Architecture D
 
 ---
 
-# 22.7 Closing Notes
+## 22.7 Closing Notes
 
 The purpose of this handbook is not simply to document Verifii as it exists today.
 
@@ -5576,6 +5866,57 @@ React Server Components are the primary mechanism for data fetching, minimizing 
 
 ## Explicit Architectural Boundaries
 Every subsystem has clearly defined responsibilities. Engines do not format strings, Presenters do not calculate MRR, and Widgets do not call provider APIs.
+
+## Public API Design Principles
+
+Public APIs must expose only the minimum data required to fulfill their intended public purpose.
+
+Internal ownership identifiers, authentication identifiers, provider identifiers, implementation-specific identifiers, and any other non-public internal references must never be exposed unless they are explicitly part of the public API contract.
+
+Not every database identifier is inherently sensitive. Public identifiers may be exposed when they are intentionally designed as stable public references. However, implementation-specific identifiers must remain internal to the backend.
+
+Whenever possible, public routing should rely on stable public identifiers such as slugs rather than internal implementation details.
+
+When designing or modifying any public API, engineers should follow the principle of least exposure:
+
+• expose only what is required for presentation;
+• avoid leaking internal implementation details;
+• keep authentication and ownership concerns entirely server-side;
+• treat public API contracts as long-term interfaces.
+
+These principles apply to REST APIs, Server Components, Route Handlers, Server Actions, and any future public interfaces.
+
+### Explicit Query Projections
+
+Production database queries must explicitly select only the fields required for their intended purpose.
+
+Public-facing routes, APIs, Server Components, Route Handlers, and Server Actions must always use explicit column projections. Wildcard projections (select("*")) are prohibited unless a documented architectural exception has been reviewed and approved.
+
+Internal tooling, administrative utilities, migration scripts, debugging utilities, or one-time maintenance tasks may use wildcard projections only when their usage is intentional, documented, and does not increase the public attack surface.
+
+The objective is not only performance, but architectural clarity.
+
+Explicit projections:
+
+• reduce unnecessary data loading from the database
+• minimize memory overhead in Node.js
+• strictly define the precise data contract of the function
+• prevent newly added internal database columns from accidentally leaking into public API responses
+• make component data dependencies obvious and auditable
+
+Whenever a production query is modified, engineers should review whether its projection still represents the minimum data required for the consuming component.
+
+The principle of least data exposure applies equally to reads and writes and should remain consistent with Verifii's Server-First Architecture, Revenue Aggregation Single Source of Truth, and Public API Design Principles.
+
+## Server-Owned Authorization State
+
+- **Authorization decisions are computed only on the server.**
+- **Client Components receive authorization capabilities, never ownership identifiers.**
+- Internal authentication identifiers (like `user_id`) must never cross the Server → Client boundary solely for authorization decisions.
+- Authorization state should be represented as boolean capabilities (e.g., `isOwner`, `isOwnerOrAdmin`, `canEdit`, `canViewProof`).
+- **Benefits:** This reduces information exposure in the HTML payload, simplifies Client Components, removes unnecessary client-side authentication requests (e.g. `supabase.auth.getUser()`), and keeps authorization logic centralized and secure on the server.
+
+*Implementation Note: After adoption of the Server-Owned Authorization model, public profile pages no longer pass internal ownership identifiers into Client Components. Authorization capabilities are computed on the server and explicit database projections ensure only the minimum required data is loaded for rendering.*
 
 ---
 
@@ -5783,7 +6124,7 @@ The project structure is organized around platform domains rather than isolated 
 
 ---
 
-# B.1 Root Directory
+## B.1 Root Directory
 
 The root directory contains project configuration, documentation, and development tooling.
 
@@ -5801,7 +6142,7 @@ The root should remain clean and contain only project-wide resources.
 
 ---
 
-# B.2 Source Directory (`src/`)
+## B.2 Source Directory (`src/`)
 
 The `src/` directory contains the primary application code.
 
@@ -5819,7 +6160,7 @@ This directory represents the core of the Verifii application.
 
 ---
 
-# B.3 Application Layer (`src/app/`)
+## B.3 Application Layer (`src/app/`)
 
 The App Router contains all application routes and server-side functionality.
 
@@ -5836,7 +6177,7 @@ Every route should have a clearly defined responsibility.
 
 ---
 
-# B.4 Components (`src/components/`)
+## B.4 Components (`src/components/`)
 
 The components directory contains reusable user interface components.
 
@@ -5852,7 +6193,7 @@ Components should remain reusable and independent whenever practical.
 
 ---
 
-# B.5 Library (`src/lib/`)
+## B.5 Library (`src/lib/`)
 
 The library directory contains reusable business logic and platform services.
 
@@ -5871,7 +6212,7 @@ Business logic belongs here rather than inside page components.
 
 ---
 
-# B.6 API Routes
+## B.6 API Routes
 
 API routes expose secure backend functionality.
 
@@ -5894,7 +6235,7 @@ Every API route should perform:
 
 ---
 
-# B.7 Database
+## B.7 Database
 
 Database resources include:
 
@@ -5908,7 +6249,7 @@ Database changes should always be performed through migrations.
 
 ---
 
-# B.8 Public Assets
+## B.8 Public Assets
 
 The public directory stores static assets such as:
 
@@ -5922,7 +6263,7 @@ Sensitive information must never be stored here.
 
 ---
 
-# B.9 Documentation
+## B.9 Documentation
 
 Documentation includes:
 
@@ -5936,7 +6277,7 @@ Documentation should evolve alongside the platform.
 
 ---
 
-# B.10 Configuration
+## B.10 Configuration
 
 Configuration files define project-wide behavior.
 
@@ -5953,7 +6294,7 @@ Configuration should remain centralized whenever possible.
 
 ---
 
-# B.11 Folder Organization Principles
+## B.11 Folder Organization Principles
 
 The project follows several organizational principles.
 
@@ -5985,7 +6326,7 @@ Folder names should clearly communicate their purpose.
 
 ---
 
-# B.12 Current Project Organization
+## B.12 Current Project Organization
 
 At the time of writing, the Verifii project is organized around the following major areas:
 
@@ -6012,7 +6353,7 @@ As Verifii evolves, new technologies may be introduced while maintaining the arc
 
 ---
 
-# C.1 Technology Philosophy
+## C.1 Technology Philosophy
 
 Verifii follows several guiding principles when selecting technologies.
 
@@ -6026,7 +6367,7 @@ Technology decisions should support the product rather than define it.
 
 ---
 
-# C.2 Frontend
+## C.2 Frontend
 
 ### Next.js
 
@@ -6098,7 +6439,7 @@ Provides accessible, customizable components without locking the project into a 
 
 ---
 
-# C.3 Backend
+## C.3 Backend
 
 ### Next.js Server Components
 
@@ -6127,7 +6468,7 @@ Provides a unified development experience while simplifying deployment.
 
 ---
 
-# C.4 Database
+## C.4 Database
 
 ### Supabase PostgreSQL
 
@@ -6175,7 +6516,7 @@ Examples include:
 
 ---
 
-# C.5 Authentication
+## C.5 Authentication
 
 ### Supabase Auth
 
@@ -6191,7 +6532,7 @@ Provides secure authentication while integrating directly with the platform data
 
 ---
 
-# C.6 Payment Providers
+## C.6 Payment Providers
 
 ### Razorpay
 
@@ -6227,7 +6568,7 @@ Provides global payment support for international founders.
 
 ---
 
-# C.7 Email Services
+## C.7 Email Services
 
 ### Resend
 
@@ -6247,7 +6588,7 @@ Simple API with reliable delivery and excellent developer experience.
 
 ---
 
-# C.8 Hosting & Infrastructure
+## C.8 Hosting & Infrastructure
 
 ### Vercel
 
@@ -6263,7 +6604,7 @@ Provides seamless deployment for Next.js applications with integrated infrastruc
 
 ---
 
-# C.9 Development Tools
+## C.9 Development Tools
 
 Development is supported through modern engineering tools.
 
@@ -6280,7 +6621,7 @@ These tools improve consistency, collaboration, and code quality.
 
 ---
 
-# C.10 AI-Assisted Development
+## C.10 AI-Assisted Development
 
 Verifii incorporates AI-assisted development to improve engineering productivity.
 
@@ -6303,7 +6644,7 @@ Every AI-generated contribution must be reviewed, understood, tested, and valida
 
 ---
 
-# C.11 Technology Selection Principles
+## C.11 Technology Selection Principles
 
 When introducing new technologies, contributors should evaluate:
 
@@ -6319,7 +6660,7 @@ Technologies should be introduced only when they provide meaningful value to the
 
 ---
 
-# C.12 Current Technology Stack
+## C.12 Current Technology Stack
 
 At the time of writing, Verifii is built using:
 
@@ -6397,7 +6738,7 @@ Each external dependency should have a clearly defined purpose, limited scope, a
 
 ---
 
-# D.1 External Service Philosophy
+## D.1 External Service Philosophy
 
 Verifii follows several principles when integrating external services.
 
@@ -6411,7 +6752,7 @@ Every external dependency should provide measurable value to the platform.
 
 ---
 
-# D.2 Supabase
+## D.2 Supabase
 
 Category
 
@@ -6432,7 +6773,7 @@ Supabase provides a modern backend platform built on PostgreSQL while significan
 
 ---
 
-# D.3 Vercel
+## D.3 Vercel
 
 Category
 
@@ -6452,7 +6793,7 @@ Vercel provides seamless deployment and infrastructure optimized for Next.js app
 
 ---
 
-# D.4 Razorpay
+## D.4 Razorpay
 
 Category
 
@@ -6470,7 +6811,7 @@ Razorpay is the primary payment provider for Verifii and aligns with the platfor
 
 ---
 
-# D.5 Stripe
+## D.5 Stripe
 
 Category
 
@@ -6490,7 +6831,7 @@ Although fully supported, Stripe currently serves as the secondary provider with
 
 ---
 
-# D.6 Resend
+## D.6 Resend
 
 Category
 
@@ -6509,7 +6850,7 @@ Resend provides reliable email delivery with a simple developer experience.
 
 ---
 
-# D.7 GitHub
+## D.7 GitHub
 
 Category
 
@@ -6529,7 +6870,7 @@ GitHub serves as the central repository for Verifii's source code and developmen
 
 ---
 
-# D.8 AI Development Tools
+## D.8 AI Development Tools
 
 Verifii incorporates several AI-assisted development tools.
 
@@ -6580,7 +6921,7 @@ AI tools assist engineering workflows but never replace human review, testing, o
 
 ---
 
-# D.9 Domain & DNS
+## D.9 Domain & DNS
 
 Responsibilities
 
@@ -6593,7 +6934,7 @@ Domains should always use secure HTTPS connections.
 
 ---
 
-# D.10 Analytics (Future)
+## D.10 Analytics (Future)
 
 Planned Responsibilities
 
@@ -6606,7 +6947,7 @@ Analytics should respect user privacy while providing actionable product insight
 
 ---
 
-# D.11 Monitoring (Future)
+## D.11 Monitoring (Future)
 
 Planned Responsibilities
 
@@ -6619,7 +6960,7 @@ Monitoring services should provide early visibility into production issues befor
 
 ---
 
-# D.12 Integration Principles
+## D.12 Integration Principles
 
 Every external integration should follow these engineering principles.
 
@@ -6647,7 +6988,7 @@ Where practical, integrations should be designed so providers can be replaced wi
 
 ---
 
-# D.13 Current External Services
+## D.13 Current External Services
 
 At the time of writing, Verifii integrates with:
 
@@ -6693,7 +7034,7 @@ Command syntax may evolve over time as the platform grows.
 
 ---
 
-# E.1 Installing Dependencies
+## E.1 Installing Dependencies
 
 Install project dependencies.
 
@@ -6703,7 +7044,7 @@ npm install
 
 ---
 
-# E.2 Start Development Server
+## E.2 Start Development Server
 
 Run the local development server.
 
@@ -6719,7 +7060,7 @@ http://localhost:3000
 
 ---
 
-# E.3 Production Build
+## E.3 Production Build
 
 Create a production build.
 
@@ -6731,7 +7072,7 @@ Every feature should successfully build before being committed.
 
 ---
 
-# E.4 Start Production Server
+## E.4 Start Production Server
 
 Run the production build locally.
 
@@ -6741,7 +7082,7 @@ npm run start
 
 ---
 
-# E.5 TypeScript Validation
+## E.5 TypeScript Validation
 
 Run TypeScript compilation without generating output.
 
@@ -6753,7 +7094,7 @@ This command should always succeed before production deployment.
 
 ---
 
-# E.6 Linting
+## E.6 Linting
 
 Run ESLint.
 
@@ -6765,7 +7106,7 @@ Resolve all significant lint issues before merging changes.
 
 ---
 
-# E.7 Git Workflow
+## E.7 Git Workflow
 
 Check repository status.
 
@@ -6829,7 +7170,7 @@ git log --oneline
 
 ---
 
-# E.8 Branch Management
+## E.8 Branch Management
 
 Create a new branch.
 
@@ -6851,7 +7192,7 @@ git branch
 
 ---
 
-# E.9 Restore Changes
+## E.9 Restore Changes
 
 Discard changes to a file.
 
@@ -6867,7 +7208,7 @@ git restore .
 
 ---
 
-# E.10 Database Development
+## E.10 Database Development
 
 Run database migrations according to the project's migration workflow.
 
@@ -6881,7 +7222,7 @@ Database modifications should never be performed directly in production without 
 
 ---
 
-# E.11 Environment Variables
+## E.11 Environment Variables
 
 Environment variables should be stored securely.
 
@@ -6896,7 +7237,7 @@ Secrets must never be committed to version control.
 
 ---
 
-# E.12 Deployment Workflow
+## E.12 Deployment Workflow
 
 Typical deployment process.
 
@@ -6934,7 +7275,7 @@ Production Verification
 
 ---
 
-# E.13 Verification Checklist
+## E.13 Verification Checklist
 
 Before committing code, verify:
 
@@ -6947,7 +7288,7 @@ Before committing code, verify:
 
 ---
 
-# E.14 Common Development Workflow
+## E.14 Common Development Workflow
 
 Recommended engineering workflow.
 
@@ -6985,7 +7326,7 @@ Verification
 
 ---
 
-# E.15 AI-Assisted Development Workflow
+## E.15 AI-Assisted Development Workflow
 
 Verifii incorporates AI into the engineering process.
 
@@ -7032,7 +7373,7 @@ AI-generated code should always be:
 
 ---
 
-# E.16 Troubleshooting
+## E.16 Troubleshooting
 
 If unexpected issues occur:
 
@@ -7049,7 +7390,7 @@ Avoid applying temporary fixes without understanding the underlying issue.
 
 ---
 
-# E.17 Development Principles
+## E.17 Development Principles
 
 During development, contributors should:
 
@@ -7091,7 +7432,7 @@ The objective of this appendix is to preserve the historical evolution of both t
 
 ---
 
-# F.1 Revision Policy
+## F.1 Revision Policy
 
 A revision entry should be created when any of the following occurs:
 
@@ -7106,7 +7447,7 @@ Routine implementation work should not require a handbook revision.
 
 ---
 
-# F.2 Versioning Strategy
+## F.2 Versioning Strategy
 
 The handbook follows semantic-style versioning.
 
@@ -7143,7 +7484,7 @@ Examples:
 
 ---
 
-# F.3 Revision Log
+## F.3 Revision Log
 
 | Version | Date | Summary | Author |
 |----------|------|---------|--------|
@@ -7152,7 +7493,7 @@ Examples:
 
 ---
 
-# F.4 Platform Milestones
+## F.4 Platform Milestones
 
 Major platform milestones should also be recorded.
 
@@ -7170,7 +7511,7 @@ This timeline provides historical context for future contributors.
 
 ---
 
-# F.5 Architecture Milestones
+## F.5 Architecture Milestones
 
 Record important architectural changes that affect multiple systems.
 
@@ -7191,7 +7532,7 @@ Each milestone should reference the corresponding Architecture Decision Record (
 
 ---
 
-# F.6 Roadmap Milestones
+## F.6 Roadmap Milestones
 
 Major product phases should be recorded as they are completed.
 
@@ -7209,7 +7550,7 @@ This provides a concise history of the platform's overall progress.
 
 ---
 
-# F.7 Documentation Maintenance
+## F.7 Documentation Maintenance
 
 The handbook should be reviewed whenever:
 
@@ -7223,7 +7564,7 @@ Documentation should evolve alongside the platform rather than being updated onl
 
 ---
 
-# F.8 Maintaining Historical Accuracy
+## F.8 Maintaining Historical Accuracy
 
 Historical revision entries should never be deleted.
 
@@ -7238,11 +7579,11 @@ Maintaining historical context is as important as documenting the current archit
 
 ---
 
-# F.9 Current Revision Status
+## F.9 Current Revision Status
 
 At the time of writing:
 
-- Handbook Version: **1.0**
+- Handbook Version: **2.0**
 - Status: **Active**
 - Product Phase: **Phase 1 Complete**
 - Next Scheduled Review: **After Phase 2 Completion**

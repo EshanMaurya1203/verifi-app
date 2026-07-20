@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { supabaseServer } from "@/lib/supabase-server";
 import { isAdmin } from "@/lib/isAdmin";
-import { createClient } from "@supabase/supabase-js";
+import { getAuthenticatedUser } from "@/lib/auth-server";
 
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
@@ -15,18 +15,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { id, action, rejection_reason, confidence_score } = body;
 
-    // Extract auth token from request to verify the caller
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key"
-    );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser(token);
+    const user = await getAuthenticatedUser();
 
     if (!isAdmin(user?.email)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });

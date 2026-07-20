@@ -356,15 +356,15 @@ export default function SubmitPage() {
         return;
       }
 
-      let proof_url: string | null = null;
+      let proof_object_id: string | null = null;
 
       if (proofFile) {
-        const fileExt = proofFile.name.split(".").pop();
-        const fileName = `${Date.now()}.${fileExt}`;
+        const fileId = crypto.randomUUID();
+        const uploadPath = `${authData.user.id}/${fileId}`;
 
         const { error: uploadError } = await supabase.storage
           .from("proofs")
-          .upload(fileName, proofFile);
+          .upload(uploadPath, proofFile);
 
         if (uploadError) {
           console.error("UPLOAD ERROR:", uploadError);
@@ -373,8 +373,7 @@ export default function SubmitPage() {
           return;
         }
 
-        // Store the file name instead of the public URL
-        proof_url = fileName;
+        proof_object_id = fileId;
       }
 
       const confidenceMap: Record<string, number> = {
@@ -399,7 +398,7 @@ export default function SubmitPage() {
         city: form.cityCountry,
         notes: form.notes,
         user_id: authData.user.id,
-        proof_url: proof_url,
+        proof_object_id: proof_object_id,
         confidence_score: confidenceMap[form.verificationType] ?? 0,
         verified_revenue: verifiedRevenue || null,
         verification_source: verifiedRevenue ? form.apiProvider : null,

@@ -54,10 +54,11 @@ const breadcrumbJsonLd = {
   ]
 };
 
+import { StartupSubmissionRow } from "@/lib/dashboard/startup-status";
+
 // Isolated helper for selecting primary startup
 // Note: In the future, this can be expanded to support switching, pinning, or last-viewed startup.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getPrimaryStartup(startups: any[]) {
+function getPrimaryStartup(startups: StartupSubmissionRow[]) {
   return startups?.[0] || null;
 }
 
@@ -84,7 +85,7 @@ export default async function DashboardPage() {
   if (!primaryStartup) {
     content = <EmptyDashboard />;
   } else {
-    const startupSlug = primaryStartup.slug || primaryStartup.id;
+    const startupSlug = String(primaryStartup.slug || primaryStartup.id);
     const status = buildStartupStatus(primaryStartup);
     
     // Unified recommendations pipeline
@@ -124,7 +125,7 @@ export default async function DashboardPage() {
         <DashboardHero
           displayName={displayName}
           userName={userName}
-          startupName={primaryStartup.startup_name}
+          startupName={primaryStartup.startup_name || ""}
           status={status}
           startupSlug={startupSlug}
         />
@@ -149,7 +150,7 @@ export default async function DashboardPage() {
         )}
         <StatusCards
           status={status}
-          trustTier={primaryStartup.trust_tier}
+          trustTier={primaryStartup.trust_tier || null}
         />
         <QuickActions
           startupSlug={startupSlug}

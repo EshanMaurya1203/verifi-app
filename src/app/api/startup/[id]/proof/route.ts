@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { isAdmin } from "@/lib/isAdmin";
+import { getAuthenticatedUser } from "@/lib/auth-server";
 
 export async function GET(
   request: Request,
@@ -14,12 +15,9 @@ export async function GET(
     }
 
     // 1. Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthenticatedUser();
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -46,15 +44,8 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // 4. Parse the file path from the proof_url (in case it's a legacy public URL)
-    let filePath = submission.proof_url;
-    if (filePath.includes("/public/proofs/")) {
-      filePath = filePath.split("/public/proofs/")[1];
-    } else if (filePath.includes("/proofs/")) {
-      // Handle cases where the URL might just have /proofs/ in it
-      const parts = filePath.split("/proofs/");
-      filePath = parts[parts.length - 1];
-    }
+    // 4. Use the canonical proof_url directly
+    const filePath = submission.proof_url;
 
     // 5. Generate the signed URL (valid for 60 seconds)
     const { data, error } = await supabaseServer.storage

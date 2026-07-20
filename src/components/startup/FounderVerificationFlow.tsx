@@ -278,10 +278,10 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
                   <h3 className="text-sm font-bold text-red-400 uppercase tracking-wide">Unable to connect to Razorpay</h3>
                 </div>
                 <div className="text-xs text-red-300/90 leading-relaxed space-y-3">
-                  <p>We couldn't authenticate your Razorpay account.</p>
+                  <p>We couldn&apos;t authenticate your Razorpay account.</p>
                   <p>Before trying again, please verify:</p>
                   <ul className="list-disc pl-4 space-y-1">
-                    <li>You're using Live API Keys</li>
+                    <li>You&apos;re using Live API Keys</li>
                     <li>Your website has been approved by Razorpay</li>
                     <li>Your Key ID and Key Secret belong to the same account</li>
                   </ul>

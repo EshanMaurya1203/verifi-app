@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { AlertCircle, Crown, Clock } from "lucide-react";
 import Link from "next/link";
 
@@ -14,6 +15,12 @@ export function SubscriptionStatusIndicator({
   status,
   trialEnd,
 }: SubscriptionStatusIndicatorProps) {
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
   if (planCode === "viewer") {
     return (
       <Link href="/pricing" className="hidden sm:flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
@@ -32,7 +39,8 @@ export function SubscriptionStatusIndicator({
   }
 
   if (status === "trialing" && trialEnd) {
-    const daysLeft = Math.max(0, Math.ceil((new Date(trialEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    if (now === null) return null;
+    const daysLeft = Math.max(0, Math.ceil((new Date(trialEnd).getTime() - now) / (1000 * 60 * 60 * 24)));
     return (
       <Link href="/dashboard/billing" className="flex items-center gap-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-xs font-bold text-amber-500 transition-colors hover:bg-amber-500/20">
         <Clock className="h-3.5 w-3.5" />

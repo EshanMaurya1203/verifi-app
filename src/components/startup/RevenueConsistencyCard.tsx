@@ -2,8 +2,6 @@
 
 import React from "react";
 import { Fingerprint, ShieldCheck, ShieldAlert, ShieldQuestion, TrendingUp, AlertTriangle, CheckCircle2, Info } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-import { isAdmin } from "@/lib/isAdmin";
 import { formatScore } from "@/lib/formatters";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -12,7 +10,7 @@ import { VerificationStateResult } from "@/lib/verification-state";
 
 interface RevenueConsistencyCardProps {
   consistency: VerificationStateResult | null | undefined;
-  ownerId?: string;
+  isOwnerOrAdmin?: boolean;
   isDemo?: boolean;
 }
 
@@ -69,22 +67,7 @@ const FLAG_COLORS = {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ consistency, ownerId, isDemo = false }) => {
-  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = React.useState(false);
-
-  React.useEffect(() => {
-    const checkOwner = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        const isOwner = data.user.id === ownerId;
-        const admin = isAdmin(data.user.email);
-        setIsOwnerOrAdmin(!!(isOwner || admin));
-      }
-    };
-    if (ownerId) {
-      checkOwner();
-    }
-  }, [ownerId]);
+export const RevenueConsistencyCard: React.FC<RevenueConsistencyCardProps> = ({ consistency, isOwnerOrAdmin = false, isDemo = false }) => {
 
   if (!consistency || consistency.confidenceTier === "SELF_REPORTED") {
     return (

@@ -37,7 +37,7 @@ export function ActivityTimeline({
   const groups = groupEventsByDate(displayEvents);
 
   return (
-    <div>
+    <div className="activity-timeline">
       {groups.map((group) => (
         <TimelineDateSection
           key={group.dateKey}

@@ -1,4 +1,6 @@
 import type { TimelineEvent } from "./timeline-types";
+import { VERIFIED_STATUSES } from "./constants";
+import type { StartupSubmissionRow } from "./startup-status";
 
 /**
  * Timeline Engine
@@ -10,8 +12,7 @@ import type { TimelineEvent } from "./timeline-types";
  * This is the single place to add new event detection logic.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type StartupData = Record<string, any>;
+type StartupData = Partial<StartupSubmissionRow>;
 
 /**
  * Generate a deterministic event ID from eventType and timestamp.
@@ -34,7 +35,7 @@ function makeEventId(eventType: string, timestamp: string): string {
  * Each event is derived from observable startup fields — no hardcoded JSX,
  * no presentation wording. Returns events sorted newest-first.
  */
-export function buildTimelineEvents(startup: StartupData): TimelineEvent[] {
+export function buildTimelineEvents(startup: StartupData | null | undefined): TimelineEvent[] {
   if (!startup) return [];
 
   const events: TimelineEvent[] = [];
@@ -51,42 +52,28 @@ export function buildTimelineEvents(startup: StartupData): TimelineEvent[] {
 
   // ── Provider: payment connected ─────────────────────────────────────────
   if (startup.payment_connected) {
-    // Use created_at as fallback since we don't track connection timestamp
-    // on the startup_submissions table. Future: use provider_connections.created_at
-    const connectedAt = startup.connected_at || startup.created_at;
-    if (connectedAt) {
+    if (startup.connected_at) {
       events.push({
-        id: makeEventId("provider_connected", connectedAt),
+        id: makeEventId("provider_connected", startup.connected_at),
         eventType: "provider_connected",
-        timestamp: connectedAt,
+        timestamp: startup.connected_at,
         metadata: { provider: startup.verification_source || "Payment Provider" },
       });
     }
+    // EXCLUDED: If connected_at is missing, we omit the event instead of fabricating a timestamp.
   }
 
   // ── Verification: tier-based events ─────────────────────────────────────
-  const verifiedStatuses = [
-    "api_verified",
-    "stripe_connected",
-    "PAYMENT_CONNECTED",
-    "REVENUE_VERIFIED",
-    "HIGH_CONFIDENCE",
-    "verified",
-    "approved",
-    "identity_verified",
-  ];
-
-  if (verifiedStatuses.includes(startup.verification_status)) {
-    // Derive timestamp: prefer a sync timestamp, fall back to created_at
-    const verifiedAt = startup.last_synced_at || startup.created_at;
-    if (verifiedAt) {
+  if (startup.verification_status && VERIFIED_STATUSES.includes(startup.verification_status)) {
+    if (startup.last_synced_at) {
       events.push({
-        id: makeEventId("sync_success", verifiedAt),
+        id: makeEventId("sync_success", startup.last_synced_at),
         eventType: "sync_success",
-        timestamp: verifiedAt,
+        timestamp: startup.last_synced_at,
         metadata: { verificationStatus: startup.verification_status },
       });
     }
+    // EXCLUDED: If last_synced_at is missing, we omit the event instead of fabricating a timestamp.
   }
 
   // ── Verification: trust tier upgrade ────────────────────────────────────
@@ -95,75 +82,41 @@ export function buildTimelineEvents(startup: StartupData): TimelineEvent[] {
     startup.trust_tier !== "SELF_REPORTED" &&
     startup.trust_tier !== "UNVERIFIED"
   ) {
-    const tierAt = startup.last_synced_at || startup.created_at;
-    if (tierAt) {
+    if (startup.last_synced_at) {
       events.push({
-        id: makeEventId("tier_upgraded", tierAt),
+        id: makeEventId("tier_upgraded", startup.last_synced_at),
         eventType: "tier_upgraded",
-        timestamp: tierAt,
+        timestamp: startup.last_synced_at,
         metadata: { newTier: startup.trust_tier },
       });
     }
+    // EXCLUDED: If last_synced_at is missing, we omit the event instead of fabricating a timestamp.
   }
 
   // ── Publication: startup published ──────────────────────────────────────
   if (startup.is_public) {
-    // Use published_at if available, otherwise fall back to created_at
-    const publishedAt = startup.published_at || startup.created_at;
-    if (publishedAt) {
+    if (startup.published_at) {
       events.push({
-        id: makeEventId("startup_published", publishedAt),
+        id: makeEventId("startup_published", startup.published_at),
         eventType: "startup_published",
-        timestamp: publishedAt,
+        timestamp: startup.published_at,
         metadata: { slug: startup.slug },
       });
     }
+    // EXCLUDED: If published_at is missing, we omit the event instead of fabricating a timestamp.
   }
 
   // ── Revenue: MRR updated ────────────────────────────────────────────────
   if (startup.mrr != null && startup.mrr > 0) {
-    const mrrAt = startup.last_synced_at || startup.created_at;
-    if (mrrAt) {
+    if (startup.last_synced_at) {
       events.push({
-        id: makeEventId("mrr_updated", mrrAt),
+        id: makeEventId("mrr_updated", startup.last_synced_at),
         eventType: "mrr_updated",
-        timestamp: mrrAt,
+        timestamp: startup.last_synced_at,
         metadata: { mrr: startup.mrr },
       });
     }
-  }
-
-  // Sort oldest-first to prepare for staggering
-  const eventPriority: Record<string, number> = {
-    "startup_created": 1,
-    "mrr_updated": 2,
-    "provider_connected": 3,
-    "sync_success": 4,
-    "tier_upgraded": 5,
-    "startup_published": 6,
-  };
-
-  events.sort((a, b) => {
-    const tA = new Date(a.timestamp).getTime();
-    const tB = new Date(b.timestamp).getTime();
-    if (Math.abs(tA - tB) < 60000) {
-      return (eventPriority[a.eventType] || 99) - (eventPriority[b.eventType] || 99);
-    }
-    return tA - tB;
-  });
-
-  // Stagger identical or very close timestamps for realistic UX
-  let lastTime = 0;
-  for (let i = 0; i < events.length; i++) {
-    const t = new Date(events[i].timestamp).getTime();
-    if (i > 0 && Math.abs(t - lastTime) < 60000) {
-      // Add a realistic offset (e.g. 2 hours 15 mins) if events happened "instantly"
-      const newTime = new Date(lastTime + 1000 * 60 * 135); 
-      events[i].timestamp = newTime.toISOString();
-      lastTime = newTime.getTime();
-    } else {
-      lastTime = t;
-    }
+    // EXCLUDED: If last_synced_at is missing, we omit the event instead of fabricating a timestamp.
   }
 
   // Sort newest-first for final presentation

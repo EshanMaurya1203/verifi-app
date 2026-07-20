@@ -13,7 +13,7 @@ interface RevenueDashboardProps {
 
 export function RevenueDashboard({ viewModel }: RevenueDashboardProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" role="region" aria-label="Revenue Dashboard">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MRRWidget 
           formattedMRR={viewModel.heroMetrics.formattedMRR}
@@ -34,7 +34,7 @@ export function RevenueDashboard({ viewModel }: RevenueDashboardProps) {
         />
       </div>
 
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden" role="region" aria-label="Revenue Trend Chart">
         <div className="px-5 py-4 border-b border-border">
           <h3 className="text-base font-semibold tracking-tight">Revenue Trend</h3>
         </div>

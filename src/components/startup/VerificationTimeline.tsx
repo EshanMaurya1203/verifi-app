@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { 
   Link, 
   Award, 
@@ -10,8 +10,6 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { supabase } from "@/lib/supabase";
-import { isAdmin } from "@/lib/isAdmin";
 
 export interface VerificationLog {
   id: string;
@@ -22,7 +20,7 @@ export interface VerificationLog {
 
 interface VerificationTimelineProps {
   logs: VerificationLog[];
-  ownerId?: string;
+  isOwnerOrAdmin?: boolean;
 }
 
 const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string; description: (meta: Record<string, any>) => string }> = {
@@ -76,22 +74,7 @@ const EVENT_CONFIG: Record<string, { label: string; icon: React.ElementType; col
   }
 };
 
-export const VerificationTimeline = ({ logs, ownerId }: VerificationTimelineProps) => {
-  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = useState(false);
-
-  useEffect(() => {
-    const checkOwner = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        const isOwner = data.user.id === ownerId;
-        const admin = isAdmin(data.user.email);
-        setIsOwnerOrAdmin(!!(isOwner || admin));
-      }
-    };
-    if (ownerId) {
-      checkOwner();
-    }
-  }, [ownerId]);
+export const VerificationTimeline = ({ logs, isOwnerOrAdmin = false }: VerificationTimelineProps) => {
 
   const sanitizedLogs = useMemo(() => {
     const raw = isOwnerOrAdmin ? logs : logs.map((log) => {

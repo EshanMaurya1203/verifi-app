@@ -25,7 +25,7 @@ export function TimelineEventCard({ event, isLast = false }: TimelineEventCardPr
   const IconComponent = categoryConfig.icon;
 
   return (
-    <div className="relative flex gap-3 pb-4 last:pb-0">
+    <div role="listitem" className="relative flex gap-3 pb-4 last:pb-0">
       {/* Vertical connector line */}
       {!isLast && (
         <div className="absolute left-[15px] top-[30px] bottom-0 w-px bg-border" />

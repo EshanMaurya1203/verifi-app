@@ -1,5 +1,9 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type RevenueSnapshotRow = any;
+export interface RevenueSnapshotRow {
+  snapshot_date?: string | Date;
+  created_at: string | Date;
+  total_revenue?: number;
+  provider_breakdown?: Record<string, number>;
+}
 
 export interface RevenueAnalyticsSnapshot {
   mrr: number;
@@ -37,7 +41,7 @@ export function buildRevenueSnapshot(
   const latestSnapshot = hasData ? historyRows[historyRows.length - 1] : null;
   const providerBreakdown: Record<string, number> = latestSnapshot?.provider_breakdown || {};
   
-  const hasMultipleProviders = Object.keys(providerBreakdown).length > 1;
+  const hasMultipleProviders = Boolean(providerBreakdown && Object.keys(providerBreakdown).length > 1);
 
   return {
     mrr: metrics.mrr || 0,

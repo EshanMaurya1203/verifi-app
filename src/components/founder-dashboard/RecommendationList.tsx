@@ -18,7 +18,7 @@ export function RecommendationList({ primaryRecommendation, secondaryRecommendat
         </div>
         <h4 className="font-syne font-bold text-foreground mb-1">All caught up!</h4>
         <p className="text-sm text-muted-foreground max-w-sm">
-          You've completed all current recommendations. Keep up the great work!
+          You&apos;ve completed all current recommendations. Keep up the great work!
         </p>
       </div>
     );

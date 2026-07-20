@@ -3,6 +3,8 @@ import { calculateVerificationScore } from "@/lib/verification";
 import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 import { supabaseServer } from "@/lib/supabase-server";
 import { detectFraud } from "@/lib/fraud";
+import { logger, LogEvent } from "@/lib/logger";
+import { PostgresError } from "@/types/postgres";
 
 type StartupSubmissionPayload = {
   name: string;
@@ -19,7 +21,7 @@ type StartupSubmissionPayload = {
   notes?: string;
   user_id: string;
   verification_type?: string;
-  proof_url?: string | null;
+  proof_object_id?: string | null;
   confidence_score?: number;
   verified_revenue?: number | null;
   verification_source?: string | null;
@@ -101,6 +103,14 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
 
 import { getAuthenticatedUser } from "@/lib/auth-server";
 
+async function findExistingActiveStartup(userId: string, startupName: string) {
+  const { data } = await supabaseServer
+    .rpc("find_active_startup", { p_user_id: userId, p_startup_name: startupName })
+    .select("*")
+    .maybeSingle();
+  return data as any;
+}
+
 export async function POST(req: Request) {
   try {
     const identifier = getClientIdentifier(req);
@@ -141,6 +151,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const normalizedStartupName = data.startup_name.trim();
+
 
 
     const mrrValue = typeof data.mrr === "number" ? data.mrr : Number(data.mrr.trim());
@@ -156,11 +168,60 @@ export async function POST(req: Request) {
 
     const confidenceScore = calculateVerificationScore(data);
 
+    let canonical_proof_url: string | null = null;
+
+    if (data.proof_object_id) {
+      // 1. Verify existence using .list() scoped to the authenticated user's namespace
+      const { data: files, error: listError } = await supabaseServer.storage
+        .from('proofs')
+        .list(user.id, { search: data.proof_object_id });
+
+      if (listError || !files || files.length === 0) {
+        return NextResponse.json({ success: false, error: "Uploaded proof file not found" }, { status: 400 });
+      }
+
+      // Ensure exact match in the returned files
+      const fileMetadata = files.find(f => f.name === data.proof_object_id);
+      if (!fileMetadata) {
+        return NextResponse.json({ success: false, error: "Uploaded proof file not found" }, { status: 400 });
+      }
+
+      // 2. Validate Size (Max 5MB)
+      const size = fileMetadata.metadata?.size;
+      if (typeof size !== "number" || size > 5 * 1024 * 1024) {
+        return NextResponse.json({ success: false, error: "Invalid or oversized proof file (max 5MB limit)" }, { status: 400 });
+      }
+
+      // 3. Download object to perform magic-byte validation
+      const { data: fileBlob, error: downloadError } = await supabaseServer.storage
+        .from('proofs')
+        .download(`${user.id}/${fileMetadata.name}`);
+      
+      if (downloadError || !fileBlob) {
+        return NextResponse.json({ success: false, error: "Could not validate proof file contents" }, { status: 400 });
+      }
+
+      // 4. Magic-byte / MIME validation
+      const arrayBuffer = await fileBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
+      
+      const isPNG = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
+      const isJPEG = bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF;
+      const isWEBP = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46; // RIFF
+      
+      if (!isPNG && !isJPEG && !isWEBP) {
+        return NextResponse.json({ success: false, error: "Invalid file type. Only PNG, JPEG, and WEBP are allowed." }, { status: 400 });
+      }
+
+      // 5. Save the exact canonical object key returned by Storage
+      canonical_proof_url = `${user.id}/${fileMetadata.name}`;
+    }
+
     let verification_status = "syncing";
 
     if (data.verified_revenue) {
       verification_status = "api_verified";
-    } else if (data.proof_url) {
+    } else if (canonical_proof_url) {
       verification_status = "proof_submitted";
     }
 
@@ -168,7 +229,7 @@ export async function POST(req: Request) {
 
     if (data.verified_revenue) {
       verification_label = "API Verified";
-    } else if (data.proof_url) {
+    } else if (canonical_proof_url) {
       verification_label = "Proof Verified";
     }
 
@@ -189,7 +250,7 @@ export async function POST(req: Request) {
       trust_score += 50;
     }
 
-    if (data.proof_url) {
+    if (canonical_proof_url) {
       trust_score += 20;
     }
 
@@ -223,7 +284,7 @@ export async function POST(req: Request) {
 
     const trust_breakdown = {
       api_verified: !!data.verified_revenue,
-      proof_uploaded: !!data.proof_url,
+      proof_uploaded: !!canonical_proof_url,
       has_website: !!data.website,
       has_socials: !!(data.twitter || data.linkedin),
       complete_profile: !!(data.startup_name && data.city),
@@ -239,7 +300,7 @@ export async function POST(req: Request) {
 
     if (data.verified_revenue) {
       trust_summary.push("Revenue verified via API");
-    } else if (data.proof_url) {
+    } else if (canonical_proof_url) {
       trust_summary.push("Revenue supported by proof");
     }
 
@@ -259,7 +320,19 @@ export async function POST(req: Request) {
       trust_summary.push("Potential risk signals detected");
     }
 
-    const baseSlug = slugify(data.startup_name.trim());
+    const existingBeforeInsert = await findExistingActiveStartup(data.user_id, normalizedStartupName);
+
+    if (existingBeforeInsert) {
+      return NextResponse.json({
+        success: true,
+        deduplicated: true,
+        startup_id: existingBeforeInsert.id,
+        slug: existingBeforeInsert.slug,
+        data: [existingBeforeInsert]
+      });
+    }
+
+    const baseSlug = slugify(normalizedStartupName);
     let slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 10000)}`;
     let insertedData: { id: number; slug: string | null }[] | null = null;
     let insertError: { message: string; code?: string } | null = null;
@@ -271,7 +344,7 @@ export async function POST(req: Request) {
           {
             name: data.name.trim(),
             email: data.email.trim().toLowerCase(),
-            startup_name: data.startup_name.trim(),
+            startup_name: normalizedStartupName,
             website: data.website?.trim() || null,
             biz_type: data.biz_type.trim(),
             mrr: mrrValue,
@@ -282,7 +355,8 @@ export async function POST(req: Request) {
             city: data.city.trim(),
             notes: data.notes?.trim() || null,
             user_id: data.user_id,
-            proof_url: data.proof_url || null,
+            proof_url: canonical_proof_url,
+            verification_type: validVerificationType,
             confidence: confidenceScore,
             verification_status,
             verified_revenue: data.verified_revenue || null,
@@ -303,15 +377,52 @@ export async function POST(req: Request) {
       }
 
       insertError = error;
-      if (error?.code === "23505") {
-        slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 100000)}`;
-        continue;
+      const pgError = error as PostgresError;
+      if (pgError?.code === "23505") {
+        logger.warn("Duplicate startup submission", {
+          event: LogEvent.STARTUP_DUPLICATE_SUBMISSION,
+          userId: data.user_id,
+          startupName: normalizedStartupName,
+          code: pgError.code,
+          constraint: pgError.constraint,
+          message: pgError.message,
+        });
+
+        const constraint = pgError.constraint;
+        
+        if (constraint === "idx_unique_active_startup_per_user") {
+          const existing = await findExistingActiveStartup(data.user_id, normalizedStartupName);
+
+          if (existing) {
+            return NextResponse.json({
+              success: true,
+              deduplicated: true,
+              startup_id: existing.id,
+              slug: existing.slug,
+              data: [existing],
+            });
+          }
+          break;
+        }
+
+        if (constraint === "startup_submissions_slug_key") {
+          slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 100000)}`;
+          continue;
+        }
+
+        break;
       }
       break;
     }
 
     if (insertError || !insertedData?.length) {
-      console.error("SUPABASE ERROR:", insertError);
+      logger.error("Failed to insert startup submission", {
+        event: LogEvent.STARTUP_SUBMISSION_FAILURE,
+        userId: data.user_id,
+        startupName: normalizedStartupName,
+        error: insertError?.message,
+        code: (insertError as PostgresError)?.code,
+      });
       return NextResponse.json(
         {
           success: false,
@@ -326,37 +437,75 @@ export async function POST(req: Request) {
 
     // Log Listing Created
     if (startupId) {
-      await supabaseServer.from("verification_logs").insert({
-        startup_id: startupId,
-        event: "listing_created",
-        metadata: { name: data.startup_name }
-      });
+      try {
+        const { error: logError } = await supabaseServer.from("verification_logs").insert({
+          startup_id: startupId,
+          event: "listing_created",
+          metadata: { name: normalizedStartupName }
+        });
+        if (logError) {
+          logger.warn("Failed to insert verification log", {
+            event: LogEvent.VERIFICATION_LOG_FAILURE,
+            startupId,
+            userId: data.user_id,
+            error: logError.message,
+            code: logError.code,
+          });
+        }
+      } catch (err) {
+        logger.warn("Exception while inserting verification log", {
+          event: LogEvent.VERIFICATION_LOG_EXCEPTION,
+          startupId,
+          userId: data.user_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // Save provider connection if verified
     if (startupId && data.verified_revenue && data.verification_source && data.verified_api_key) {
-      const { encrypt } = await import("@/lib/encryption");
-      let accountId = data.verified_api_key;
-      let encryptedCredential = encrypt(data.verified_api_key);
+      try {
+        const { encrypt } = await import("@/lib/encryption");
+        let accountId = data.verified_api_key;
+        let encryptedCredential = encrypt(data.verified_api_key);
 
-      if (data.verification_source === "razorpay" && data.verified_api_key.includes(":")) {
-        const [keyId, keySecret] = data.verified_api_key.split(":");
-        accountId = keyId;
-        encryptedCredential = encrypt(keySecret);
-      }
+        if (data.verification_source === "razorpay" && data.verified_api_key.includes(":")) {
+          const [keyId, keySecret] = data.verified_api_key.split(":");
+          accountId = keyId;
+          encryptedCredential = encrypt(keySecret);
+        }
 
-      await supabaseServer.from("provider_connections").upsert(
-        {
-          startup_id: startupId,
+        const { error: providerError } = await supabaseServer.from("provider_connections").upsert(
+          {
+            startup_id: startupId,
+            provider: data.verification_source,
+            account_id: accountId,
+            api_key_encrypted: encryptedCredential,
+            status: "connected",
+            latest_revenue: Number(data.verified_revenue),
+            last_synced_at: new Date().toISOString(),
+          },
+          { onConflict: "startup_id,provider" }
+        );
+        if (providerError) {
+          logger.warn("Failed to upsert provider connection", {
+            event: LogEvent.PROVIDER_CONNECTION_FAILURE,
+            startupId,
+            userId: data.user_id,
+            provider: data.verification_source,
+            error: providerError.message,
+            code: providerError.code,
+          });
+        }
+      } catch (err) {
+        logger.warn("Exception while upserting provider connection", {
+          event: LogEvent.PROVIDER_CONNECTION_EXCEPTION,
+          startupId,
+          userId: data.user_id,
           provider: data.verification_source,
-          account_id: accountId,
-          api_key_encrypted: encryptedCredential,
-          status: "connected",
-          latest_revenue: Number(data.verified_revenue),
-          last_synced_at: new Date().toISOString(),
-        },
-        { onConflict: "startup_id,provider" }
-      );
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const { count, error: countError } = await supabaseServer
@@ -364,7 +513,10 @@ export async function POST(req: Request) {
       .select("*", { count: "exact", head: true });
 
     if (countError) {
-      console.error("startup submission count error", countError.message);
+      logger.warn("startup submission count error", {
+        event: LogEvent.SUBMISSION_COUNT_ERROR,
+        error: countError.message,
+      });
     }
 
     const slotNumber = typeof count === "number" ? count : null;
@@ -376,7 +528,10 @@ export async function POST(req: Request) {
       data: insertedData,
     });
   } catch (error) {
-    console.error("API ERROR:", error);
+    logger.error("API Error during submission", {
+      event: LogEvent.API_SUBMISSION_ERROR,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { success: false, error: "Invalid request body" },
       { status: 400 }
@@ -385,7 +540,7 @@ export async function POST(req: Request) {
 }
 
 const PUBLIC_STARTUP_FIELDS =
-  "id, slug, startup_name, biz_type, mrr, arr, city, website, twitter, linkedin, trust_score, verification_status, payment_connected, mrr_breakdown, created_at, user_id";
+  "id, slug, startup_name, biz_type, mrr, arr, city, website, twitter, linkedin, trust_score, verification_status, payment_connected, mrr_breakdown, created_at";
 
 export async function GET(req: Request) {
   const identifier = getClientIdentifier(req);
@@ -401,7 +556,10 @@ export async function GET(req: Request) {
       .order("trust_score", { ascending: false });
 
     if (error) {
-      console.error("startup submissions fetch error", error.message);
+      logger.error("startup submissions fetch error", {
+        event: LogEvent.SUBMISSIONS_FETCH_ERROR,
+        error: error.message,
+      });
       return NextResponse.json(
         { success: false, error: "Unable to fetch submissions" },
         { status: 500 }
@@ -416,7 +574,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data: publicData });
   } catch (error) {
-    console.error("startup submissions GET error", error);
+    logger.error("startup submissions GET exception", {
+      event: LogEvent.SUBMISSIONS_GET_EXCEPTION,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 }

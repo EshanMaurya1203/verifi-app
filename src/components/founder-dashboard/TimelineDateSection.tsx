@@ -15,22 +15,23 @@ interface TimelineDateSectionProps {
 
 export function TimelineDateSection({ label, events }: TimelineDateSectionProps) {
   return (
-    <div className="mb-6 last:mb-0">
+    <section className="mb-6 last:mb-0" aria-label={label}>
       {/* Date header */}
       <h3 className="font-syne text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
         {label}
       </h3>
 
       {/* Events list */}
-      <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <ul className="rounded-xl border border-border bg-card px-4 py-3 list-none m-0">
         {events.map((event, index) => (
-          <TimelineEventCard
-            key={event.id}
-            event={event}
-            isLast={index === events.length - 1}
-          />
+          <li key={event.id}>
+            <TimelineEventCard
+              event={event}
+              isLast={index === events.length - 1}
+            />
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </section>
   );
 }

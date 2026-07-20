@@ -2,6 +2,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { safeSupabaseQuery } from "@/lib/safe-network";
 import { Navbar } from "@/components/layout/Navbar";
 import { getAuthenticatedUser } from "@/lib/auth-server";
+import { isAdmin } from "@/lib/isAdmin";
 import { ShieldCheck, ShieldAlert, Share2, Globe, CalendarDays, ExternalLink, Award, CheckCircle2, AlertTriangle, Link, ScanSearch, Clock, TrendingUp, History, Fingerprint } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { RevenueConsistencyCard } from "@/components/startup/RevenueConsistencyCard";
@@ -112,7 +113,28 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   const { data: startup, error, ok } = await safeSupabaseQuery<any>(
     supabaseServer
       .from("startup_submissions")
-      .select("*")
+      .select(`
+        id,
+        slug,
+        startup_name,
+        name,
+        biz_type,
+        mrr,
+        mrr_breakdown,
+        city,
+        website,
+        twitter,
+        linkedin,
+        founder_bio,
+        startup_logo,
+        founder_avatar,
+        notes,
+        user_id,
+        is_public,
+        penalty_count,
+        verification_type,
+        proof_url
+      `)
       .eq("slug", slug)
       .maybeSingle()
   );
@@ -160,7 +182,12 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     safeSupabaseQuery<any[]>(
       supabaseServer
         .from("verification_logs")
-        .select("*")
+        .select(`
+          id,
+          event,
+          metadata,
+          created_at
+        `)
         .eq("startup_id", startupId)
         .order("created_at", { ascending: false })
         .limit(10)
@@ -203,6 +230,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   );
 
   const isOwner = user?.id === startup.user_id;
+  const isOwnerOrAdmin = isOwner || !!isAdmin(user?.email);
   const hasProof = !!startup.proof_url;
   const isVerified = verificationState.hasVerificationEvidence;
 
@@ -419,8 +447,8 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                     : "Verified Revenue Baseline"}
                 </p>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[clamp(1.75rem,4vw,2.75rem)] leading-none font-black text-white font-syne tracking-tighter tabular-nums truncate max-w-full overflow-hidden" title={formatCurrency(startup.mrr || 0, startup.currency || "INR", { compact: false })}>
-                    {formatCurrency(startup.mrr || 0, startup.currency || "INR", { compact: false })}
+                  <p className="text-[clamp(1.75rem,4vw,2.75rem)] leading-none font-black text-white font-syne tracking-tighter tabular-nums truncate max-w-full overflow-hidden" title={formatCurrency(startup.mrr || 0, "INR", { compact: false })}>
+                    {formatCurrency(startup.mrr || 0, "INR", { compact: false })}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
                     {snapshots && snapshots.length >= 2 && verificationState.confidenceTier !== "SELF_REPORTED" ? (
@@ -523,7 +551,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
             />
 
             {/* Revenue Consistency Card (Relocated here for dynamic column balance) */}
-            <RevenueConsistencyCard consistency={verificationState} ownerId={startup.user_id} isDemo={isDemo} />
+            <RevenueConsistencyCard consistency={verificationState} isOwnerOrAdmin={isOwnerOrAdmin} isDemo={isDemo} />
 
             {/* Revenue Analytics (Momentum & Charts) */}
             {revenue && revenue.length >= 2 && (
@@ -543,7 +571,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
             )}
 
             {/* Verification Timeline (Timeline) */}
-            {logs && logs.length > 0 && <VerificationTimeline logs={logs} ownerId={startup.user_id} />}
+            {logs && logs.length > 0 && <VerificationTimeline logs={logs} isOwnerOrAdmin={isOwnerOrAdmin} />}
           </div>
 
           {/* SECONDARY SIDEBAR: Verification, Founder, Badge, Status */}
@@ -617,7 +645,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
               </h3>
               <VerificationMetadata state={verificationState} showBreakdown={true} />
               
-              {isOwner && hasProof && (
+              {isOwnerOrAdmin && hasProof && (
                 <div className="mt-4 pt-4 border-t border-white/5">
                   <a 
                     href={`/api/startup/${startup.id}/proof`} 
