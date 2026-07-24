@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { Copy, Check, Code, Image as ImageIcon, Share2, X, ExternalLink } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { getStartupUrl, getBadgeUrl, getRelativeBadgeUrl } from "@/lib/site-url";
+
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 interface BadgeEmbedderProps {
   startupName: string;
@@ -33,12 +37,8 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const [copiedBadge, setCopiedBadge] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
   const [status, setStatus] = useState<"loading" | "loaded" | "unavailable">("loading");
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const badgePreviewUrl = `${getRelativeBadgeUrl(slug)}?theme=${theme}`;
   const badgeEmbedUrl = `${getBadgeUrl(slug)}?theme=${theme}`;

@@ -102,6 +102,7 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
 }
 
 import { getAuthenticatedUser } from "@/lib/auth-server";
+import { handleFirstStartupCreated } from "@/lib/onboarding/service";
 
 async function findExistingActiveStartup(userId: string, startupName: string) {
   const { data } = await supabaseServer
@@ -435,6 +436,17 @@ export async function POST(req: Request) {
 
     const startupId = insertedData[0]?.id;
 
+    if (startupId) {
+      // Trigger onboarding workflow as a non-blocking secondary side effect
+      await handleFirstStartupCreated(
+        data.user_id,
+        data.email,
+        data.name,
+        normalizedStartupName,
+        startupId
+      );
+    }
+
     // Log Listing Created
     if (startupId) {
       try {
@@ -496,6 +508,19 @@ export async function POST(req: Request) {
             error: providerError.message,
             code: providerError.code,
           });
+        } else {
+          // Trigger Provider Connected notification (best-effort side effect)
+          try {
+            const { handleProviderConnected } = await import("@/lib/providers/service");
+            await handleProviderConnected({
+              startupId,
+              userId: data.user_id,
+              startupName: data.startup_name,
+              provider: data.verification_source,
+            });
+          } catch (err) {
+            // Non-blocking catch per ADR-023
+          }
         }
       } catch (err) {
         logger.warn("Exception while upserting provider connection", {

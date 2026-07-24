@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { AlertCircle, Crown, Clock } from "lucide-react";
 import Link from "next/link";
 
@@ -10,16 +10,16 @@ interface SubscriptionStatusIndicatorProps {
   trialEnd?: string | null;
 }
 
+const emptySubscribe = () => () => {};
+const getNow = () => Date.now();
+const getSSRNow = () => null;
+
 export function SubscriptionStatusIndicator({
   planCode,
   status,
   trialEnd,
 }: SubscriptionStatusIndicatorProps) {
-  const [now, setNow] = useState<number | null>(null);
-
-  useEffect(() => {
-    setNow(Date.now());
-  }, []);
+  const now = useSyncExternalStore(emptySubscribe, getNow, getSSRNow);
 
   if (planCode === "viewer") {
     return (

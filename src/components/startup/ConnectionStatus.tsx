@@ -1,7 +1,9 @@
 "use client";
 
-import React from "react";
-import { CheckCircle2, XCircle, RefreshCw, Activity } from "lucide-react";
+import React, { useState } from "react";
+import { CheckCircle2, Activity, RefreshCw, Unplug, Loader2 } from "lucide-react";
+import { safeFetch } from "@/lib/safe-network";
+import { toast } from "sonner";
 
 interface Connection {
   provider: string;
@@ -12,16 +14,19 @@ interface Connection {
 
 interface ConnectionStatusProps {
   connections: Connection[];
+  startupId: string;
+  onDisconnect?: () => void;
 }
 
 /**
  * ConnectionStatus Component
  * 
  * Displays a grid of payment provider connections with their current health,
- * MRR contribution, and synchronization status.
+ * MRR contribution, and synchronization status. Includes disconnect capabilities.
  */
-export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ connections }) => {
-  const [now] = React.useState(() => Date.now());
+export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ connections, startupId, onDisconnect }) => {
+  const [now] = useState(() => Date.now());
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   const formatTime = (ms: number | null) => {
     if (!ms) return "Never";
@@ -37,7 +42,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ connections 
   const getStatus = (conn: Connection) => {
     if (!conn.connected) {
       return { 
-        label: "Monitoring", 
+        label: "Disconnected", 
         color: "text-neutral-500 bg-neutral-500/10", 
         icon: Activity,
         dot: "bg-neutral-500"
@@ -61,6 +66,28 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ connections 
       icon: CheckCircle2,
       dot: "bg-emerald-500"
     };
+  };
+
+  const handleDisconnect = async (provider: string) => {
+    if (!window.confirm(`Are you sure you want to disconnect ${provider}? Historical data will be preserved but syncing will stop.`)) return;
+
+    setDisconnecting(provider);
+    try {
+      const { ok, error } = await safeFetch(`/api/startup/${startupId}/connections/${provider.toLowerCase()}`, {
+        method: "DELETE"
+      });
+      
+      if (!ok) throw error || new Error("Failed to disconnect provider");
+      
+      toast.success(`${provider} disconnected successfully.`);
+      if (onDisconnect) {
+        onDisconnect();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to disconnect provider.");
+    } finally {
+      setDisconnecting(null);
+    }
   };
 
   if (connections.length === 0) {
@@ -91,9 +118,25 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ connections 
                   {conn.provider}
                 </h3>
               </div>
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status.color}`}>
-                <Icon className={`w-3.5 h-3.5 translate-y-[-0.5px] ${status.label === "Syncing" ? "animate-spin" : ""}`} />
-                {status.label}
+              <div className="flex items-center gap-2">
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status.color}`}>
+                  <Icon className={`w-3.5 h-3.5 translate-y-[-0.5px] ${status.label === "Syncing" ? "animate-spin" : ""}`} />
+                  {status.label}
+                </div>
+                {conn.connected && (
+                  <button
+                    onClick={() => handleDisconnect(conn.provider)}
+                    disabled={disconnecting === conn.provider}
+                    className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-400/10 rounded-full transition-colors disabled:opacity-50"
+                    title="Disconnect Provider"
+                  >
+                    {disconnecting === conn.provider ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Unplug className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 

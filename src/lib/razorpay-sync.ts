@@ -1,6 +1,6 @@
 import Razorpay from "razorpay";
 import { supabaseServer } from "@/lib/supabase-server";
-import { encrypt, decrypt } from "@/lib/encryption";
+import { decrypt } from "@/lib/encryption";
 import { VerificationPipeline } from "@/lib/providers/pipeline";
 import { razorpayProvider } from "@/lib/providers/razorpay";
 

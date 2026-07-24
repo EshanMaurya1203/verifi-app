@@ -3,6 +3,7 @@ import { DM_Sans, Syne, Geist } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { getSiteUrl } from "@/lib/site-url";
+import { Toaster } from "@/components/ui/Toaster";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -101,6 +102,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         {children}
+        <Toaster />
       </body>
     </html>
   );

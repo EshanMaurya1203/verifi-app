@@ -1,4 +1,4 @@
-import { ShieldCheck, ScanSearch, CheckCircle2, Award, LucideIcon } from "lucide-react";
+import { ShieldCheck, ScanSearch, Award, LucideIcon } from "lucide-react";
 import { ConfidenceTier } from "./verification-state";
 
 export interface TierConfig {

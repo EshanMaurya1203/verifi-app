@@ -70,6 +70,20 @@ export async function POST(req: Request) {
         event: "razorpay_sync_failure",
         metadata: { error: message },
       });
+
+      // Trigger Provider Sync Failed notification if failure is auth-related (non-recoverable)
+      if (err?.statusCode === 401 || err?.statusCode === 403 || message.includes("authentication failed")) {
+        try {
+          const { handleProviderSyncFailed } = await import("@/lib/providers/service");
+          await handleProviderSyncFailed({
+            startupId: Number(body.startup_id),
+            provider: "razorpay",
+            failureReason: message,
+          });
+        } catch (syncNotifErr) {
+          // Non-blocking catch per ADR-023
+        }
+      }
     }
 
     const status = isProviderError && err.statusCode !== 500

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeFetch } from "@/lib/safe-network";
 import { 
@@ -69,6 +69,10 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
     return () => clearInterval(timer);
   }, [currentStep, timeLeft]);
 
+  const handlePublish = useCallback(() => {
+    router.push(`/startup/${slug}`);
+  }, [router, slug]);
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (currentStep === "summary" && autoForwardSeconds > 0) {
@@ -77,7 +81,7 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
       handlePublish();
     }
     return () => clearInterval(timer);
-  }, [currentStep, autoForwardSeconds]);
+  }, [currentStep, autoForwardSeconds, handlePublish]);
 
   // Handle Stripe Connect OAuth Redirect Status
   useEffect(() => {
@@ -182,10 +186,6 @@ const FounderVerificationFlowInner: React.FC<FounderVerificationFlowProps> = ({ 
       : { key_id: rzpKeyId, key_secret: rzpKeySecret, startup_id: startupId };
 
     await runSyncProcess(bodyPayload);
-  };
-
-  const handlePublish = () => {
-    router.push(`/startup/${slug}`);
   };
 
   return (

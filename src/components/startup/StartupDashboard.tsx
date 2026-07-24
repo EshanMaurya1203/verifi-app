@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { RevenueChart } from "./RevenueChart";
 import { Loader2, AlertCircle, Shield, TrendingUp, Zap } from "lucide-react";
@@ -31,7 +31,7 @@ export const StartupDashboard = ({ id }: { id: string }) => {
   const [error, setError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     const { data: resData, error: fetchErr, ok } = await safeFetch<StartupOverview>(`/api/startup/${id}/overview`);
@@ -42,11 +42,11 @@ export const StartupDashboard = ({ id }: { id: string }) => {
       setData(resData);
     }
     setLoading(false);
-  };
+  }, [id]);
 
   useEffect(() => {
     fetchData();
-  }, [id]);
+  }, [fetchData]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -139,7 +139,11 @@ export const StartupDashboard = ({ id }: { id: string }) => {
           </div>
 
           <div className="bg-neutral-900/30 border border-white/5 p-2 rounded-[2.5rem]">
-            <ConnectionStatus connections={data.connections} />
+            <ConnectionStatus 
+              connections={data.connections} 
+              startupId={id} 
+              onDisconnect={fetchData} 
+            />
           </div>
         </div>
 

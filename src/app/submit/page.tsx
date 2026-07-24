@@ -872,7 +872,6 @@ export default function SubmitPage() {
                             type="button"
                             key={item.id}
                             onClick={() => !isComingSoon && togglePaymentMethod(item.id)}
-                            aria-pressed={isChecked}
                             role="checkbox"
                             aria-checked={isChecked}
                             disabled={isComingSoon}

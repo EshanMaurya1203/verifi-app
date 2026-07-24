@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { Clock, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
@@ -9,12 +9,12 @@ interface TrialCountdownBannerProps {
   trialEnd?: string | null;
 }
 
-export function TrialCountdownBanner({ status, trialEnd }: TrialCountdownBannerProps) {
-  const [now, setNow] = useState<number | null>(null);
+const emptySubscribe = () => () => {};
+const getNow = () => Date.now();
+const getSSRNow = () => null;
 
-  useEffect(() => {
-    setNow(Date.now());
-  }, []);
+export function TrialCountdownBanner({ status, trialEnd }: TrialCountdownBannerProps) {
+  const now = useSyncExternalStore(emptySubscribe, getNow, getSSRNow);
 
   if (status !== "trialing" || !trialEnd) return null;
   if (now === null) return null;

@@ -3,7 +3,6 @@ import crypto from "crypto";
 const ALGORITHM_GCM = "aes-256-gcm";
 const ALGORITHM_CTR = "aes-256-ctr";
 const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 
 /**
  * Encrypts a string using AES-256-GCM with a random IV.

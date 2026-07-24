@@ -89,6 +89,17 @@ export async function saveStripeConnection(params: {
       payment_connected: true,
     })
     .eq("id", params.startupId);
+
+  // Trigger Provider Connected notification (best-effort side effect)
+  try {
+    const { handleProviderConnected } = await import("@/lib/providers/service");
+    await handleProviderConnected({
+      startupId: params.startupId,
+      provider: "stripe",
+    });
+  } catch (err) {
+    // Non-blocking catch per ADR-023
+  }
 }
 
 async function runFraudChecks(

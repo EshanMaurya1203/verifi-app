@@ -1,4 +1,3 @@
-import { getSupabaseServer } from "./supabase-server";
 import { safeFetch } from "./safe-network";
 
 /**

@@ -4953,6 +4953,38 @@ Every ADR follows the same structure:
 
 ---
 
+# ADR Index
+
+| ADR | Title | Status |
+|------|-------|--------|
+| ADR-001 | India-First Platform Strategy | Accepted |
+| ADR-002 | Verification Before Publication | Accepted |
+| ADR-003 | Private by Default | Accepted |
+| ADR-004 | Razorpay as the Primary Verification Provider | Accepted |
+| ADR-005 | Manual Stripe Verification | Accepted |
+| ADR-006 | Trust Before Growth | Accepted |
+| ADR-007 | Backend as the Source of Truth | Accepted |
+| ADR-008 | Revenue Aggregation as Single Source of Truth | Accepted |
+| ADR-009 | Snapshot-Based Dashboard | Accepted |
+| ADR-010 | Business Logic Transformation Layer | Accepted |
+| ADR-011 | Presentation Transformation Layer | Accepted |
+| ADR-012 | Read/Write Separation | Accepted |
+| ADR-013 | Provider Isolation | Accepted |
+| ADR-014 | Dashboard as Orchestrator | Accepted |
+| ADR-015 | Snapshot First Architecture | Accepted |
+| ADR-016 | Financial Determinism | Accepted |
+| ADR-017 | Presentation Model Pattern | Accepted |
+| ADR-018 | Revenue Engine V2 (Subscription-Normalized Revenue) | Accepted (Post Launch) |
+| ADR-019 | Verification Events as the Canonical Source of Truth | Accepted |
+| ADR-020 | Event Projection Architecture | Accepted |
+| ADR-021 | Idempotent Startup Submission | Accepted |
+| ADR-022 | Secure Proof Upload Pipeline | Accepted |
+| ADR-023 | Best-Effort Auxiliary Writes | Accepted |
+| ADR-024 | Centralized Logging Architecture | Accepted |
+| ADR-025 | Explicit Onboarding Completion State | Accepted (Post Launch) |
+
+---
+
 # ADR-001 — India-First Platform Strategy
 
 ## Context
@@ -5310,34 +5342,6 @@ Frontend interfaces remain responsible only for presentation and interaction.
 
 ---
 
-# ADR Index
-
-| ADR | Title | Status |
-|------|-------|--------|
-| ADR-001 | India-First Platform Strategy | Accepted |
-| ADR-002 | Verification Before Publication | Accepted |
-| ADR-003 | Private by Default | Accepted |
-| ADR-004 | Razorpay as Primary Provider | Accepted |
-| ADR-005 | Manual Stripe Verification | Accepted |
-| ADR-006 | Trust Before Growth | Accepted |
-| ADR-007 | Backend as Source of Truth | Accepted |
-| ADR-008 | Revenue Aggregation as Single Source of Truth | Accepted |
-| ADR-009 | Snapshot-Based Dashboard | Accepted |
-| ADR-010 | Business Logic Transformation Layer | Accepted |
-| ADR-011 | Presentation Transformation Layer | Accepted |
-| ADR-012 | Read/Write Separation | Accepted |
-| ADR-013 | Provider Isolation | Accepted |
-| ADR-014 | Dashboard as Orchestrator | Accepted |
-| ADR-015 | Snapshot First Architecture | Accepted |
-| ADR-016 | Financial Determinism | Accepted |
-| ADR-017 | Presentation Model Pattern | Accepted |
-| ADR-021 | Idempotent Startup Submission | Accepted |
-| ADR-022 | Secure Proof Upload Pipeline | Accepted |
-| ADR-023 | Best-Effort Auxiliary Writes | Accepted |
-| ADR-024 | Centralized Logging Architecture | Accepted |
-
----
-
 # ADR-008 — Revenue Aggregation as Single Source of Truth
 
 ## Context
@@ -5465,6 +5469,293 @@ The system utilizes presentation models (View Models) to decouple the UI from th
 
 ## Consequences
 UI components can evolve independently of the database schema.
+
+---
+
+# ADR-018 — Revenue Engine V2 (Subscription-Normalized Revenue)
+
+**Status:** Accepted (Post Launch)
+
+**Date:** July 2026
+
+## Context
+
+Verifii's launch architecture determines verified revenue by aggregating payment activity over a rolling 30-day window. This approach provides a reliable, provider-agnostic verification mechanism that works across supported payment processors and enables rapid product delivery.
+
+However, transaction-based aggregation is not equivalent to Monthly Recurring Revenue (MRR) for subscription businesses. SaaS companies frequently experience annual billing, quarterly plans, upgrades, downgrades, refunds, and one-time purchases that distort a simple trailing 30-day revenue calculation.
+
+As Verifii's long-term vision is to become the trust layer for SaaS and subscription businesses, the revenue engine must eventually evolve from transaction aggregation to subscription-normalized revenue calculations.
+
+The launch implementation intentionally prioritizes correctness, simplicity, and provider compatibility over subscription-aware financial modeling.
+
+---
+
+## Decision
+
+Verifii will adopt a two-stage revenue architecture.
+
+### Phase 1 (Launch)
+
+Revenue verification will continue using provider transaction aggregation over a rolling 30-day period.
+
+This implementation serves as the authoritative revenue verification engine for the initial public release.
+
+### Phase 2 (Post Launch)
+
+The revenue engine will evolve to calculate normalized Monthly Recurring Revenue (MRR) directly from active subscription data rather than payment transactions.
+
+Where supported by providers, recurring subscription objects will become the primary input for revenue calculations.
+
+The Revenue Engine will remain the single source of truth for all platform financial metrics regardless of the underlying calculation strategy.
+
+---
+
+## Rationale
+
+This staged approach balances engineering complexity with product reliability.
+
+Maintaining transaction aggregation for launch allows:
+
+- Faster product delivery.
+- Consistent behavior across supported payment providers.
+- Simpler verification logic.
+- Lower operational risk during the initial launch.
+
+Transitioning to subscription-normalized revenue after launch provides:
+
+- More accurate SaaS metrics.
+- Better handling of annual and quarterly billing.
+- Improved comparability across startups.
+- Stronger trust in published MRR figures.
+- A foundation for advanced analytics such as churn, expansion revenue, and cohort analysis.
+
+---
+
+## Consequences
+
+### Positive
+
+- Preserves launch stability.
+- Maintains a single authoritative Revenue Engine.
+- Enables future migration without changing downstream consumers.
+- Improves long-term financial accuracy.
+- Supports advanced subscription analytics.
+
+### Negative
+
+- Launch metrics may differ from true accounting MRR.
+- Subscription normalization increases implementation complexity.
+- Different providers expose subscription data with varying capabilities.
+
+---
+
+## Alternatives Considered
+
+### Option A — Subscription-normalized MRR for launch
+
+Rejected.
+
+Although financially superior, this would significantly increase implementation complexity, delay launch, and require provider-specific subscription models before validating product-market fit.
+
+### Option B — Continue using transaction aggregation indefinitely
+
+Rejected.
+
+While operationally simple, this approach would not accurately represent recurring revenue for subscription businesses and would limit Verifii's long-term credibility.
+
+---
+
+## Related ADRs
+
+- ADR-008 — Revenue Aggregation as Single Source of Truth
+- ADR-021 — Idempotent Startup Submission
+
+---
+
+# ADR-019 — Verification Events as the Canonical Source of Truth
+
+**Status:** Accepted
+
+**Date:** July 2026
+
+## Context
+
+Verifii integrates with multiple payment providers, verification methods, and trust systems to establish the authenticity of a startup's reported revenue.
+
+Initially, it would have been possible for different parts of the platform—such as the homepage, founder dashboard, leaderboard, notifications, or analytics—to independently query provider APIs or derive verification state from disparate database tables.
+
+This approach would lead to duplicated business logic, inconsistent verification states, increased provider API usage, and conflicting interpretations of a startup's verification lifecycle.
+
+As the platform grows, verification outcomes must become durable business events that can be consumed consistently by every downstream system.
+
+---
+
+## Decision
+
+Verifii adopts an event-driven verification architecture.
+
+Every successful verification operation must produce a durable verification event that is recorded in the platform's verification event store (`verification_logs`).
+
+These events become the canonical representation of verification activity.
+
+Downstream systems must consume persisted verification events rather than directly interpreting provider responses or reconstructing verification state independently.
+
+Verification providers remain responsible only for producing evidence.
+
+The platform remains responsible for recording, validating, and exposing verification events.
+
+---
+
+## Rationale
+
+Separating verification execution from verification consumption creates a clear architectural boundary.
+
+Persisted verification events provide:
+
+- A single source of truth for verification history.
+- Consistent business behavior across the platform.
+- Reduced duplication of verification logic.
+- Improved auditability.
+- Lower dependency on external provider availability.
+- Support for future event-driven features.
+
+This architecture also enables multiple platform capabilities—including public activity feeds, notifications, analytics, and historical reporting—to operate from the same authoritative dataset.
+
+---
+
+## Consequences
+
+### Positive
+
+- Establishes a canonical verification history.
+- Decouples provider integrations from presentation layers.
+- Improves auditability and observability.
+- Enables event replay for future systems.
+- Simplifies future notification workflows.
+- Reduces inconsistent verification state calculations.
+
+### Negative
+
+- Introduces an additional persistence layer.
+- Verification events become critical infrastructure that must remain reliable.
+- Requires careful schema evolution to preserve historical compatibility.
+
+---
+
+## Alternatives Considered
+
+### Option A — Query provider APIs directly for every consumer
+
+Rejected.
+
+This would tightly couple UI components and business services to external providers, increase latency, duplicate logic, and produce inconsistent verification state across the platform.
+
+### Option B — Derive verification state independently from database tables
+
+Rejected.
+
+Although simpler initially, different services would eventually evolve separate interpretations of verification success, leading to inconsistent behavior and difficult maintenance.
+
+---
+
+## Related ADRs
+
+- ADR-018 — Revenue Engine V2 (Subscription-Normalized Revenue)
+- ADR-020 — Event Projection Architecture
+- ADR-024 — Centralized Logging Architecture
+
+---
+
+# ADR-020 — Event Projection Architecture
+
+**Status:** Accepted
+
+**Date:** July 2026
+
+## Context
+
+As Verifii evolved, multiple platform features required access to verification activity, including the homepage Live Feed, founder dashboards, future notifications, analytics, audit history, and public timelines.
+
+Allowing each feature to independently query verification data or reconstruct business events from operational tables would duplicate business logic, create inconsistent behavior, and increase maintenance costs.
+
+The platform required a consistent mechanism for exposing verification activity without coupling presentation layers to verification execution.
+
+---
+
+## Decision
+
+Verifii adopts an Event Projection Architecture.
+
+Verification events remain immutable records of business activity and serve as the authoritative source for downstream consumers.
+
+Public-facing features do not generate or infer events themselves. Instead, they consume projected views derived from persisted verification events.
+
+Projection services are responsible for transforming canonical verification events into representations optimized for specific consumers while preserving the underlying business truth.
+
+This establishes a clear separation between:
+
+- **Event Production** (verification execution)
+- **Event Storage** (canonical verification events)
+- **Event Projection** (consumer-specific read models)
+
+---
+
+## Rationale
+
+Separating event storage from event presentation allows each consumer to evolve independently without affecting verification logic.
+
+Projection-based read models provide:
+
+- Consistent public activity feeds.
+- Reusable data for dashboards and analytics.
+- Simplified notification generation.
+- Better scalability for read-heavy workloads.
+- Reduced duplication of presentation logic.
+- Future support for specialized projections without modifying the verification engine.
+
+This architecture ensures that every public representation originates from the same verified business events.
+
+---
+
+## Consequences
+
+### Positive
+
+- Eliminates duplicated event-generation logic.
+- Enables multiple read models from a single event stream.
+- Improves scalability by separating reads from writes.
+- Simplifies future features such as notifications, investor dashboards, analytics, and audit timelines.
+- Maintains consistency across all public-facing experiences.
+
+### Negative
+
+- Introduces an additional architectural layer.
+- Projection models must remain synchronized with event schema changes.
+- Projection pipelines require monitoring to detect stale or failed updates.
+
+---
+
+## Alternatives Considered
+
+### Option A — Generate events independently within each feature
+
+Rejected.
+
+This would duplicate business logic across the homepage, dashboards, notifications, and analytics, increasing maintenance effort and creating inconsistent user experiences.
+
+### Option B — Query verification tables directly for every consumer
+
+Rejected.
+
+While simpler initially, each consumer would eventually implement its own interpretation of verification activity, resulting in fragmented business logic and tighter coupling to operational data structures.
+
+---
+
+## Related ADRs
+
+- ADR-019 — Verification Events as the Canonical Source of Truth
+- ADR-021 — Idempotent Startup Submission
+- ADR-024 — Centralized Logging Architecture
 
 ---
 
@@ -5626,6 +5917,36 @@ This principle ensures that observability never reduces platform availability wh
 ## Status
 
 Accepted
+
+# ADR-025 — Explicit Onboarding Completion State
+
+**Status:** Accepted (Post Launch)
+
+### Problem
+Current onboarding completion is inferred from the user's first startup. This works for launch but relies on runtime `COUNT()` logic which carries edge-case race conditions if parallel inserts occur in the exact same millisecond.
+
+### Decision
+After launch, Verifii will introduce an explicit onboarding completion state (or notification history table) that becomes the authoritative source of truth.
+
+Potential approaches:
+- **Option A:** `welcome_notification_sent` boolean flag
+- **Option B:** `notification_history` table
+- **Option C:** `onboarding_completed` timestamp
+
+### Rationale
+- Eliminates edge-case race conditions
+- Simplifies business logic
+- Improves observability
+- Scales to future onboarding milestones
+
+### Consequences
+- Current implementation remains approved for launch.
+- This ADR documents the future evolution to resolve the synchronous dependency and race conditions inherent in relying on dynamic record counts.
+
+### Related ADRs
+- ADR-021 — Idempotent Startup Submission
+- ADR-023 — Best-Effort Auxiliary Writes
+- ADR-024 — Centralized Logging Architecture
 
 ---
 
@@ -7579,14 +7900,29 @@ Maintaining historical context is as important as documenting the current archit
 
 ---
 
-## F.9 Current Revision Status
+## F.9 Revision History
+
+This section provides a concise historical timeline showing how the Engineering Handbook evolved across major versions.
+
+| Version | Date | Major Changes |
+|---------|------|---------------|
+| 1.0 | July 2026 | Initial Engineering Handbook including platform architecture, engineering standards, and ADR-001 through ADR-017. |
+| 1.1 | July 2026 | Added Revenue Engine V2 roadmap (ADR-018), Live Feed Event Projection Architecture (ADR-020), and launch-readiness architectural decisions. |
+| 2.0 | July 2026 | Added Notification Architecture, Centralized Logging, Idempotent Startup Submission, Secure Proof Upload Pipeline, Best-Effort Auxiliary Writes, Explicit Onboarding Completion State (ADR-025), updated engineering standards, and documentation maintenance policies. |
+
+---
+
+## F.10 Current Revision Status
 
 At the time of writing:
 
 - Handbook Version: **2.0**
 - Status: **Active**
-- Product Phase: **Phase 1 Complete**
-- Next Scheduled Review: **After Phase 2 Completion**
+- Product Phase: **Phase 2 Complete**
+- Latest ADR: **ADR-025**
+- Next Scheduled Review: **After Phase 3 Completion**
+
+---
 
 ---
 

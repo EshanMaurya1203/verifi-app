@@ -24,6 +24,32 @@ export const LogEvent = {
   API_SUBMISSION_ERROR: "api_submission_error",
   SUBMISSIONS_FETCH_ERROR: "submissions_fetch_error",
   SUBMISSIONS_GET_EXCEPTION: "submissions_get_exception",
+
+  // Settings & Account Management audit events
+  ACCOUNT_DELETED: "account_deleted",
+  ACCOUNT_DELETION_FAILED: "account_deletion_failed",
+  STARTUP_DELETED: "startup_deleted",
+  STARTUP_DELETION_FAILED: "startup_deletion_failed",
+  PROVIDER_DISCONNECTED: "provider_disconnected",
+  PROVIDER_DISCONNECT_FAILED: "provider_disconnect_failed",
+  IDENTITY_UPDATED: "identity_updated",
+  IDENTITY_UPDATE_FAILED: "identity_update_failed",
+
+  // Onboarding events
+  ONBOARDING_STARTED: "onboarding_started",
+  FIRST_STARTUP_DETECTED: "first_startup_detected",
+  WELCOME_NOTIFICATION_DISPATCHED: "welcome_notification_dispatched",
+  WELCOME_NOTIFICATION_FAILED: "welcome_notification_failed",
+  ONBOARDING_COMPLETED: "onboarding_completed",
+
+  // Notification infrastructure events
+  NOTIFICATION_DISPATCH_STARTED: "notification_dispatch_started",
+  NOTIFICATION_DISPATCH_COMPLETED: "notification_dispatch_completed",
+  CHANNEL_DELIVERY_STARTED: "channel_delivery_started",
+  CHANNEL_DELIVERY_COMPLETED: "channel_delivery_completed",
+  CHANNEL_DELIVERY_FAILED: "channel_delivery_failed",
+  EMAIL_DELIVERY_FAILED: "email_delivery_failed",
+  EMAIL_DELIVERY_COMPLETED: "email_delivery_completed",
 } as const;
 
 export type LogEventName = typeof LogEvent[keyof typeof LogEvent];
@@ -43,6 +69,15 @@ export interface BaseLogMetadata {
   error?: string;
   constraint?: string;
   message?: string;
+  durationMs?: number;
+  retryable?: boolean;
+  correlationId?: string;
+  eventId?: string;
+  source?: string;
+  version?: number;
+  eventType?: string;
+  channel?: string;
+  recipient?: string;
 }
 
 export type LogMetadata = BaseLogMetadata & Record<string, unknown>;
