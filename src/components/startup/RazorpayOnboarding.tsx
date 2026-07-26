@@ -188,7 +188,8 @@ export const RazorpayOnboarding: React.FC<RazorpayOnboardingProps> = ({
   // Auto-advance to step 4 when user starts typing credentials
   useEffect(() => {
     if ((rzpKeyId || rzpKeySecret) && activeStep < 4) {
-      setActiveStep(4);
+      const timer = setTimeout(() => setActiveStep(4), 0);
+      return () => clearTimeout(timer);
     }
   }, [rzpKeyId, rzpKeySecret, activeStep]);
 

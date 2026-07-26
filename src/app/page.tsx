@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { BadgeCheck, Activity, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle, Check } from "lucide-react";
+import { BadgeCheck, Activity, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle, Check, ChevronDown } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
@@ -31,6 +31,85 @@ type ActivityEvent = {
   timestamp: string;
 };
 
+const faqData = [
+  {
+    question: "Is my revenue shown publicly?",
+    answer: "Yes, your verified Monthly Recurring Revenue (MRR) and trust metrics are displayed on your public profile and leaderboard once your payment provider is connected and profile is set to public. You can toggle public visibility off anytime from your dashboard settings."
+  },
+  {
+    question: "What data does Verifii access?",
+    answer: "Verifii accesses read-only payment metrics, transaction volume, and subscription statuses from your connected payment account. We never access or store sensitive customer credentials, full credit card numbers, or personal payout banking details."
+  },
+  {
+    question: "Is my payment data secure?",
+    answer: "Yes, your payment integration uses restricted, read-only API credentials and official OAuth protocols. All access tokens are encrypted at rest, and Verifii never has permission to move funds or modify your payment provider settings."
+  },
+  {
+    question: "How does Verifii verify revenue from Stripe and Razorpay?",
+    answer: "Verifii connects directly to payment provider APIs to aggregate raw transaction logs and active subscription data. This automated sync calculates your MRR from actual completed payments rather than manual text inputs or screenshots."
+  },
+  {
+    question: "Is Verifii free to use?",
+    answer: "Verifii offers core revenue verification and public profile hosting for founders. Founders can connect payment providers, earn a verified trust badge, and showcase revenue metrics without any setup costs."
+  },
+  {
+    question: "How is Verifii different from self-reported revenue leaderboards?",
+    answer: "Unlike traditional leaderboards where revenue numbers are manually typed or screenshotted, Verifii validates data directly through automated payment provider API integrations. This ensures that every public revenue claim is backed by real, tamper-proof payment activity."
+  },
+  {
+    question: "What happens if I disconnect my payment provider?",
+    answer: "Disconnecting your payment provider halts automatic revenue syncs and revokes active API access. Your startup's public profile will no longer display an active verified badge, and unverified profiles are removed from public leaderboard rankings."
+  },
+  {
+    question: "Can I remove my startup from the leaderboard?",
+    answer: "Yes, you can set your profile to private or permanently delete your startup submission from your founder dashboard at any time. Toggling your profile to private immediately removes your startup from public search results and leaderboard listings."
+  },
+  {
+    question: "How long does verification take?",
+    answer: "Initial revenue verification typically takes less than two minutes after connecting your Stripe or Razorpay account. Once authorized, revenue metrics and trust scores update automatically in near real-time."
+  },
+  {
+    question: "Can I choose what appears on my public profile?",
+    answer: "Yes, founders control profile visibility settings, basic startup information, social links, and public bio details. You can also toggle your entire profile private whenever you wish to hide revenue numbers."
+  }
+];
+
+const getShortActivity = (event: string): string => {
+  switch (event) {
+    case "stripe_sync_success":
+    case "razorpay_sync_success":
+      return "Revenue verified";
+    case "listing_created":
+      return "Profile created";
+    default:
+      return "Activity recorded";
+  }
+};
+
+const getProviderBadge = (event: string) => {
+  switch (event) {
+    case "stripe_sync_success":
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+          Stripe
+        </span>
+      );
+    case "razorpay_sync_success":
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+          Razorpay
+        </span>
+      );
+    case "listing_created":
+    default:
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          Verifii
+        </span>
+      );
+  }
+};
+
 const fadeUpContainer = {
   hidden: { opacity: 0 },
   show: {
@@ -56,6 +135,7 @@ export default function HomePage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -179,31 +259,6 @@ export default function HomePage() {
     loadHomepageData();
   }, []);
 
-  const getActivityIcon = (event: string) => {
-    switch (event) {
-      case "stripe_sync_success":
-      case "razorpay_sync_success":
-        return <ShieldCheck className="w-3 h-3 text-emerald-400" />;
-      case "listing_created":
-        return <RefreshCw className="w-3 h-3 text-blue-400" />;
-      default:
-        return <Activity className="w-3 h-3 text-neutral-400" />;
-    }
-  };
-
-  const getActivityDetail = (event: string): string => {
-    switch (event) {
-      case "stripe_sync_success":
-        return "Revenue verified via Stripe";
-      case "razorpay_sync_success":
-        return "Revenue verified via Razorpay";
-      case "listing_created":
-        return "Startup profile created";
-      default:
-        return "Verification event recorded";
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       <Navbar />
@@ -244,7 +299,7 @@ export default function HomePage() {
               variants={fadeUpItem}
               className="mt-6 max-w-[580px] text-sm md:text-base font-normal leading-relaxed text-neutral-400"
             >
-              Connect Stripe or Razorpay to verify your startup's revenue using real payment data. Earn a public trust badge and build credibility with investors, partners, and future customers—without relying on screenshots or self-reported claims.
+              Connect Stripe or Razorpay to verify your startup&apos;s revenue using real payment data. Earn a public trust badge and build credibility with investors, partners, and future customers—without relying on screenshots or self-reported claims.
             </motion.p>
 
             {/* Trust Bullets */}
@@ -528,26 +583,31 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="p-4 space-y-1">
-                  {activities.map((activity, idx) => (
+                <div className="p-3.5 space-y-2">
+                  {activities.map((activity) => (
                     <div 
                       key={activity.id}
-                      className="flex items-start gap-3 p-3 rounded-2xl hover:bg-white/[0.02] transition-colors"
+                      className="p-3.5 rounded-2xl bg-white/[0.015] border border-white/[0.04] hover:bg-white/[0.03] transition-colors flex flex-col gap-1"
                     >
-                      <div className="mt-1 w-6 h-6 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center shrink-0">
-                        {getActivityIcon(activity.event)}
+                      {/* Startup Name */}
+                      <span className="text-xs font-bold text-white truncate leading-snug">
+                        {activity.startupName}
+                      </span>
+
+                      {/* Short activity */}
+                      <span className="text-[11px] font-medium text-neutral-400 leading-snug">
+                        {getShortActivity(activity.event)}
+                      </span>
+
+                      {/* Provider Badge */}
+                      <div className="mt-0.5">
+                        {getProviderBadge(activity.event)}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-bold text-white truncate">
-                          {activity.startupName}
-                        </p>
-                        <p className="text-[10px] text-neutral-400 mt-0.5 leading-snug">
-                          {getActivityDetail(activity.event)}
-                        </p>
-                        <p className="text-[9px] font-bold text-neutral-600 uppercase tracking-wider mt-1.5">
-                          {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
-                        </p>
-                      </div>
+
+                      {/* Relative Timestamp */}
+                      <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mt-1">
+                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                      </span>
                     </div>
                   ))}
                   {activities.length === 0 && (
@@ -580,6 +640,149 @@ export default function HomePage() {
           </div>
           
         </div>
+
+        {/* Improvement 1 — Why Founders Verify with Verifii */}
+        <section className="mt-16 sm:mt-20">
+          <div className="rounded-3xl border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md p-6 sm:p-8 md:p-10 shadow-xl ring-1 ring-white/[0.02]">
+            <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10">
+              <h2 className="font-syne text-2xl sm:text-3xl font-black text-white tracking-tight">
+                Why founders verify with Verifii
+              </h2>
+              <p className="mt-2 text-xs sm:text-sm text-neutral-400 font-medium">
+                Automated revenue verification compared to traditional self-reported methods.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+              {/* Screenshots */}
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.015] p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-2 h-2 rounded-full bg-neutral-500" />
+                    <h3 className="font-syne text-base font-bold text-neutral-300">
+                      Screenshots
+                    </h3>
+                  </div>
+                  <ul className="space-y-3 text-xs sm:text-sm text-neutral-400">
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-neutral-600 mt-0.5">•</span>
+                      <span>Can be edited</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-neutral-600 mt-0.5">•</span>
+                      <span>Static proof</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-neutral-600 mt-0.5">•</span>
+                      <span>Difficult for others to verify</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <span className="text-neutral-600 mt-0.5">•</span>
+                      <span>Manual sharing</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Verifii Verification */}
+              <div className="rounded-2xl border border-primary/20 bg-primary/[0.02] p-6 flex flex-col justify-between relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <ShieldCheck className="w-4 h-4 text-primary" />
+                    <h3 className="font-syne text-base font-bold text-white">
+                      Verifii Verification
+                    </h3>
+                  </div>
+                  <ul className="space-y-3 text-xs sm:text-sm text-neutral-200">
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <span>Verified using connected payment providers</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <span>Continuously trustworthy</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <span>Public trust profile</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                      <span>Easy to share confidently</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Improvement 2 — Founder FAQ */}
+        <section className="mt-16 sm:mt-20">
+          {/* JSON-LD Schema for FAQPage */}
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "FAQPage",
+                "mainEntity": faqData.map((item) => ({
+                  "@type": "Question",
+                  "name": item.question,
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": item.answer,
+                  },
+                })),
+              }),
+            }}
+          />
+
+          <div className="rounded-3xl border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md p-6 sm:p-8 md:p-10 shadow-xl ring-1 ring-white/[0.02]">
+            <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10">
+              <h2 className="font-syne text-2xl sm:text-3xl font-black text-white tracking-tight">
+                Founder FAQ
+              </h2>
+              <p className="mt-2 text-xs sm:text-sm text-neutral-400 font-medium">
+                Everything you need to know about revenue verification, security, and profile controls.
+              </p>
+            </div>
+
+            <div className="space-y-3 max-w-3xl mx-auto">
+              {faqData.map((item, index) => {
+                const isOpen = openFaqIndex === index;
+                return (
+                  <div
+                    key={index}
+                    className="rounded-2xl border border-white/[0.05] bg-white/[0.015] overflow-hidden transition-all duration-200"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaqIndex(isOpen ? null : index)}
+                      className="w-full px-5 py-4 flex items-center justify-between text-left gap-4 hover:bg-white/[0.02] transition-colors focus:outline-none focus:ring-1 focus:ring-primary/40 rounded-2xl"
+                      aria-expanded={isOpen}
+                    >
+                      <span className="font-syne text-xs sm:text-sm font-bold text-white">
+                        {item.question}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-200 ${
+                          isOpen ? "rotate-180 text-primary" : ""
+                        }`}
+                      />
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-4 pt-1 border-t border-white/[0.03] text-xs sm:text-sm text-neutral-400 leading-relaxed">
+                        {item.answer}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
 
 
         {/* Bottom CTA Card */}

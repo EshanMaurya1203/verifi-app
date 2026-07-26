@@ -32,10 +32,8 @@ export const StartupDashboard = ({ id }: { id: string }) => {
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
     setError(null);
     const { data: resData, error: fetchErr, ok } = await safeFetch<StartupOverview>(`/api/startup/${id}/overview`);
-    
     if (!ok || !resData) {
       setError(fetchErr?.message || "Infrastructure unavailable or dynamic overview sync aborted.");
     } else {
@@ -45,7 +43,10 @@ export const StartupDashboard = ({ id }: { id: string }) => {
   }, [id]);
 
   useEffect(() => {
-    fetchData();
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchData]);
 
   const handleSync = async () => {
@@ -56,7 +57,8 @@ export const StartupDashboard = ({ id }: { id: string }) => {
     if (!ok) {
       setSyncError(syncErr?.message || "Manual connection synchronization failed. Please retry.");
     } else {
-      await fetchData();
+      const { data: resData } = await safeFetch<StartupOverview>(`/api/startup/${id}/overview`);
+      if (resData) setData(resData);
     }
     setSyncing(false);
   };
