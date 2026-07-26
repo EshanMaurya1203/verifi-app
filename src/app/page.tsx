@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { BadgeCheck, Activity, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle } from "lucide-react";
+import { BadgeCheck, Activity, RefreshCw, TrendingUp, ShieldCheck, AlertTriangle, Check } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { supabase } from "@/lib/supabase";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
@@ -244,8 +244,27 @@ export default function HomePage() {
               variants={fadeUpItem}
               className="mt-6 max-w-[580px] text-sm md:text-base font-normal leading-relaxed text-neutral-400"
             >
-              Verifii connects securely to Stripe and Razorpay to verify your actual revenue. No self-reported charts. Just real, verified financial data.
+              Connect Stripe or Razorpay to verify your startup's revenue using real payment data. Earn a public trust badge and build credibility with investors, partners, and future customers—without relying on screenshots or self-reported claims.
             </motion.p>
+
+            {/* Trust Bullets */}
+            <motion.div
+              variants={fadeUpItem}
+              className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm font-medium text-neutral-300"
+            >
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Revenue verified directly from payment providers</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Public startup profile with verified trust badge</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>No screenshots or self-reported revenue</span>
+              </div>
+            </motion.div>
 
             {/* CTA Hierarchy */}
             <motion.div
@@ -265,6 +284,27 @@ export default function HomePage() {
               >
                 Explore Leaderboard
               </Link>
+            </motion.div>
+
+            {/* Minimal Trust Strip */}
+            <motion.div
+              variants={fadeUpItem}
+              className="mt-8 flex flex-wrap items-center justify-center gap-3 md:gap-5 text-[11px] font-medium text-neutral-500"
+            >
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-neutral-400" />
+                Stripe & Razorpay supported
+              </span>
+              <span className="hidden sm:inline text-neutral-700">•</span>
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-neutral-400" />
+                Encrypted credentials
+              </span>
+              <span className="hidden sm:inline text-neutral-700">•</span>
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-neutral-400" />
+                Revenue verified from payment providers
+              </span>
             </motion.div>
           </motion.div>
         </section>
