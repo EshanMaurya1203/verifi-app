@@ -9,12 +9,12 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.0 |
+| **Version** | 2.2 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
 | **Started** | July 2026 |
-| **Last Updated** | July 2026 |
+| **Last Updated** | August 2026 |
 | **Next Review** | After Phase 3 Completion |
 
 ---
@@ -1480,6 +1480,85 @@ Each stage serves a distinct architectural purpose:
 
 ---
 
+## 6.13 Onboarding Draft Recovery Architecture
+
+The founder onboarding flow implements a crash-resilient draft recovery system designed to protect founders from accidental refreshes, browser crashes, tab closures, and interrupted onboarding sessions.
+
+The architecture follows three principles:
+
+- Recovery without duplication
+- Privacy-first persistence
+- Explicit founder control
+
+### Draft Storage
+
+Drafts are persisted in local storage using:
+
+`verifii-onboarding-draft-v1`
+
+The draft envelope structure is:
+
+```ts
+{
+  version: 1,
+  savedAt: string,
+  step: number,
+  data: PersistedFormFields
+}
+```
+
+### Persisted Fields
+
+Persisted:
+
+- founder name
+- startup name
+- website
+- business type
+- MRR
+- ARR
+- twitter
+- linkedin
+- city
+- notes
+- payment methods
+- verification preferences
+
+Never persisted:
+
+- email
+- API keys
+- provider secrets
+- uploaded proofs
+
+### Recovery Guarantees
+
+The recovery architecture guarantees:
+
+- schema versioning
+- seven-day expiration
+- corrupted draft cleanup
+- debounced persistence
+- cross-tab synchronization
+- explicit restore
+- explicit discard
+
+### State Separation
+
+Draft existence and banner visibility are intentionally separated.
+
+The onboarding system maintains:
+
+- pendingDraft
+- isBannerDismissed
+- showBanner
+
+Banner visibility is computed rather than stored.
+
+This prevents accidental draft loss during refreshes and avoids destructive state coupling.
+
+---
+
 # Chapter 7 — Provider Integration Layer
 
 The Provider Integration Layer is responsible for securely connecting Verifii to external payment providers and transforming provider-specific data into a standardized format that can be processed by the Verification System.
@@ -2919,6 +2998,87 @@ The Startup Submission API implements several core architectural patterns to gua
 
 ---
 
+## 12.11 Shared Validation Architecture
+
+Verifii uses a shared validation architecture for onboarding.
+
+Validation exists in exactly one location:
+
+`src/lib/validation/onboarding.ts`
+
+Both:
+
+- browser validation
+- API validation
+
+consume the same schema.
+
+The architecture exports:
+
+- onboardingSchema
+- validateOnboarding()
+- OnboardingPayload
+
+The goal is:
+
+Browser validation = API validation = database expectations
+
+### Validation Rules
+
+Startup Name
+
+- required
+- 3–80 characters
+- trimmed
+- whitespace-only values rejected
+
+Revenue
+
+- numeric only
+- minimum: 0
+- maximum: 999999999
+- NaN rejected
+- Infinity rejected
+
+Website
+
+- optional
+- protocol normalized
+- javascript: rejected
+- data: rejected
+- vbscript: rejected
+
+Social Links
+
+Allowed domains:
+
+- x.com
+- twitter.com
+- linkedin.com
+
+Payment Providers
+
+Allowed:
+
+- Razorpay
+- Stripe
+
+Unsupported providers are rejected by both client and server.
+
+Notes
+
+- maximum length: 5000 characters
+
+### Validation Principle
+
+Validation rules must exist in exactly one place.
+
+Client validation improves user experience.
+
+Server validation remains authoritative.
+
+---
+
 > Note: Chapter 13 is intentionally unused to preserve stable chapter numbering and historical references.
 
 # Chapter 14 — Founder Dashboard
@@ -4170,7 +4330,61 @@ The startup submission pipeline implements multi-layered security controls to pr
 - Partial unique index
 - RPC security hardening
 - Least privilege
-- Race-condition resilience
+- **Race-condition resilience**: Built-in retry loops and database unique constraint handling.
+
+---
+
+## 18.15 Onboarding Security Hardening
+
+The onboarding flow follows a defense-in-depth security model.
+
+Multiple independent security layers work together to protect startup creation.
+
+### Server-Owned Identity
+
+Client-provided ownership identifiers are discarded.
+
+Startup ownership is always resolved from the authenticated server session.
+
+### Upload Hardening
+
+Accepted file types:
+
+- image/png
+- image/jpeg
+- image/webp
+- application/pdf
+
+Maximum upload size:
+
+- 10 MB
+
+Rejected uploads include:
+
+- corrupted files
+- empty files
+- unsupported formats
+
+### Magic-Byte Validation
+
+PDF files are validated using magic-byte inspection.
+
+Validation never relies solely on MIME types.
+
+### Shared Validation Enforcement
+
+Client validation is never trusted.
+
+All onboarding rules are enforced through the centralized validation schema.
+
+### Provider Whitelist Enforcement
+
+The onboarding flow accepts only:
+
+- Razorpay
+- Stripe
+
+Unsupported providers are rejected before any database operations occur.
 
 ---
 
@@ -4918,6 +5132,23 @@ To maintain architectural integrity, the dashboard is governed by permanent engi
 
 ---
 
+## 20.19 Onboarding Engineering Standards
+
+The onboarding system follows permanent engineering rules.
+
+- Validation rules must exist in exactly one place.
+- Sensitive fields must never be persisted in browser storage.
+- Draft restoration must never overwrite existing drafts.
+- Banner visibility must remain independent from draft existence.
+- Draft storage must support cross-tab synchronization.
+- Uploaded proofs must pass server-side validation.
+- Client-provided ownership information must never be trusted.
+- Unsupported payment providers must be rejected by both client and server.
+- Browser validation exists only for user experience.
+- Server validation remains authoritative.
+
+---
+
 ## Future Evolution
 
 As Verifii grows, these standards will expand to include:
@@ -4982,6 +5213,10 @@ Every ADR follows the same structure:
 | ADR-023 | Best-Effort Auxiliary Writes | Accepted |
 | ADR-024 | Centralized Logging Architecture | Accepted |
 | ADR-025 | Explicit Onboarding Completion State | Accepted (Post Launch) |
+| ADR-026 | OAuth Re-authentication for Destructive Actions | Accepted |
+| ADR-027 | Draft Recovery & Crash Resilience | Accepted |
+| ADR-028 | Shared Validation Architecture | Accepted |
+| ADR-029 | Banner State Separation | Accepted |
 
 ---
 
@@ -5947,6 +6182,290 @@ Potential approaches:
 - ADR-021 — Idempotent Startup Submission
 - ADR-023 — Best-Effort Auxiliary Writes
 - ADR-024 — Centralized Logging Architecture
+
+---
+
+# ADR-026 — OAuth Re-authentication for Destructive Actions
+
+## Context
+
+Destructive actions such as account deletion and startup deletion permanently remove user-owned data.
+
+A valid session alone is insufficient because long-lived browser sessions, shared devices, and unattended sessions could allow destructive operations without recent user confirmation.
+
+Verifii currently uses Google OAuth authentication as its identity provider and therefore cannot rely on password re-entry for sensitive operations.
+
+The re-authentication flow must remain compatible with OAuth-based providers while still guaranteeing recent user presence before destructive actions are executed.
+
+---
+
+## Decision
+
+Users authenticated via OAuth must explicitly re-authenticate before performing destructive actions.
+
+The re-authentication architecture uses:
+
+- Google OAuth re-authentication
+- Server-signed action intents
+- HMAC-signed proof tokens
+- Single-use HttpOnly cookies
+- Constant-time signature verification
+
+Passwords are not used anywhere in this flow.
+
+---
+
+### Security Guarantees
+
+The re-authentication architecture guarantees the following properties:
+
+- Re-authentication proofs are cryptographically signed using HMAC-SHA256.
+- Proofs are explicitly bound to both the authenticated user and the requested action.
+- Re-authentication intents cannot be forged by client components.
+- The browser never receives access to server secrets.
+- Proof cookies are HttpOnly and inaccessible to JavaScript.
+- Proofs automatically expire after 120 seconds.
+- Proofs are single-use and are invalidated immediately after successful consumption.
+- Proof verification uses constant-time comparison (`crypto.timingSafeEqual`) to mitigate timing attacks.
+- OAuth callbacks cannot escalate privileges because the authenticated session is revalidated on the server before proof issuance.
+
+---
+
+## Flow
+
+```text
+Authenticated Session
+
+↓
+
+User initiates destructive action
+
+↓
+
+Server creates signed intent token bound to the requested destructive action
+
+↓
+
+Google OAuth re-authentication
+
+↓
+
+Google redirects back with authorization code and signed intent
+
+↓
+
+Server validates OAuth response and issues a short-lived proof cookie
+
+↓
+
+User confirms deletion
+
+↓
+
+Proof consumed and invalidated
+
+↓
+
+Destructive action executed
+```
+
+---
+
+## Rationale
+
+- Re-authentication is mandatory for destructive actions.
+- Action intents are signed server-side using HMAC-SHA256.
+- Proof tokens expire automatically after a configurable TTL.
+- Proof cookies are single-use and deleted immediately upon consumption.
+- Signature verification uses constant-time comparison (`crypto.timingSafeEqual`).
+- Frontend components cannot forge authorization because server secrets are never exposed to the client.
+- Password storage is unnecessary under this architecture.
+
+---
+
+## Alternatives Considered
+
+- Password confirmation
+- Email confirmation links
+- SMS verification
+- Session-only authorization
+- Manual administrator approval
+
+---
+
+### Threat Model
+
+ADR-026 explicitly mitigates the following threats:
+
+- Shared-device abuse
+- Session hijacking with unattended browsers
+- Replay attacks against destructive endpoints
+- Client-side intent forgery
+- Cross-account deletion attempts
+- Timing attacks during proof verification
+- OAuth account switching attacks
+
+The architecture intentionally assumes that possession of an active browser session alone is insufficient authorization for destructive operations.
+
+---
+
+### Non-Goals
+
+ADR-026 does not attempt to protect against:
+
+- Full compromise of the user's Google account
+- Malware running on the user's machine
+- Browser extensions with elevated privileges
+- Server-side secret leakage
+
+These threats require controls outside the scope of the re-authentication system.
+
+---
+
+### Implementation Invariants
+
+Future changes must preserve the following invariants:
+
+- Intent signing must remain server-only.
+- Client components must never access server secrets.
+- Proofs must remain short-lived.
+- Proofs must remain single-use.
+- Proof verification must remain constant-time.
+- Destructive actions must always require recent re-authentication.
+- Proof cookies must remain HttpOnly.
+
+---
+
+## Consequences
+
+### Positive
+
+- Stronger account security
+- Protection against stale sessions
+- OAuth-compatible destructive actions
+- Reduced attack surface
+- Improved auditability
+
+### Trade-offs
+
+- One additional step before deletion
+- More complex authentication flow
+- Additional OAuth round-trip
+
+---
+
+## Related Components
+
+- `src/lib/reauth-proof.ts`
+- `src/app/dashboard/settings/actions.ts`
+- `src/app/auth/callback/reauth/route.ts`
+- `src/app/dashboard/settings/confirm-delete/page.tsx`
+- `src/components/dashboard/settings/ConfirmDeleteAction.tsx`
+- `src/components/dashboard/settings/DangerZone.tsx`
+
+---
+
+## Status
+
+Accepted
+
+---
+
+# ADR-027 — Draft Recovery & Crash Resilience
+
+Status: Accepted
+
+## Context
+
+Founders could lose onboarding progress after accidental refreshes, crashes, or browser closures.
+
+## Decision
+
+Introduce versioned draft persistence using:
+
+- local storage
+- TTL expiration
+- debounced autosave
+- cross-tab synchronization
+- explicit restore
+- explicit discard
+
+## Consequences
+
+### Positive
+
+- reduced onboarding abandonment
+- safer recovery
+- improved founder experience
+
+### Trade-offs
+
+- browser-only persistence
+- additional state complexity
+
+---
+
+# ADR-028 — Shared Validation Architecture
+
+Status: Accepted
+
+## Context
+
+Client and server validation rules diverged and created inconsistent onboarding behavior.
+
+## Decision
+
+Centralize validation into:
+
+`src/lib/validation/onboarding.ts`
+
+The browser and API consume the same schema.
+
+## Consequences
+
+### Positive
+
+- validation parity
+- reduced maintenance
+- fewer production bugs
+
+### Trade-offs
+
+- stronger coupling to the shared schema
+
+---
+
+# ADR-029 — Banner State Separation
+
+Status: Accepted
+
+## Context
+
+Draft existence and banner visibility were previously represented by the same state.
+
+This created edge cases where refreshes could accidentally overwrite valid drafts.
+
+## Decision
+
+Separate onboarding state into:
+
+- pendingDraft
+- isBannerDismissed
+- showBanner
+
+Banner visibility becomes derived state rather than persisted state.
+
+## Consequences
+
+### Positive
+
+- safer recovery behavior
+- cleaner state management
+- reduced accidental data loss
+
+### Trade-offs
+
+- slightly more complex state model
 
 ---
 
@@ -7909,6 +8428,8 @@ This section provides a concise historical timeline showing how the Engineering 
 | 1.0 | July 2026 | Initial Engineering Handbook including platform architecture, engineering standards, and ADR-001 through ADR-017. |
 | 1.1 | July 2026 | Added Revenue Engine V2 roadmap (ADR-018), Live Feed Event Projection Architecture (ADR-020), and launch-readiness architectural decisions. |
 | 2.0 | July 2026 | Added Notification Architecture, Centralized Logging, Idempotent Startup Submission, Secure Proof Upload Pipeline, Best-Effort Auxiliary Writes, Explicit Onboarding Completion State (ADR-025), updated engineering standards, and documentation maintenance policies. |
+| 2.1 | July 2026 | Added ADR-026 (OAuth Re-authentication for Destructive Actions), OAuth-compatible security guarantees, short-lived proof architecture, and handbook updates. |
+| 2.2 | August 2026 | Added onboarding draft recovery architecture, shared validation architecture, onboarding security hardening, onboarding engineering standards, ADR-027, ADR-028, and ADR-029. |
 
 ---
 
@@ -7916,10 +8437,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.0**
+- Handbook Version: **2.2**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete**
-- Latest ADR: **ADR-025**
+- Latest ADR: **ADR-029**
 - Next Scheduled Review: **After Phase 3 Completion**
 
 ---

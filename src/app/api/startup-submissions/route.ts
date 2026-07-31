@@ -19,23 +19,53 @@ type StartupSubmissionPayload = {
   linkedin?: string;
   city: string;
   notes?: string;
-  user_id: string;
   verification_type?: string;
   proof_object_id?: string | null;
   confidence_score?: number;
   verified_revenue?: number | null;
   verification_source?: string | null;
-  verified_api_key?: string | null;
 };
 
-function slugify(text: string) {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')     // Replace spaces with -
-    .replace(/[^\w-]+/g, '')  // Remove all non-word chars
-    .replace(/--+/g, '-');    // Replace multiple - with single -
+import {
+  validateOnboarding,
+  normalizeStartupName,
+  slugify,
+  mapConstraintToConflictCode,
+  ConflictResponse,
+} from "@/lib/validation/onboarding";
+
+/**
+ * Server-only helper to generate a unique, sequential routing slug.
+ * Behavior: acme-ai, acme-ai-2, acme-ai-3, acme-ai-4
+ */
+export async function generateUniqueSlug(startupName: string): Promise<string> {
+  const baseSlug = slugify(startupName) || "startup";
+
+  // Check if baseSlug is available
+  const { data: existingBase } = await supabaseServer
+    .from("startup_submissions")
+    .select("slug")
+    .eq("slug", baseSlug)
+    .maybeSingle();
+
+  if (!existingBase) {
+    return baseSlug;
+  }
+
+  // Fetch all existing slugs matching `${baseSlug}-%`
+  const { data: existingSlugs } = await supabaseServer
+    .from("startup_submissions")
+    .select("slug")
+    .like("slug", `${baseSlug}-%`);
+
+  const slugSet = new Set((existingSlugs || []).map((r) => r.slug));
+
+  let counter = 2;
+  while (slugSet.has(`${baseSlug}-${counter}`)) {
+    counter++;
+  }
+
+  return `${baseSlug}-${counter}`;
 }
 
 const allowedVerificationTypes = new Set(["manual", "social", "proof", "api"]);
@@ -43,9 +73,6 @@ const allowedVerificationTypes = new Set(["manual", "social", "proof", "api"]);
 const allowedPaymentMethods = new Set([
   "razorpay",
   "stripe",
-  "cashfree",
-  "paddle",
-  "lemon-squeezy",
 ]);
 
 function isNonEmptyString(value: unknown): value is string {
@@ -76,7 +103,6 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
   if (payload.mrr == null || payload.mrr === "") return "mrr is required";
   if (payload.arr == null || payload.arr === "") return "arr is required";
   if (!isNonEmptyString(payload.city)) return "city is required";
-  if (!isNonEmptyString(payload.user_id)) return "user_id is required";
   if (!isWithinMaxLength(payload.name, 120)) return "name is too long";
   if (!isWithinMaxLength(payload.startup_name, 120))
     return "startup_name is too long";
@@ -132,40 +158,27 @@ export async function POST(req: Request) {
       );
     }
 
-    const data = (await req.json()) as StartupSubmissionPayload;
+    const userId = user.id;
+    const rawPayload = await req.json();
 
-    // Prevent anonymous user_id spoofing by matching with authenticated session user
-    if (data.user_id !== user.id) {
+    const validation = validateOnboarding(rawPayload);
+    if (!validation.isValid || !validation.data) {
+      const primaryError = validation.errors[0]?.message || "Validation failed";
       return NextResponse.json(
-        { success: false, error: "Unauthorized user ID binding" },
-        { status: 403 }
-      );
-    }
-
-
-
-    const validationError = validatePayload(data);
-    if (validationError) {
-      return NextResponse.json(
-        { success: false, error: validationError },
+        {
+          success: false,
+          error: primaryError,
+          errors: validation.errors,
+        },
         { status: 400 }
       );
     }
 
-    const normalizedStartupName = data.startup_name.trim();
-
-
-
-    const mrrValue = typeof data.mrr === "number" ? data.mrr : Number(data.mrr.trim());
-    const arrValue = typeof data.arr === "number" ? data.arr : Number(data.arr.trim());
-
-    if (isNaN(mrrValue)) return NextResponse.json({ success: false, error: "mrr must be numeric" }, { status: 400 });
-    if (isNaN(arrValue)) return NextResponse.json({ success: false, error: "arr must be numeric" }, { status: 400 });
-
-    const verificationType = data.verification_type?.trim() || "manual";
-    const validVerificationType = allowedVerificationTypes.has(verificationType)
-      ? verificationType
-      : "manual";
+    const data = validation.data;
+    const normalizedStartupName = normalizeStartupName(data.startup_name);
+    const mrrValue = data.mrr;
+    const arrValue = data.arr;
+    const validVerificationType = data.verification_type;
 
     const confidenceScore = calculateVerificationScore(data);
 
@@ -175,7 +188,7 @@ export async function POST(req: Request) {
       // 1. Verify existence using .list() scoped to the authenticated user's namespace
       const { data: files, error: listError } = await supabaseServer.storage
         .from('proofs')
-        .list(user.id, { search: data.proof_object_id });
+        .list(userId, { search: data.proof_object_id });
 
       if (listError || !files || files.length === 0) {
         return NextResponse.json({ success: false, error: "Uploaded proof file not found" }, { status: 400 });
@@ -187,35 +200,47 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: "Uploaded proof file not found" }, { status: 400 });
       }
 
-      // 2. Validate Size (Max 5MB)
+      // 2. Validate Size (Max 10MB limit, reject empty)
       const size = fileMetadata.metadata?.size;
-      if (typeof size !== "number" || size > 5 * 1024 * 1024) {
-        return NextResponse.json({ success: false, error: "Invalid or oversized proof file (max 5MB limit)" }, { status: 400 });
+      if (typeof size === "number" && size === 0) {
+        return NextResponse.json({ success: false, error: "Uploaded file is corrupted." }, { status: 400 });
+      }
+      if (typeof size !== "number" || size > 10 * 1024 * 1024) {
+        return NextResponse.json({ success: false, error: "File exceeds 10 MB limit." }, { status: 400 });
       }
 
       // 3. Download object to perform magic-byte validation
       const { data: fileBlob, error: downloadError } = await supabaseServer.storage
         .from('proofs')
-        .download(`${user.id}/${fileMetadata.name}`);
+        .download(`${userId}/${fileMetadata.name}`);
       
-      if (downloadError || !fileBlob) {
-        return NextResponse.json({ success: false, error: "Could not validate proof file contents" }, { status: 400 });
+      if (downloadError || !fileBlob || fileBlob.size === 0) {
+        return NextResponse.json({ success: false, error: "Uploaded file is corrupted." }, { status: 400 });
       }
 
-      // 4. Magic-byte / MIME validation
+      // 4. Magic-byte / MIME validation (PNG, JPEG, WEBP, PDF)
       const arrayBuffer = await fileBlob.arrayBuffer();
+      if (arrayBuffer.byteLength === 0) {
+        return NextResponse.json({ success: false, error: "Uploaded file is corrupted." }, { status: 400 });
+      }
       const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
       
       const isPNG = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
       const isJPEG = bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF;
       const isWEBP = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46; // RIFF
+      const isPDF =
+        fileBlob.type === "application/pdf" &&
+        bytes[0] === 0x25 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x44 &&
+        bytes[3] === 0x46; // %PDF
       
-      if (!isPNG && !isJPEG && !isWEBP) {
-        return NextResponse.json({ success: false, error: "Invalid file type. Only PNG, JPEG, and WEBP are allowed." }, { status: 400 });
+      if (!isPNG && !isJPEG && !isWEBP && !isPDF) {
+        return NextResponse.json({ success: false, error: "Only PDF, PNG, JPG, and WEBP files are allowed." }, { status: 400 });
       }
 
       // 5. Save the exact canonical object key returned by Storage
-      canonical_proof_url = `${user.id}/${fileMetadata.name}`;
+      canonical_proof_url = `${userId}/${fileMetadata.name}`;
     }
 
     let verification_status = "syncing";
@@ -321,22 +346,25 @@ export async function POST(req: Request) {
       trust_summary.push("Potential risk signals detected");
     }
 
-    const existingBeforeInsert = await findExistingActiveStartup(data.user_id, normalizedStartupName);
+    const existingBeforeInsert = await findExistingActiveStartup(userId, normalizedStartupName);
 
     if (existingBeforeInsert) {
-      return NextResponse.json({
-        success: true,
-        deduplicated: true,
-        startup_id: existingBeforeInsert.id,
-        slug: existingBeforeInsert.slug,
-        data: [existingBeforeInsert]
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          code: "STARTUP_ALREADY_EXISTS",
+          message: "You already have a startup with this name.",
+          startupId: String(existingBeforeInsert.id),
+          slug: existingBeforeInsert.slug ?? undefined,
+        } satisfies ConflictResponse,
+        { status: 409 }
+      );
     }
 
-    const baseSlug = slugify(normalizedStartupName);
-    let slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 10000)}`;
+    let slugCandidate = await generateUniqueSlug(normalizedStartupName);
     let insertedData: { id: number; slug: string | null }[] | null = null;
     let insertError: { message: string; code?: string } | null = null;
+    let conflictResponse: ConflictResponse | null = null;
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const { data: row, error } = await supabaseServer
@@ -355,7 +383,7 @@ export async function POST(req: Request) {
             linkedin: data.linkedin?.trim() || null,
             city: data.city.trim(),
             notes: data.notes?.trim() || null,
-            user_id: data.user_id,
+            user_id: userId,
             proof_url: canonical_proof_url,
             verification_type: validVerificationType,
             confidence: confidenceScore,
@@ -382,44 +410,67 @@ export async function POST(req: Request) {
       if (pgError?.code === "23505") {
         logger.warn("Duplicate startup submission", {
           event: LogEvent.STARTUP_DUPLICATE_SUBMISSION,
-          userId: data.user_id,
+          userId: userId,
           startupName: normalizedStartupName,
           code: pgError.code,
           constraint: pgError.constraint,
           message: pgError.message,
         });
 
-        const constraint = pgError.constraint;
+        const constraintName = pgError.constraint || null;
+        const code = mapConstraintToConflictCode(constraintName);
         
-        if (constraint === "idx_unique_active_startup_per_user") {
-          const existing = await findExistingActiveStartup(data.user_id, normalizedStartupName);
-
-          if (existing) {
-            return NextResponse.json({
-              success: true,
-              deduplicated: true,
-              startup_id: existing.id,
-              slug: existing.slug,
-              data: [existing],
-            });
-          }
+        if (code === "STARTUP_ALREADY_EXISTS") {
+          const existing = await findExistingActiveStartup(userId, normalizedStartupName);
+          conflictResponse = {
+            success: false,
+            code: "STARTUP_ALREADY_EXISTS",
+            message: "You already have a startup with this name.",
+            startupId: existing ? String(existing.id) : undefined,
+            slug: existing?.slug || undefined,
+          };
           break;
         }
 
-        if (constraint === "startup_submissions_slug_key") {
-          slugCandidate = `${baseSlug}-${Math.floor(Math.random() * 100000)}`;
+        if (code === "SLUG_CONFLICT") {
+          slugCandidate = await generateUniqueSlug(normalizedStartupName);
+          if (attempt === 4) {
+            conflictResponse = {
+              success: false,
+              code: "SLUG_CONFLICT",
+              message: "This startup slug already exists.",
+            };
+          }
           continue;
         }
 
+        conflictResponse = {
+          success: false,
+          code: "DUPLICATE_SUBMISSION",
+          message: "A submission already exists.",
+        };
         break;
       }
       break;
     }
 
+    if (conflictResponse) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: conflictResponse.code,
+          message: conflictResponse.message,
+          startupId: conflictResponse.startupId,
+          slug: conflictResponse.slug,
+        } satisfies ConflictResponse,
+        { status: 409 }
+      );
+    }
+
     if (insertError || !insertedData?.length) {
       logger.error("Failed to insert startup submission", {
         event: LogEvent.STARTUP_SUBMISSION_FAILURE,
-        userId: data.user_id,
+        userId: userId,
         startupName: normalizedStartupName,
         error: insertError?.message,
         code: (insertError as PostgresError)?.code,
@@ -427,8 +478,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: insertError?.message || "Failed to create startup listing",
-          details: insertError,
+          error: "Unable to complete submission. Please check your details and try again.",
         },
         { status: 400 }
       );
@@ -439,7 +489,7 @@ export async function POST(req: Request) {
     if (startupId) {
       // Trigger onboarding workflow as a non-blocking secondary side effect
       await handleFirstStartupCreated(
-        data.user_id,
+        userId,
         data.email,
         data.name,
         normalizedStartupName,
@@ -459,7 +509,7 @@ export async function POST(req: Request) {
           logger.warn("Failed to insert verification log", {
             event: LogEvent.VERIFICATION_LOG_FAILURE,
             startupId,
-            userId: data.user_id,
+            userId: userId,
             error: logError.message,
             code: logError.code,
           });
@@ -468,66 +518,7 @@ export async function POST(req: Request) {
         logger.warn("Exception while inserting verification log", {
           event: LogEvent.VERIFICATION_LOG_EXCEPTION,
           startupId,
-          userId: data.user_id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    // Save provider connection if verified
-    if (startupId && data.verified_revenue && data.verification_source && data.verified_api_key) {
-      try {
-        const { encrypt } = await import("@/lib/encryption");
-        let accountId = data.verified_api_key;
-        let encryptedCredential = encrypt(data.verified_api_key);
-
-        if (data.verification_source === "razorpay" && data.verified_api_key.includes(":")) {
-          const [keyId, keySecret] = data.verified_api_key.split(":");
-          accountId = keyId;
-          encryptedCredential = encrypt(keySecret);
-        }
-
-        const { error: providerError } = await supabaseServer.from("provider_connections").upsert(
-          {
-            startup_id: startupId,
-            provider: data.verification_source,
-            account_id: accountId,
-            api_key_encrypted: encryptedCredential,
-            status: "connected",
-            latest_revenue: Number(data.verified_revenue),
-            last_synced_at: new Date().toISOString(),
-          },
-          { onConflict: "startup_id,provider" }
-        );
-        if (providerError) {
-          logger.warn("Failed to upsert provider connection", {
-            event: LogEvent.PROVIDER_CONNECTION_FAILURE,
-            startupId,
-            userId: data.user_id,
-            provider: data.verification_source,
-            error: providerError.message,
-            code: providerError.code,
-          });
-        } else {
-          // Trigger Provider Connected notification (best-effort side effect)
-          try {
-            const { handleProviderConnected } = await import("@/lib/providers/service");
-            await handleProviderConnected({
-              startupId,
-              userId: data.user_id,
-              startupName: data.startup_name,
-              provider: data.verification_source,
-            });
-          } catch (err) {
-            // Non-blocking catch per ADR-023
-          }
-        }
-      } catch (err) {
-        logger.warn("Exception while upserting provider connection", {
-          event: LogEvent.PROVIDER_CONNECTION_EXCEPTION,
-          startupId,
-          userId: data.user_id,
-          provider: data.verification_source,
+          userId: userId,
           error: err instanceof Error ? err.message : String(err),
         });
       }

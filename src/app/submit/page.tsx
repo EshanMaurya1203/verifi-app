@@ -10,6 +10,8 @@ import { supabase } from "@/lib/supabase";
 import { safeFetch, safeSupabaseQuery } from "@/lib/safe-network";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { useDraftRecovery } from "@/hooks/useDraftRecovery";
+import { validateOnboarding, ConflictResponse } from "@/lib/validation/onboarding";
 
 type PaymentMethod = {
   id: string;
@@ -100,6 +102,51 @@ export default function SubmitPage() {
   const [verifyStatus, setVerifyStatus] = useState<{ mrr: number; currency: string } | null>(null);
   const [verifiedRevenue, setVerifiedRevenue] = useState<number | null>(null);
   const [authError, setAuthError] = useState("");
+  const [hasInteracted, setHasInteracted] = useState(false);
+  const [conflictState, setConflictState] = useState<ConflictResponse | null>(null);
+
+  const { pendingDraft, showBanner, restoreDraft, discardDraft, clearDraft } = useDraftRecovery(
+    form,
+    step,
+    !isLoading,
+    hasInteracted
+  );
+
+  const handleApplyDraft = () => {
+    const draft = restoreDraft();
+    if (!draft) return;
+    setHasInteracted(true);
+    setForm((prev) => ({
+      ...prev,
+      fullName: draft.data.fullName ?? prev.fullName,
+      startupName: draft.data.startupName ?? prev.startupName,
+      website: draft.data.website ?? prev.website,
+      businessType: draft.data.businessType ?? prev.businessType,
+      mrr: draft.data.mrr ?? prev.mrr,
+      arr: draft.data.arr ?? prev.arr,
+      twitter: draft.data.twitter ?? prev.twitter,
+      linkedin: draft.data.linkedin ?? prev.linkedin,
+      cityCountry: draft.data.cityCountry ?? prev.cityCountry,
+      notes: draft.data.notes ?? prev.notes,
+      paymentMethods: draft.data.paymentMethods ?? prev.paymentMethods,
+      verificationType: draft.data.verificationType ?? prev.verificationType,
+      apiProvider: draft.data.apiProvider ?? prev.apiProvider,
+    }));
+    if (draft.step >= 1 && draft.step <= 4) {
+      setStep(draft.step as Step);
+    }
+  };
+
+  const getDraftTimeAgo = (savedAt: string) => {
+    const diffMs = Date.now() - new Date(savedAt).getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+  };
 
 
   const handleVerifyRevenue = async () => {
@@ -255,60 +302,88 @@ export default function SubmitPage() {
   }, []);
 
   const validate = (): FormErrors => {
+    const payload = {
+      name: form.fullName,
+      email: form.email,
+      startup_name: form.startupName,
+      website: form.website,
+      biz_type: form.businessType,
+      mrr: form.mrr,
+      arr: form.arr,
+      verification_type: form.verificationType,
+      payment_methods: form.paymentMethods,
+      twitter: form.twitter,
+      linkedin: form.linkedin,
+      city: form.cityCountry,
+      notes: form.notes,
+    };
+
+    const res = validateOnboarding(payload);
     const nextErrors: FormErrors = {};
-    if (!form.fullName.trim()) nextErrors.fullName = "Full name is required";
-    if (!form.email.trim()) nextErrors.email = "Email is required";
-    if (!form.startupName.trim())
-      nextErrors.startupName = "Startup / Business name is required";
-    if (!form.businessType.trim())
-      nextErrors.businessType = "Business type is required";
-    if (!form.mrr.trim()) nextErrors.mrr = "MRR is required";
-    if (!form.arr.trim()) nextErrors.arr = "ARR is required";
-    if (!form.verificationType) nextErrors.verificationType = "Please select a verification method";
-    if (!form.cityCountry.trim())
-      nextErrors.cityCountry = "City / Country is required";
-    if (!form.paymentMethods.length) {
-      nextErrors.paymentMethods = "Select at least one payment method";
+
+    const fieldMap: Record<string, keyof FormState> = {
+      name: "fullName",
+      email: "email",
+      startup_name: "startupName",
+      biz_type: "businessType",
+      mrr: "mrr",
+      arr: "arr",
+      verification_type: "verificationType",
+      city: "cityCountry",
+      website: "website",
+      twitter: "twitter",
+      linkedin: "linkedin",
+      notes: "notes",
+    };
+
+    for (const err of res.errors) {
+      if (err.field === "payment_methods") {
+        nextErrors.paymentMethods = err.message;
+      } else if (fieldMap[err.field]) {
+        nextErrors[fieldMap[err.field]] = err.message;
+      }
     }
+
     if (form.verificationType === "proof" && !proofFile) {
       nextErrors.verificationType = "Upload proof of revenue before submitting";
     }
+
     return nextErrors;
   };
 
   const validateStep = (stepToValidate: Step): FormErrors => {
-    const nextErrors: FormErrors = {};
+    const allErrors = validate();
+    const stepErrors: FormErrors = {};
 
     if (stepToValidate === 1) {
-      if (!form.fullName.trim()) nextErrors.fullName = "Full name is required";
-      if (!form.email.trim()) nextErrors.email = "Email is required";
+      if (allErrors.fullName) stepErrors.fullName = allErrors.fullName;
+      if (allErrors.email) stepErrors.email = allErrors.email;
     }
 
     if (stepToValidate === 2) {
-      if (!form.startupName.trim())
-        nextErrors.startupName = "Startup / Business name is required";
-      if (!form.businessType.trim())
-        nextErrors.businessType = "Business type is required";
+      if (allErrors.startupName) stepErrors.startupName = allErrors.startupName;
+      if (allErrors.businessType) stepErrors.businessType = allErrors.businessType;
+      if (allErrors.website) stepErrors.website = allErrors.website;
     }
 
     if (stepToValidate === 3) {
-      if (!form.mrr.trim()) nextErrors.mrr = "MRR is required";
-      if (!form.arr.trim()) nextErrors.arr = "ARR is required";
-      if (!form.verificationType) nextErrors.verificationType = "Please select a verification method";
-      if (!form.paymentMethods.length) {
-        nextErrors.paymentMethods = "Select at least one payment method";
-      }
+      if (allErrors.mrr) stepErrors.mrr = allErrors.mrr;
+      if (allErrors.arr) stepErrors.arr = allErrors.arr;
+      if (allErrors.verificationType) stepErrors.verificationType = allErrors.verificationType;
+      if (allErrors.paymentMethods) stepErrors.paymentMethods = allErrors.paymentMethods;
       if (form.verificationType === "proof" && !proofFile) {
-        nextErrors.verificationType = "Upload proof of revenue to continue";
+        stepErrors.verificationType = "Upload proof of revenue to continue";
       }
     }
 
     if (stepToValidate === 4) {
-      if (!form.cityCountry.trim())
-        nextErrors.cityCountry = "City / Country is required";
+      if (allErrors.cityCountry) stepErrors.cityCountry = allErrors.cityCountry;
+      if (allErrors.twitter) stepErrors.twitter = allErrors.twitter;
+      if (allErrors.linkedin) stepErrors.linkedin = allErrors.linkedin;
+      if (allErrors.notes) stepErrors.notes = allErrors.notes;
     }
 
-    return nextErrors;
+    return stepErrors;
   };
 
   const handleNextStep = () => {
@@ -323,11 +398,13 @@ export default function SubmitPage() {
   };
 
   const onInputChange = (key: keyof FormState, value: string) => {
+    setHasInteracted(true);
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
   const togglePaymentMethod = (id: string) => {
+    setHasInteracted(true);
     setForm((prev) => {
       const isSelected = prev.paymentMethods.includes(id);
       const paymentMethods = isSelected
@@ -340,7 +417,10 @@ export default function SubmitPage() {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setSubmitError("");
+    setConflictState(null);
 
     const validationErrors = validate();
     setErrors(validationErrors);
@@ -397,12 +477,10 @@ export default function SubmitPage() {
         linkedin: form.linkedin,
         city: form.cityCountry,
         notes: form.notes,
-        user_id: authData.user.id,
         proof_object_id: proof_object_id,
         confidence_score: confidenceMap[form.verificationType] ?? 0,
         verified_revenue: verifiedRevenue || null,
         verification_source: verifiedRevenue ? form.apiProvider : null,
-        verified_api_key: verifiedRevenue ? form.apiKey : null,
       };
 
 
@@ -416,10 +494,38 @@ export default function SubmitPage() {
       });
 
       if (!ok || !result || !result.success) {
-        setSubmitError(error?.message || result?.error || "Submission failed. Please try again.");
+        const code = result?.code;
+        const msg = result?.message || result?.error || error?.message || "";
+
+        if (code === "STARTUP_ALREADY_EXISTS") {
+          setConflictState({
+            success: false,
+            code: "STARTUP_ALREADY_EXISTS",
+            message: "You already created this startup.",
+            startupId: result?.startupId || result?.startup_id,
+            slug: result?.slug,
+          });
+          setSubmitError("");
+        } else if (code === "SLUG_CONFLICT") {
+          setSubmitError("This startup already exists. Please choose another name.");
+          setConflictState(null);
+        } else if (code === "DUPLICATE_SUBMISSION") {
+          setSubmitError("You already submitted this startup.");
+          setConflictState(null);
+        } else {
+          // Never expose raw DB errors (e.g. 23505, duplicate key, constraint violation)
+          if (msg.includes("23505") || msg.includes("duplicate key") || msg.includes("constraint")) {
+            setSubmitError("This startup name already exists. Please choose another name.");
+          } else {
+            setSubmitError(msg || "Submission failed. Please try again.");
+          }
+          setConflictState(null);
+        }
         setIsSubmitting(false);
         return;
       }
+
+      clearDraft();
 
       const created = result.data?.[0] ?? result.data;
       const slug = result.slug ?? created?.slug;
@@ -568,7 +674,83 @@ export default function SubmitPage() {
             </motion.div>
           ) : (
             <form onSubmit={onSubmit} noValidate>
+              {conflictState?.code === "STARTUP_ALREADY_EXISTS" && (
+                <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 backdrop-blur-xl">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 font-bold text-amber-400 text-lg">
+                      !
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-syne text-lg font-bold text-white mb-1">
+                        You already created this startup.
+                      </h4>
+                      <p className="text-xs text-amber-200/80 leading-relaxed mb-4">
+                        A startup listing with the name &quot;{form.startupName}&quot; is already associated with your account.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => router.push("/dashboard")}
+                          className="h-10 rounded-xl bg-primary px-4 font-syne text-xs font-bold text-primary-foreground hover:bg-[#a8e630] transition-colors"
+                        >
+                          Go to Dashboard
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = conflictState.slug
+                              ? `/startup/${encodeURIComponent(conflictState.slug)}/edit`
+                              : "/dashboard";
+                            router.push(target);
+                          }}
+                          className="h-10 rounded-xl border border-white/10 bg-white/5 px-4 text-xs font-semibold text-white hover:bg-white/10 transition-colors"
+                        >
+                          Edit Existing Startup
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConflictState(null);
+                            setStep(2);
+                          }}
+                          className="h-10 rounded-xl border border-border bg-transparent px-4 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Change Startup Name
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <ErrorBanner message={submitError} onClose={() => setSubmitError("")} className="mb-6" />
+
+              {showBanner && pendingDraft && (
+                <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/10 p-4 text-xs text-foreground">
+                  <div>
+                    <p className="font-bold text-primary">Draft Found</p>
+                    <p className="text-neutral-400 mt-0.5">
+                      We found an unfinished startup draft from {getDraftTimeAgo(pendingDraft.savedAt)}.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleApplyDraft}
+                      className="rounded-lg bg-primary px-3 py-1.5 font-bold text-primary-foreground hover:bg-[#a8e630] transition-colors"
+                    >
+                      Restore Draft
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardDraft}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-medium text-neutral-300 hover:bg-white/10 transition-colors"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="mb-6">
                 <div className="mb-2 flex items-center justify-between text-[12px] text-muted-foreground">
                   <span>Step {step} of 4</span>
@@ -795,13 +977,40 @@ export default function SubmitPage() {
                         {form.verificationType === "proof" && (
                           <div className="rounded-lg border border-border bg-[#161616] p-4">
                             <p className="mb-3 text-[13px] text-muted-foreground">
-                              Please upload a screenshot (image) of your revenue dashboard.
+                              Upload proof of revenue (PNG, JPG, WEBP, or PDF up to 10 MB).
                             </p>
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/png,image/jpeg,image/webp,application/pdf"
                               className="w-full text-sm text-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-[13px] file:font-semibold file:text-primary-foreground hover:file:bg-[#a8e630] cursor-pointer"
-                              onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                              onChange={(e) => {
+                                setSubmitError("");
+                                const file = e.target.files?.[0] || null;
+                                if (!file) {
+                                  setProofFile(null);
+                                  return;
+                                }
+                                if (file.size === 0) {
+                                  setSubmitError("Uploaded file is corrupted.");
+                                  setProofFile(null);
+                                  e.target.value = "";
+                                  return;
+                                }
+                                if (file.size > 10 * 1024 * 1024) {
+                                  setSubmitError("File exceeds 10 MB limit.");
+                                  setProofFile(null);
+                                  e.target.value = "";
+                                  return;
+                                }
+                                const allowedTypes = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
+                                if (!allowedTypes.includes(file.type)) {
+                                  setSubmitError("Only PDF, PNG, JPG, and WEBP files are allowed.");
+                                  setProofFile(null);
+                                  e.target.value = "";
+                                  return;
+                                }
+                                setProofFile(file);
+                              }}
                             />
                           </div>
                         )}
