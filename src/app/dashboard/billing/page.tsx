@@ -13,6 +13,8 @@ export const metadata = {
   title: "Billing & Subscriptions | Verifii",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function BillingDashboardPage() {
   const user = await getAuthenticatedUser();
   if (!user) {

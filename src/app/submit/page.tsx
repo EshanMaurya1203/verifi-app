@@ -6,12 +6,15 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import { safeFetch, safeSupabaseQuery } from "@/lib/safe-network";
+import { safeFetch } from "@/lib/safe-network";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useDraftRecovery } from "@/hooks/useDraftRecovery";
 import { validateOnboarding, ConflictResponse } from "@/lib/validation/onboarding";
+import { trackOnboardingEvent } from "@/lib/analytics/tracker";
+import { ONBOARDING_ANALYTICS_EVENTS } from "@/lib/analytics/events";
 
 type PaymentMethod = {
   id: string;
@@ -36,6 +39,50 @@ type FormState = {
   apiProvider: string;
   apiKey: string;
 };
+
+type OneOffVerifyPayload =
+  | {
+      provider: "stripe";
+      apiKey: string;
+    }
+  | {
+      provider: "razorpay";
+      keyId: string;
+      keySecret: string;
+    };
+
+interface OneOffVerifyResponse {
+  success?: boolean;
+  revenue?: number;
+  currency?: string;
+  error?: string;
+}
+
+interface StartupCountResponse {
+  count?: number;
+  error?: string;
+}
+
+interface SubmissionDataItem {
+  id?: number | string;
+  slug?: string;
+}
+
+interface StartupSubmissionResponse {
+  success?: boolean;
+  code?: string;
+  message?: string;
+  error?: string;
+  startupId?: string;
+  startup_id?: string;
+  slug?: string;
+  claimCount?: number;
+  data?: SubmissionDataItem | SubmissionDataItem[];
+  slot_number?: number;
+}
+
+const ONBOARDING_STARTED_KEY = "verifii:onboarding-started";
+const ONBOARDING_STARTED_AT_KEY = "verifii:onboarding-started-at";
 
 type FormErrors = Partial<Record<keyof FormState | "paymentMethods", string>>;
 type Step = 1 | 2 | 3 | 4;
@@ -94,7 +141,7 @@ export default function SubmitPage() {
   const [claimedCount, setClaimedCount] = useState(0);
   const [slotNumber, setSlotNumber] = useState<number | null>(null);
   const [step, setStep] = useState<Step>(1);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
@@ -116,6 +163,19 @@ export default function SubmitPage() {
     const draft = restoreDraft();
     if (!draft) return;
     setHasInteracted(true);
+
+    if (draft.savedAt) {
+      const ageHours = Math.max(
+        0,
+        Math.round(((Date.now() - new Date(draft.savedAt).getTime()) / (1000 * 60 * 60)) * 10) / 10
+      );
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.draft_restored,
+        metadata: { draft_age_hours: ageHours },
+        isAuthenticated: Boolean(user),
+      });
+    }
+
     setForm((prev) => ({
       ...prev,
       fullName: draft.data.fullName ?? prev.fullName,
@@ -135,6 +195,21 @@ export default function SubmitPage() {
     if (draft.step >= 1 && draft.step <= 4) {
       setStep(draft.step as Step);
     }
+  };
+
+  const handleDiscardDraft = () => {
+    if (pendingDraft?.savedAt) {
+      const ageHours = Math.max(
+        0,
+        Math.round(((Date.now() - new Date(pendingDraft.savedAt).getTime()) / (1000 * 60 * 60)) * 10) / 10
+      );
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.draft_discarded,
+        metadata: { draft_age_hours: ageHours },
+        isAuthenticated: Boolean(user),
+      });
+    }
+    discardDraft();
   };
 
   const getDraftTimeAgo = (savedAt: string) => {
@@ -161,23 +236,22 @@ export default function SubmitPage() {
     }
 
     setIsVerifying(true);
-    const payload: any = { provider: form.apiProvider };
+    let payload: OneOffVerifyPayload;
     if (form.apiProvider === "stripe") {
-      payload.apiKey = form.apiKey;
+      payload = { provider: "stripe", apiKey: form.apiKey };
     } else {
       const [id, secret] = form.apiKey.split(":");
-      payload.keyId = id;
-      payload.keySecret = secret;
+      payload = { provider: "razorpay", keyId: id || "", keySecret: secret || "" };
     }
 
-    const { data, ok, error } = await safeFetch<any>("/api/verify/one-off", {
+    const { data, ok, error } = await safeFetch<OneOffVerifyResponse>("/api/verify/one-off", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
     if (ok && data && data.revenue !== undefined) {
-      setVerifyStatus({ mrr: data.revenue, currency: data.currency });
+      setVerifyStatus({ mrr: data.revenue, currency: data.currency ?? "USD" });
       setVerifiedRevenue(data.revenue);
       // Automatically update the MRR field with the verified value
       onInputChange("mrr", Math.round(data.revenue).toString());
@@ -197,8 +271,6 @@ export default function SubmitPage() {
   }, [successMessage]);
 
   const handleGoogleLogin = async () => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const nextParam = searchParams.get("next") || `${window.location.pathname}${window.location.search}`;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -266,7 +338,7 @@ export default function SubmitPage() {
         }
       }
 
-      const { data: countData, ok } = await safeFetch<any>("/api/startup-submissions/count");
+      const { data: countData, ok } = await safeFetch<StartupCountResponse>("/api/startup-submissions/count");
       if (ok && countData && isMounted && typeof countData.count === "number") {
         setClaimedCount(countData.count);
       }
@@ -299,7 +371,27 @@ export default function SubmitPage() {
       isMounted = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user || isLoading) {
+      return;
+    }
+
+    const alreadyStarted = sessionStorage.getItem(ONBOARDING_STARTED_KEY);
+    if (alreadyStarted) {
+      return;
+    }
+
+    sessionStorage.setItem(ONBOARDING_STARTED_KEY, "true");
+    sessionStorage.setItem(ONBOARDING_STARTED_AT_KEY, String(Date.now()));
+
+    trackOnboardingEvent({
+      event: ONBOARDING_ANALYTICS_EVENTS.onboarding_started,
+      step: 1,
+      isAuthenticated: true,
+    });
+  }, [user, isLoading]);
 
   const validate = (): FormErrors => {
     const payload = {
@@ -390,6 +482,27 @@ export default function SubmitPage() {
     const stepErrors = validateStep(step);
     setErrors((prev) => ({ ...prev, ...stepErrors }));
     if (Object.keys(stepErrors).length > 0) return;
+
+    if (step === 1) {
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.step_1_completed,
+        step: 1,
+        isAuthenticated: Boolean(user),
+      });
+    } else if (step === 2) {
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.step_2_completed,
+        step: 2,
+        isAuthenticated: Boolean(user),
+      });
+    } else if (step === 3) {
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.step_3_completed,
+        step: 3,
+        isAuthenticated: Boolean(user),
+      });
+    }
+
     setStep((prev) => (prev < 4 ? ((prev + 1) as Step) : prev));
   };
 
@@ -424,7 +537,15 @@ export default function SubmitPage() {
 
     const validationErrors = validate();
     setErrors(validationErrors);
-    if (Object.keys(validationErrors).length > 0) return;
+    if (Object.keys(validationErrors).length > 0) {
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.submission_failed,
+        step: 4,
+        metadata: { reason: "validation_error" },
+        isAuthenticated: Boolean(user),
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -449,6 +570,12 @@ export default function SubmitPage() {
         if (uploadError) {
           console.error("UPLOAD ERROR:", uploadError);
           setSubmitError(uploadError.message);
+          trackOnboardingEvent({
+            event: ONBOARDING_ANALYTICS_EVENTS.submission_failed,
+            step: 4,
+            metadata: { reason: "upload_failed" },
+            isAuthenticated: Boolean(user),
+          });
           setIsSubmitting(false);
           return;
         }
@@ -483,9 +610,7 @@ export default function SubmitPage() {
         verification_source: verifiedRevenue ? form.apiProvider : null,
       };
 
-
-
-      const { data: result, ok, error } = await safeFetch<any>("/api/startup-submissions", {
+      const { data: result, ok, error } = await safeFetch<StartupSubmissionResponse>("/api/startup-submissions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -497,7 +622,10 @@ export default function SubmitPage() {
         const code = result?.code;
         const msg = result?.message || result?.error || error?.message || "";
 
+        let failureReason: "duplicate_submission" | "slug_conflict" | "validation_error" | "network_error" = "validation_error";
+
         if (code === "STARTUP_ALREADY_EXISTS") {
+          failureReason = "duplicate_submission";
           setConflictState({
             success: false,
             code: "STARTUP_ALREADY_EXISTS",
@@ -507,12 +635,17 @@ export default function SubmitPage() {
           });
           setSubmitError("");
         } else if (code === "SLUG_CONFLICT") {
+          failureReason = "slug_conflict";
           setSubmitError("This startup already exists. Please choose another name.");
           setConflictState(null);
         } else if (code === "DUPLICATE_SUBMISSION") {
+          failureReason = "duplicate_submission";
           setSubmitError("You already submitted this startup.");
           setConflictState(null);
         } else {
+          if (!ok) {
+            failureReason = "network_error";
+          }
           // Never expose raw DB errors (e.g. 23505, duplicate key, constraint violation)
           if (msg.includes("23505") || msg.includes("duplicate key") || msg.includes("constraint")) {
             setSubmitError("This startup name already exists. Please choose another name.");
@@ -521,14 +654,45 @@ export default function SubmitPage() {
           }
           setConflictState(null);
         }
+
+        trackOnboardingEvent({
+          event: ONBOARDING_ANALYTICS_EVENTS.submission_failed,
+          step: 4,
+          metadata: { reason: failureReason },
+          isAuthenticated: Boolean(user),
+        });
+
         setIsSubmitting(false);
         return;
       }
 
       clearDraft();
 
-      const created = result.data?.[0] ?? result.data;
+      const created = Array.isArray(result.data) ? result.data[0] : result.data;
       const slug = result.slug ?? created?.slug;
+
+      const startedAt = Number(sessionStorage.getItem(ONBOARDING_STARTED_AT_KEY));
+      const duration = startedAt && !isNaN(startedAt) && startedAt > 0
+        ? Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
+        : undefined;
+
+      const provider = form.verificationType === "api" ? (form.apiProvider as "stripe" | "razorpay") : undefined;
+      const rawId = result?.startupId || result?.startup_id || created?.id;
+      const startupIdNum = typeof rawId === "number" && rawId > 0 ? rawId : undefined;
+
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.submission_completed,
+        step: 4,
+        startupId: startupIdNum,
+        metadata: {
+          duration,
+          ...(provider ? { provider } : {}),
+        },
+        isAuthenticated: true,
+      });
+
+      sessionStorage.removeItem(ONBOARDING_STARTED_KEY);
+      sessionStorage.removeItem(ONBOARDING_STARTED_AT_KEY);
 
       if (slug) {
         router.push(`/startup/${encodeURIComponent(slug)}/verify`);
@@ -546,6 +710,12 @@ export default function SubmitPage() {
       if (process.env.NODE_ENV === "development") {
         console.error("Submission error:", err);
       }
+      trackOnboardingEvent({
+        event: ONBOARDING_ANALYTICS_EVENTS.submission_failed,
+        step: 4,
+        metadata: { reason: "network_error" },
+        isAuthenticated: Boolean(user),
+      });
       setSubmitError("Submission failed. Please try again in a few moments.");
     } finally {
       setIsSubmitting(false);
@@ -743,7 +913,7 @@ export default function SubmitPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={discardDraft}
+                      onClick={handleDiscardDraft}
                       className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-medium text-neutral-300 hover:bg-white/10 transition-colors"
                     >
                       Discard

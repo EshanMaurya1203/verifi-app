@@ -13,6 +13,9 @@ import { LearnVerifii } from "@/components/founder-dashboard/LearnVerifii";
 import { ProgressOverview } from "@/components/founder-dashboard/ProgressOverview";
 import { ProgressChecklist } from "@/components/founder-dashboard/ProgressChecklist";
 import { NextActionCard } from "@/components/founder-dashboard/NextActionCard";
+
+export const dynamic = "force-dynamic";
+
 import { getFounderProgress } from "@/lib/dashboard/getFounderProgress";
 import { getNextFounderAction } from "@/lib/dashboard/getNextFounderAction";
 import { buildTimelineEvents } from "@/lib/dashboard/timeline-engine";

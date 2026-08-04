@@ -11,6 +11,8 @@ export const metadata: Metadata = {
   description: "Manage your account and startup settings.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const user = await getAuthenticatedUser();
   if (!user) {

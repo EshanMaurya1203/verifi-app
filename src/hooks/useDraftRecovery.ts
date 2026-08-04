@@ -58,9 +58,21 @@ export function useDraftRecovery(
   isInitialized: boolean,
   hasInteracted: boolean
 ) {
-  const [pendingDraft, setPendingDraft] = useState<DraftEnvelope | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<DraftEnvelope | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      const validDraft = parseAndValidateDraft(raw);
+      if (raw && !validDraft) {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
+      return validDraft;
+    } catch {
+      return null;
+    }
+  });
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
-  const [hasCheckedDraft, setHasCheckedDraft] = useState(false);
+  const hasCheckedDraftRef = useRef(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const syncFromLocalStorage = useCallback(() => {
@@ -81,9 +93,6 @@ export function useDraftRecovery(
   }, []);
 
   useEffect(() => {
-    syncFromLocalStorage();
-    setHasCheckedDraft(true);
-
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === DRAFT_STORAGE_KEY) {
         syncFromLocalStorage();
@@ -98,7 +107,7 @@ export function useDraftRecovery(
 
   useEffect(() => {
     // CRITICAL: Do NOT auto-save on initial load, empty form initialization, or before user interaction
-    if (!isInitialized || !hasCheckedDraft || !hasInteracted) return;
+    if (!isInitialized || !hasCheckedDraftRef.current || !hasInteracted) return;
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -140,7 +149,7 @@ export function useDraftRecovery(
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [currentForm, currentStep, isInitialized, hasCheckedDraft, hasInteracted]);
+  }, [currentForm, currentStep, isInitialized, hasInteracted]);
 
   const restoreDraft = useCallback((): DraftEnvelope | null => {
     setIsBannerDismissed(true);

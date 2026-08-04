@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.2 |
+| **Version** | 2.3 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -5180,6 +5180,8 @@ Every ADR follows the same structure:
 - Decision
 - Alternatives Considered
 - Consequences
+- Future Evolution (optional)
+- Related ADRs (optional)
 - Status
 
 ---
@@ -5217,6 +5219,7 @@ Every ADR follows the same structure:
 | ADR-027 | Draft Recovery & Crash Resilience | Accepted |
 | ADR-028 | Shared Validation Architecture | Accepted |
 | ADR-029 | Banner State Separation | Accepted |
+| ADR-030 | Process-Local Analytics Caching | Accepted |
 
 ---
 
@@ -6466,6 +6469,139 @@ Banner visibility becomes derived state rather than persisted state.
 ### Trade-offs
 
 - slightly more complex state model
+
+---
+
+# ADR-030 — Process-Local Analytics Caching
+
+**Status:** Accepted
+
+## Context
+
+The onboarding analytics system exposes multiple admin endpoints:
+
+- /api/admin/analytics/onboarding
+- /api/admin/analytics/onboarding/trends
+- /api/admin/analytics/onboarding/comparison
+
+These endpoints perform expensive aggregation queries and may be requested repeatedly from the analytics dashboard.
+
+To reduce database load and improve dashboard responsiveness, Verifii requires a lightweight caching layer.
+
+Because onboarding analytics is an internal admin feature and does not require strong consistency guarantees, a short-lived cache is sufficient.
+
+---
+
+## Decision
+
+Verifii will use process-local in-memory caching backed by a JavaScript Map.
+
+Cache entries are scoped by:
+
+- analytics type
+- time range
+
+Current cache durations:
+
+- Analytics report: 5 minutes
+- Comparison report: 5 minutes
+- Trend report: 10 minutes
+
+Cache invalidation is performed manually through:
+
+```ts
+invalidateAnalyticsCache();
+```
+
+---
+
+## Alternatives Considered
+
+### Option A — Redis / Upstash
+
+Pros:
+
+- Shared across all instances
+- Persistent
+- Horizontally scalable
+
+Cons:
+
+- Additional infrastructure
+- Additional cost
+- More operational complexity
+
+Rejected for launch.
+
+### Option B — Database-backed cache table
+
+Pros:
+
+- Durable
+- Centralized
+
+Cons:
+
+- Increases database load
+- Additional maintenance burden
+
+Rejected.
+
+### Option C — Process-local Map cache
+
+Pros:
+
+- Zero infrastructure cost
+- Extremely simple
+- Fast reads
+- Sufficient for admin analytics
+
+Selected for launch.
+
+---
+
+## Consequences
+
+Benefits:
+
+- Lower database load
+- Faster analytics responses
+- Simple implementation
+
+Limitations:
+
+- Cache is instance-local.
+- Cache is not persistent.
+- Cache hits are best-effort in serverless environments.
+- Cache is cleared whenever the process restarts.
+
+These limitations are acceptable because analytics data is not mission-critical.
+
+---
+
+## Future Evolution
+
+Future versions may migrate to:
+
+- Redis
+- Upstash
+- Edge Config
+
+without changing the public API.
+
+---
+
+## Related ADRs
+
+- ADR-009 — Snapshot-Based Dashboard
+- ADR-019 — Verification Events as Canonical Source of Truth
+- ADR-020 — Event Projection Architecture
+
+---
+
+## Status
+
+Accepted
 
 ---
 
@@ -8306,6 +8442,8 @@ Examples:
 
 Incremented when substantial new chapters or architectural guidance are added.
 
+Accepted Architecture Decision Records (ADRs) increment the handbook's minor version, even when they do not introduce runtime behavior changes. This ensures that the handbook version reflects architectural evolution as well as implementation changes.
+
 Examples:
 
 - Version 1.1
@@ -8430,6 +8568,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.0 | July 2026 | Added Notification Architecture, Centralized Logging, Idempotent Startup Submission, Secure Proof Upload Pipeline, Best-Effort Auxiliary Writes, Explicit Onboarding Completion State (ADR-025), updated engineering standards, and documentation maintenance policies. |
 | 2.1 | July 2026 | Added ADR-026 (OAuth Re-authentication for Destructive Actions), OAuth-compatible security guarantees, short-lived proof architecture, and handbook updates. |
 | 2.2 | August 2026 | Added onboarding draft recovery architecture, shared validation architecture, onboarding security hardening, onboarding engineering standards, ADR-027, ADR-028, and ADR-029. |
+| 2.3 | August 2026 | Added onboarding analytics caching infrastructure (process-local Map), analytics export system, period comparison infrastructure, ADR-030. |
 
 ---
 
@@ -8437,10 +8576,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.2**
+- Handbook Version: **2.3**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete**
-- Latest ADR: **ADR-029**
+- Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
 ---
