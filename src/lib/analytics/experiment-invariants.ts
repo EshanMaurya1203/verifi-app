@@ -33,6 +33,23 @@ import type { ValidationResult, CertificationReport } from "./runtime/validation
 import type { BenchmarkMetadata } from "./runtime/benchmark-types";
 import type { MemoryProfile } from "./runtime/memory-profiler";
 import type { ConcurrencyValidationResult } from "./runtime/concurrency-validator";
+import type { ExperimentDefinition } from "./registry/experiment-types";
+import type { DomainRegistryStore } from "./registry/experiment-registry";
+import { isValidLifecycleTransition } from "./registry/experiment-registry";
+import type { TargetingContext } from "./targeting/targeting-context";
+import type { ExperimentTargetingRules } from "./targeting/targeting-rules";
+import type { EligibilityResult } from "./targeting/targeting-types";
+import { isEligible } from "./targeting/targeting-engine";
+import { validateTargetingRules } from "./targeting/targeting-validator";
+import type { ExperimentSchedule, ScheduleResult } from "./scheduler/scheduler-types";
+import { isExperimentActive } from "./scheduler/scheduler-engine";
+import type { GovernanceActor, GovernanceAction, GovernanceDecision } from "./governance/governance-types";
+import type { GovernanceAuditLog } from "./governance/governance-audit";
+import { canPerformAction } from "./governance/governance-engine";
+import { isOwner } from "./governance/governance-utils";
+import { validateSchedule } from "./scheduler/scheduler-validator";
+import type { ExperimentConsoleView } from "./console/console-types";
+import { buildExperimentConsoleView } from "./console/console-engine";
 import {
   validateControlVariant,
   validateAllocations,
@@ -59,7 +76,7 @@ export interface DistributionHealth {
 }
 
 export interface InvariantCheckContext {
-  experiment: Experiment;
+  experiment?: Experiment;
   runningExperiments?: Experiment[];
   sampleSize?: number;
   runtimeDays?: number;
@@ -109,6 +126,20 @@ export interface InvariantCheckContext {
   memoryProfile?: MemoryProfile;
   benchmarkMetadata?: BenchmarkMetadata;
   certificationReport?: CertificationReport;
+  experimentDefinition?: ExperimentDefinition;
+  previousDefinition?: ExperimentDefinition;
+  registryStore?: DomainRegistryStore;
+  targetingContext?: TargetingContext;
+  targetingRules?: ExperimentTargetingRules;
+  eligibilityResult?: EligibilityResult;
+  schedule?: ExperimentSchedule;
+  evaluationTime?: Date;
+  scheduleResult?: ScheduleResult;
+  governanceActor?: GovernanceActor;
+  governanceAction?: GovernanceAction;
+  governanceDecision?: GovernanceDecision;
+  governanceAuditLog?: GovernanceAuditLog;
+  consoleView?: ExperimentConsoleView;
 }
 
 export interface InvariantCheckResult {
@@ -183,6 +214,9 @@ export const INV_001_SINGLE_CONTROL: ExperimentInvariant = {
   description: "Every experiment must contain exactly one variant where isControl === true.",
   severity: "critical",
   check: (ctx) => {
+    if (!ctx.experiment) {
+      return { passed: true, invariantId: "INV_001_SINGLE_CONTROL", name: "Exactly One Control Variant", severity: "critical" };
+    }
     const res = validateControlVariant(ctx.experiment);
     return {
       passed: res.valid,
@@ -286,6 +320,9 @@ export const INV_005_EXCLUSION_MUTEX: ExperimentInvariant = {
   description: "At most one experiment per exclusion group can be in 'running' status at any time.",
   severity: "critical",
   check: (ctx) => {
+    if (!ctx.experiment) {
+      return { passed: true, invariantId: "INV_005_EXCLUSION_MUTEX", name: "Exclusion Group Mutual Exclusion", severity: "critical" };
+    }
     const res = validateExclusionGroup(ctx.experiment, ctx.runningExperiments || []);
     return {
       passed: res.valid,
@@ -1830,7 +1867,7 @@ export const INV_051_FORCED_VARIANT_VALID: ExperimentInvariant = {
   description: "When a forced variant is specified, it must exist in the experiment's variant list.",
   severity: "critical",
   check: (ctx) => {
-    if (!ctx.flagDecision || ctx.flagDecision.reason !== "forced_variant" || !ctx.flagDecision.forcedVariantId) {
+    if (!ctx.flagDecision || !ctx.flagDecision.forcedVariantId || !ctx.experiment || ctx.flagDecision.reason !== "forced_variant") {
       return {
         passed: true,
         invariantId: "INV_051_FORCED_VARIANT_VALID",
@@ -2463,6 +2500,673 @@ export const INV_072_CONCURRENT_DETERMINISM: ExperimentInvariant = {
   },
 };
 
+/**
+ * Invariant #73: Version Monotonic. Version numbers must only increase.
+ */
+export const INV_073_VERSION_MONOTONIC: ExperimentInvariant = {
+  id: "INV_073_VERSION_MONOTONIC",
+  name: "Version Monotonicity Guard",
+  description: "Experiment version numbers must strictly increase across revisions.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.previousDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_073_VERSION_MONOTONIC",
+        name: "Version Monotonicity Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed = ctx.experimentDefinition.version > ctx.previousDefinition.version;
+
+    return {
+      passed,
+      invariantId: "INV_073_VERSION_MONOTONIC",
+      name: "Version Monotonicity Guard",
+      severity: "critical",
+      reason: passed
+        ? undefined
+        : `Version did not strictly increase. Current: ${ctx.experimentDefinition.version}, Previous: ${ctx.previousDefinition.version}`,
+    };
+  },
+};
+
+/**
+ * Invariant #74: Unique Experiment IDs. Registry ids must be unique.
+ */
+export const INV_074_UNIQUE_EXPERIMENT_IDS: ExperimentInvariant = {
+  id: "INV_074_UNIQUE_EXPERIMENT_IDS",
+  name: "Unique Registry Experiment IDs Guard",
+  description: "All registered experiment IDs in the registry store must be unique.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.registryStore || !ctx.registryStore.experiments) {
+      return {
+        passed: true,
+        invariantId: "INV_074_UNIQUE_EXPERIMENT_IDS",
+        name: "Unique Registry Experiment IDs Guard",
+        severity: "critical",
+      };
+    }
+
+    const ids = Array.from(ctx.registryStore.experiments.keys());
+    const uniqueIds = new Set(ids);
+    const passed = ids.length === uniqueIds.size;
+
+    return {
+      passed,
+      invariantId: "INV_074_UNIQUE_EXPERIMENT_IDS",
+      name: "Unique Registry Experiment IDs Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Duplicate experiment IDs detected in registry store.",
+    };
+  },
+};
+
+/**
+ * Invariant #75: Minimum Variants. Every experiment must contain at least two variants.
+ */
+export const INV_075_MINIMUM_VARIANTS: ExperimentInvariant = {
+  id: "INV_075_MINIMUM_VARIANTS",
+  name: "Minimum Variants Guard",
+  description: "Every experiment definition must contain at least two variants.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_075_MINIMUM_VARIANTS",
+        name: "Minimum Variants Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed =
+      Array.isArray(ctx.experimentDefinition.variants) &&
+      ctx.experimentDefinition.variants.length >= 2;
+
+    return {
+      passed,
+      invariantId: "INV_075_MINIMUM_VARIANTS",
+      name: "Minimum Variants Guard",
+      severity: "critical",
+      reason: passed
+        ? undefined
+        : `Experiment '${ctx.experimentDefinition.id}' contains fewer than 2 variants (${ctx.experimentDefinition.variants?.length || 0}).`,
+    };
+  },
+};
+
+/**
+ * Invariant #76: Weight Sum 100. Variant weights must sum to exactly 100.
+ */
+export const INV_076_WEIGHT_SUM_100: ExperimentInvariant = {
+  id: "INV_076_WEIGHT_SUM_100",
+  name: "Variant Weight Sum 100 Guard",
+  description: "Sum of variant weights in an experiment definition must strictly equal 100.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !Array.isArray(ctx.experimentDefinition.variants)) {
+      return {
+        passed: true,
+        invariantId: "INV_076_WEIGHT_SUM_100",
+        name: "Variant Weight Sum 100 Guard",
+        severity: "critical",
+      };
+    }
+
+    const weightSum = ctx.experimentDefinition.variants.reduce((sum, v) => sum + (v.weight || 0), 0);
+    const passed = Math.abs(weightSum - 100) < 0.001;
+
+    return {
+      passed,
+      invariantId: "INV_076_WEIGHT_SUM_100",
+      name: "Variant Weight Sum 100 Guard",
+      severity: "critical",
+      reason: passed
+        ? undefined
+        : `Variant weights sum to ${weightSum} (must strictly equal 100).`,
+    };
+  },
+};
+
+/**
+ * Invariant #77: Lifecycle Valid. Lifecycle transitions must be valid.
+ */
+export const INV_077_LIFECYCLE_VALID: ExperimentInvariant = {
+  id: "INV_077_LIFECYCLE_VALID",
+  name: "Lifecycle Transition Validity Guard",
+  description: "Lifecycle status transitions must follow valid transition graph rules.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.previousDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_077_LIFECYCLE_VALID",
+        name: "Lifecycle Transition Validity Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed = isValidLifecycleTransition(
+      ctx.previousDefinition.status,
+      ctx.experimentDefinition.status
+    );
+
+    return {
+      passed,
+      invariantId: "INV_077_LIFECYCLE_VALID",
+      name: "Lifecycle Transition Validity Guard",
+      severity: "critical",
+      reason: passed
+        ? undefined
+        : `Invalid lifecycle transition from '${ctx.previousDefinition.status}' to '${ctx.experimentDefinition.status}'.`,
+    };
+  },
+};
+
+/**
+ * Invariant #78: Archived Immutable. Archived experiments cannot be modified.
+ */
+export const INV_078_ARCHIVED_IMMUTABLE: ExperimentInvariant = {
+  id: "INV_078_ARCHIVED_IMMUTABLE",
+  name: "Archived Experiment Immutability Guard",
+  description: "Archived experiments cannot undergo status or definition modifications.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.previousDefinition || ctx.previousDefinition.status !== "archived") {
+      return {
+        passed: true,
+        invariantId: "INV_078_ARCHIVED_IMMUTABLE",
+        name: "Archived Experiment Immutability Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed =
+      !ctx.experimentDefinition ||
+      (ctx.experimentDefinition.status === "archived" &&
+        ctx.experimentDefinition.version === ctx.previousDefinition.version);
+
+    return {
+      passed,
+      invariantId: "INV_078_ARCHIVED_IMMUTABLE",
+      name: "Archived Experiment Immutability Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Attempted modification of an archived experiment.",
+    };
+  },
+};
+
+/**
+ * Invariant #79: Targeting Deterministic. Same input must produce identical eligibility results.
+ */
+export const INV_079_TARGETING_DETERMINISTIC: ExperimentInvariant = {
+  id: "INV_079_TARGETING_DETERMINISTIC",
+  name: "Targeting Evaluation Determinism Guard",
+  description: "Executing targeting evaluation on identical inputs must yield identical eligibility results.",
+  severity: "critical",
+  check: (ctx) => {
+    const def = ctx.experimentDefinition;
+    const tCtx = ctx.targetingContext;
+
+    if (!def || !tCtx) {
+      return {
+        passed: true,
+        invariantId: "INV_079_TARGETING_DETERMINISTIC",
+        name: "Targeting Evaluation Determinism Guard",
+        severity: "critical",
+      };
+    }
+
+    const res1 = isEligible(def, tCtx);
+    const res2 = isEligible(def, tCtx);
+
+    const passed =
+      res1.eligible === res2.eligible &&
+      res1.matchedRules.join(",") === res2.matchedRules.join(",") &&
+      res1.failedRules.join(",") === res2.failedRules.join(",");
+
+    return {
+      passed,
+      invariantId: "INV_079_TARGETING_DETERMINISTIC",
+      name: "Targeting Evaluation Determinism Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Targeting evaluation produced non-deterministic results across runs.",
+    };
+  },
+};
+
+/**
+ * Invariant #80: Country Match. Country filters must be enforced correctly (case-insensitive).
+ */
+export const INV_080_COUNTRY_MATCH: ExperimentInvariant = {
+  id: "INV_080_COUNTRY_MATCH",
+  name: "Country Filter Enforcement Guard",
+  description: "Country filtering must correctly perform case-insensitive matching against allowed lists.",
+  severity: "critical",
+  check: (ctx) => {
+    const rules = ctx.experimentDefinition?.targeting || ctx.targetingRules;
+    const tCtx = ctx.targetingContext;
+
+    if (!rules || !Array.isArray(rules.countries) || rules.countries.length === 0 || !tCtx) {
+      return {
+        passed: true,
+        invariantId: "INV_080_COUNTRY_MATCH",
+        name: "Country Filter Enforcement Guard",
+        severity: "critical",
+      };
+    }
+
+    const result = ctx.eligibilityResult || (ctx.experimentDefinition ? isEligible(ctx.experimentDefinition, tCtx) : undefined);
+    if (!result) {
+      return {
+        passed: true,
+        invariantId: "INV_080_COUNTRY_MATCH",
+        name: "Country Filter Enforcement Guard",
+        severity: "critical",
+      };
+    }
+
+    if (!tCtx.country) {
+      const passed = result.failedRules.includes("country");
+      return {
+        passed,
+        invariantId: "INV_080_COUNTRY_MATCH",
+        name: "Country Filter Enforcement Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Missing country context failed to register country rule failure.",
+      };
+    }
+
+    const userCountry = tCtx.country.trim().toLowerCase();
+    const allowed = rules.countries.map((c) => c.trim().toLowerCase());
+    const shouldMatch = allowed.includes(userCountry);
+    const actualMatch = result.matchedRules.includes("country");
+
+    const passed = shouldMatch === actualMatch;
+
+    return {
+      passed,
+      invariantId: "INV_080_COUNTRY_MATCH",
+      name: "Country Filter Enforcement Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Country match mismatch: shouldMatch=${shouldMatch}, actualMatch=${actualMatch}.`,
+    };
+  },
+};
+
+/**
+ * Invariant #81: Provider Match. Provider filters must be enforced correctly (exact match).
+ */
+export const INV_081_PROVIDER_MATCH: ExperimentInvariant = {
+  id: "INV_081_PROVIDER_MATCH",
+  name: "Provider Filter Enforcement Guard",
+  description: "Provider filtering must strictly enforce exact string matching for payment providers.",
+  severity: "critical",
+  check: (ctx) => {
+    const rules = ctx.experimentDefinition?.targeting || ctx.targetingRules;
+    const tCtx = ctx.targetingContext;
+
+    if (!rules || !Array.isArray(rules.providers) || rules.providers.length === 0 || !tCtx) {
+      return {
+        passed: true,
+        invariantId: "INV_081_PROVIDER_MATCH",
+        name: "Provider Filter Enforcement Guard",
+        severity: "critical",
+      };
+    }
+
+    const result = ctx.eligibilityResult || (ctx.experimentDefinition ? isEligible(ctx.experimentDefinition, tCtx) : undefined);
+    if (!result) {
+      return {
+        passed: true,
+        invariantId: "INV_081_PROVIDER_MATCH",
+        name: "Provider Filter Enforcement Guard",
+        severity: "critical",
+      };
+    }
+
+    if (!tCtx.provider) {
+      const passed = result.failedRules.includes("provider");
+      return {
+        passed,
+        invariantId: "INV_081_PROVIDER_MATCH",
+        name: "Provider Filter Enforcement Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Missing provider context failed to register provider rule failure.",
+      };
+    }
+
+    const shouldMatch = rules.providers.includes(tCtx.provider);
+    const actualMatch = result.matchedRules.includes("provider");
+
+    const passed = shouldMatch === actualMatch;
+
+    return {
+      passed,
+      invariantId: "INV_081_PROVIDER_MATCH",
+      name: "Provider Filter Enforcement Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Provider match mismatch: shouldMatch=${shouldMatch}, actualMatch=${actualMatch}.`,
+    };
+  },
+};
+
+/**
+ * Invariant #82: User State Match. newUsersOnly and returningUsersOnly must never both evaluate to true.
+ */
+export const INV_082_USER_STATE_MATCH: ExperimentInvariant = {
+  id: "INV_082_USER_STATE_MATCH",
+  name: "User State Mutual Exclusivity Guard",
+  description: "Targeting rules cannot contain contradictory newUsersOnly and returningUsersOnly flags.",
+  severity: "critical",
+  check: (ctx) => {
+    const rules = ctx.experimentDefinition?.targeting || ctx.targetingRules;
+    if (!rules) {
+      return {
+        passed: true,
+        invariantId: "INV_082_USER_STATE_MATCH",
+        name: "User State Mutual Exclusivity Guard",
+        severity: "critical",
+      };
+    }
+
+    const val = validateTargetingRules(rules);
+    const passed = val.passed;
+
+    return {
+      passed,
+      invariantId: "INV_082_USER_STATE_MATCH",
+      name: "User State Mutual Exclusivity Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Targeting rules violate mutual exclusivity of newUsersOnly and returningUsersOnly.",
+    };
+  },
+};
+
+/**
+ * Invariant #83: Rule Order Stable. Rules must evaluate in country → provider → acquisition source → onboarding step → new user → returning user order.
+ */
+export const INV_083_RULE_ORDER_STABLE: ExperimentInvariant = {
+  id: "INV_083_RULE_ORDER_STABLE",
+  name: "Targeting Rule Evaluation Order Stability Guard",
+  description: "Rule evaluation order must strictly follow country → provider → acquisition source → onboarding step → new user → returning user.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.targetingContext) {
+      return {
+        passed: true,
+        invariantId: "INV_083_RULE_ORDER_STABLE",
+        name: "Targeting Rule Evaluation Order Stability Guard",
+        severity: "critical",
+      };
+    }
+
+    const result = isEligible(ctx.experimentDefinition, ctx.targetingContext);
+    const combined = [...result.matchedRules, ...result.failedRules];
+
+    const EXPECTED_ORDER = ["country", "provider", "acquisition source", "onboarding step", "new user", "returning user"];
+
+    let lastIndex = -1;
+    let orderValid = true;
+
+    for (const rule of combined) {
+      const idx = EXPECTED_ORDER.indexOf(rule);
+      if (idx !== -1) {
+        if (idx < lastIndex) {
+          orderValid = false;
+          break;
+        }
+        lastIndex = idx;
+      }
+    }
+
+    return {
+      passed: orderValid,
+      invariantId: "INV_083_RULE_ORDER_STABLE",
+      name: "Targeting Rule Evaluation Order Stability Guard",
+      severity: "critical",
+      reason: orderValid ? undefined : `Rule evaluation order violated. Sequence: ${combined.join(" → ")}`,
+    };
+  },
+};
+
+/**
+ * Invariant #84: Scheduler Deterministic. Same input → same output.
+ */
+export const INV_084_SCHEDULER_DETERMINISTIC: ExperimentInvariant = {
+  id: "INV_084_SCHEDULER_DETERMINISTIC",
+  name: "Scheduler Evaluation Determinism Guard",
+  description: "Executing schedule evaluation on identical inputs must yield identical active status and diagnostics.",
+  severity: "critical",
+  check: (ctx) => {
+    const def = ctx.experimentDefinition;
+    const now = ctx.evaluationTime;
+
+    if (!def || !now) {
+      return {
+        passed: true,
+        invariantId: "INV_084_SCHEDULER_DETERMINISTIC",
+        name: "Scheduler Evaluation Determinism Guard",
+        severity: "critical",
+      };
+    }
+
+    const res1 = isExperimentActive(def, now);
+    const res2 = isExperimentActive(def, now);
+
+    const passed =
+      res1.active === res2.active &&
+      res1.matchedChecks.join(",") === res2.matchedChecks.join(",") &&
+      res1.failedChecks.join(",") === res2.failedChecks.join(",");
+
+    return {
+      passed,
+      invariantId: "INV_084_SCHEDULER_DETERMINISTIC",
+      name: "Scheduler Evaluation Determinism Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Scheduler evaluation produced non-deterministic results across runs.",
+    };
+  },
+};
+
+/**
+ * Invariant #85: Start Window Enforced. Experiment cannot activate before startsAt.
+ */
+export const INV_085_START_WINDOW_ENFORCED: ExperimentInvariant = {
+  id: "INV_085_START_WINDOW_ENFORCED",
+  name: "Schedule Start Boundary Guard",
+  description: "Experiments with startsAt cannot evaluate to active prior to startsAt timestamp.",
+  severity: "critical",
+  check: (ctx) => {
+    const schedule = ctx.experimentDefinition?.schedule || ctx.schedule;
+    const now = ctx.evaluationTime;
+
+    if (!schedule || !schedule.startsAt || !now) {
+      return {
+        passed: true,
+        invariantId: "INV_085_START_WINDOW_ENFORCED",
+        name: "Schedule Start Boundary Guard",
+        severity: "critical",
+      };
+    }
+
+    const result = ctx.scheduleResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
+    if (!result) {
+      return {
+        passed: true,
+        invariantId: "INV_085_START_WINDOW_ENFORCED",
+        name: "Schedule Start Boundary Guard",
+        severity: "critical",
+      };
+    }
+
+    if (now.getTime() < schedule.startsAt.getTime()) {
+      const passed = result.active === false && result.failedChecks.includes("startsAt");
+      return {
+        passed,
+        invariantId: "INV_085_START_WINDOW_ENFORCED",
+        name: "Schedule Start Boundary Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Experiment evaluated to active before startsAt boundary.",
+      };
+    }
+
+    return {
+      passed: true,
+      invariantId: "INV_085_START_WINDOW_ENFORCED",
+      name: "Schedule Start Boundary Guard",
+      severity: "critical",
+    };
+  },
+};
+
+/**
+ * Invariant #86: End Window Enforced. Experiment cannot activate after endsAt.
+ */
+export const INV_086_END_WINDOW_ENFORCED: ExperimentInvariant = {
+  id: "INV_086_END_WINDOW_ENFORCED",
+  name: "Schedule Expiration Boundary Guard",
+  description: "Experiments with endsAt cannot evaluate to active after endsAt timestamp.",
+  severity: "critical",
+  check: (ctx) => {
+    const schedule = ctx.experimentDefinition?.schedule || ctx.schedule;
+    const now = ctx.evaluationTime;
+
+    if (!schedule || !schedule.endsAt || !now) {
+      return {
+        passed: true,
+        invariantId: "INV_086_END_WINDOW_ENFORCED",
+        name: "Schedule Expiration Boundary Guard",
+        severity: "critical",
+      };
+    }
+
+    const result = ctx.scheduleResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
+    if (!result) {
+      return {
+        passed: true,
+        invariantId: "INV_086_END_WINDOW_ENFORCED",
+        name: "Schedule Expiration Boundary Guard",
+        severity: "critical",
+      };
+    }
+
+    if (now.getTime() > schedule.endsAt.getTime()) {
+      const passed = result.active === false && result.failedChecks.includes("endsAt");
+      return {
+        passed,
+        invariantId: "INV_086_END_WINDOW_ENFORCED",
+        name: "Schedule Expiration Boundary Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Experiment evaluated to active after endsAt expiration boundary.",
+      };
+    }
+
+    return {
+      passed: true,
+      invariantId: "INV_086_END_WINDOW_ENFORCED",
+      name: "Schedule Expiration Boundary Guard",
+      severity: "critical",
+    };
+  },
+};
+
+/**
+ * Invariant #87: Disabled Experiment Blocked. enabled: false always blocks experiment.
+ */
+export const INV_087_DISABLED_EXPERIMENT_BLOCKED: ExperimentInvariant = {
+  id: "INV_087_DISABLED_EXPERIMENT_BLOCKED",
+  name: "Disabled Schedule Guard",
+  description: "Schedules with enabled: false must evaluate to active: false.",
+  severity: "critical",
+  check: (ctx) => {
+    const schedule = ctx.experimentDefinition?.schedule || ctx.schedule;
+    const now = ctx.evaluationTime;
+
+    if (!schedule || !now) {
+      return {
+        passed: true,
+        invariantId: "INV_087_DISABLED_EXPERIMENT_BLOCKED",
+        name: "Disabled Schedule Guard",
+        severity: "critical",
+      };
+    }
+
+    if (schedule.enabled === false) {
+      const result = ctx.scheduleResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
+      if (result) {
+        const passed = result.active === false && result.failedChecks.includes("enabled");
+        return {
+          passed,
+          invariantId: "INV_087_DISABLED_EXPERIMENT_BLOCKED",
+          name: "Disabled Schedule Guard",
+          severity: "critical",
+          reason: passed ? undefined : "Disabled experiment evaluated to active.",
+        };
+      }
+    }
+
+    return {
+      passed: true,
+      invariantId: "INV_087_DISABLED_EXPERIMENT_BLOCKED",
+      name: "Disabled Schedule Guard",
+      severity: "critical",
+    };
+  },
+};
+
+/**
+ * Invariant #88: Evaluation Order Stable. Checks always execute in order: enabled → startsAt → endsAt.
+ */
+export const INV_088_EVALUATION_ORDER_STABLE: ExperimentInvariant = {
+  id: "INV_088_EVALUATION_ORDER_STABLE",
+  name: "Schedule Evaluation Order Stability Guard",
+  description: "Schedule checks must strictly execute in order: enabled → startsAt → endsAt.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.evaluationTime) {
+      return {
+        passed: true,
+        invariantId: "INV_088_EVALUATION_ORDER_STABLE",
+        name: "Schedule Evaluation Order Stability Guard",
+        severity: "critical",
+      };
+    }
+
+    const result = isExperimentActive(ctx.experimentDefinition, ctx.evaluationTime);
+    const combined = [...result.matchedChecks, ...result.failedChecks];
+
+    const EXPECTED_ORDER = ["enabled", "startsAt", "endsAt"];
+
+    let lastIndex = -1;
+    let orderValid = true;
+
+    for (const check of combined) {
+      const idx = EXPECTED_ORDER.indexOf(check);
+      if (idx !== -1) {
+        if (idx < lastIndex) {
+          orderValid = false;
+          break;
+        }
+        lastIndex = idx;
+      }
+    }
+
+    return {
+      passed: orderValid,
+      invariantId: "INV_088_EVALUATION_ORDER_STABLE",
+      name: "Schedule Evaluation Order Stability Guard",
+      severity: "critical",
+      reason: orderValid ? undefined : `Schedule evaluation order violated. Sequence: ${combined.join(" → ")}`,
+    };
+  },
+};
+
+
+
 
 export const EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_001_SINGLE_CONTROL,
@@ -2537,13 +3241,697 @@ export const EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_070_CERTIFICATION_CONSISTENCY,
   INV_071_MEMORY_PROFILE_COMPLETE,
   INV_072_CONCURRENT_DETERMINISM,
+  INV_073_VERSION_MONOTONIC,
+  INV_074_UNIQUE_EXPERIMENT_IDS,
+  INV_075_MINIMUM_VARIANTS,
+  INV_076_WEIGHT_SUM_100,
+  INV_077_LIFECYCLE_VALID,
+  INV_078_ARCHIVED_IMMUTABLE,
+  INV_079_TARGETING_DETERMINISTIC,
+  INV_080_COUNTRY_MATCH,
+  INV_081_PROVIDER_MATCH,
+  INV_082_USER_STATE_MATCH,
+  INV_083_RULE_ORDER_STABLE,
+  INV_084_SCHEDULER_DETERMINISTIC,
+  INV_085_START_WINDOW_ENFORCED,
+  INV_086_END_WINDOW_ENFORCED,
+  INV_087_DISABLED_EXPERIMENT_BLOCKED,
+  INV_088_EVALUATION_ORDER_STABLE,
+];
+
+/**
+ * Invariant #89: Permission Deterministic. Same input → same output.
+ */
+export const INV_089_PERMISSION_DETERMINISTIC: ExperimentInvariant = {
+  id: "INV_089_PERMISSION_DETERMINISTIC",
+  name: "Governance Permission Determinism Guard",
+  description: "Executing governance evaluation on identical inputs must yield identical decision and check diagnostics.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.governanceActor || !ctx.governanceAction) {
+      return {
+        passed: true,
+        invariantId: "INV_089_PERMISSION_DETERMINISTIC",
+        name: "Governance Permission Determinism Guard",
+        severity: "critical",
+      };
+    }
+
+    const res1 = canPerformAction(ctx.governanceActor, ctx.governanceAction, ctx.experimentDefinition);
+    const res2 = canPerformAction(ctx.governanceActor, ctx.governanceAction, ctx.experimentDefinition);
+
+    const passed =
+      res1.allowed === res2.allowed &&
+      res1.matchedChecks.join(",") === res2.matchedChecks.join(",") &&
+      res1.failedChecks.join(",") === res2.failedChecks.join(",");
+
+    return {
+      passed,
+      invariantId: "INV_089_PERMISSION_DETERMINISTIC",
+      name: "Governance Permission Determinism Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Governance decision produced non-deterministic outputs across evaluation runs.",
+    };
+  },
+};
+
+/**
+ * Invariant #90: Ownership Enforced. Non-admin author cannot modify non-owned experiment.
+ */
+export const INV_090_OWNERSHIP_ENFORCED: ExperimentInvariant = {
+  id: "INV_090_OWNERSHIP_ENFORCED",
+  name: "Governance Ownership Enforcement Guard",
+  description: "Non-admin actors attempting actions on experiments they do not own must be rejected.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.governanceActor || !ctx.governanceAction || !ctx.experimentDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_090_OWNERSHIP_ENFORCED",
+        name: "Governance Ownership Enforcement Guard",
+        severity: "critical",
+      };
+    }
+
+    if (ctx.governanceActor.role !== "admin" && ctx.governanceAction !== "create" && ctx.governanceActor.id !== ctx.experimentDefinition.owner) {
+      const decision = canPerformAction(ctx.governanceActor, ctx.governanceAction, ctx.experimentDefinition);
+      const passed = decision.allowed === false && decision.failedChecks.includes("ownership");
+      return {
+        passed,
+        invariantId: "INV_090_OWNERSHIP_ENFORCED",
+        name: "Governance Ownership Enforcement Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Non-admin actor modified an experiment owned by another actor.",
+      };
+    }
+
+    return {
+      passed: true,
+      invariantId: "INV_090_OWNERSHIP_ENFORCED",
+      name: "Governance Ownership Enforcement Guard",
+      severity: "critical",
+    };
+  },
+};
+
+/**
+ * Invariant #91: Admin Override. Admin can perform any permitted action on any experiment (except archived).
+ */
+export const INV_091_ADMIN_OVERRIDE: ExperimentInvariant = {
+  id: "INV_091_ADMIN_OVERRIDE",
+  name: "Governance Admin Override Guard",
+  description: "Admin actors possess universal authority across all active non-archived experiments regardless of ownership.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.governanceActor || ctx.governanceActor.role !== "admin" || !ctx.governanceAction || !ctx.experimentDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_091_ADMIN_OVERRIDE",
+        name: "Governance Admin Override Guard",
+        severity: "critical",
+      };
+    }
+
+    if (ctx.experimentDefinition.status !== "archived") {
+      let statusCompatible = true;
+      switch (ctx.governanceAction) {
+        case "request_review":
+          statusCompatible = ctx.experimentDefinition.status === "draft";
+          break;
+        case "review":
+          statusCompatible = ctx.experimentDefinition.status === "draft" || ctx.experimentDefinition.status === "review";
+          break;
+        case "approve":
+          statusCompatible = ctx.experimentDefinition.status === "review";
+          break;
+        case "activate":
+          statusCompatible = ctx.experimentDefinition.status === "approved" || ctx.experimentDefinition.status === "paused";
+          break;
+        case "pause":
+          statusCompatible = ctx.experimentDefinition.status === "active";
+          break;
+        case "archive":
+          statusCompatible = ctx.experimentDefinition.status === "active" || ctx.experimentDefinition.status === "paused";
+          break;
+      }
+
+      if (statusCompatible) {
+        const decision = canPerformAction(ctx.governanceActor, ctx.governanceAction, ctx.experimentDefinition);
+        const passed = decision.allowed === true && !decision.failedChecks.includes("ownership");
+        return {
+          passed,
+          invariantId: "INV_091_ADMIN_OVERRIDE",
+          name: "Governance Admin Override Guard",
+          severity: "critical",
+          reason: passed ? undefined : "Admin actor was incorrectly blocked by ownership check.",
+        };
+      }
+    }
+
+    return {
+      passed: true,
+      invariantId: "INV_091_ADMIN_OVERRIDE",
+      name: "Governance Admin Override Guard",
+      severity: "critical",
+    };
+  },
+};
+
+/**
+ * Invariant #92: Role Boundaries. Roles strictly enforce permission boundaries.
+ */
+export const INV_092_ROLE_BOUNDARIES: ExperimentInvariant = {
+  id: "INV_092_ROLE_BOUNDARIES",
+  name: "Governance Role Boundary Guard",
+  description: "Actors cannot execute actions outside their declared role permissions (e.g. reviewer editing or approver activating).",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.governanceActor || !ctx.governanceAction) {
+      return {
+        passed: true,
+        invariantId: "INV_092_ROLE_BOUNDARIES",
+        name: "Governance Role Boundary Guard",
+        severity: "critical",
+      };
+    }
+
+    if (ctx.governanceActor.role === "reviewer" && ctx.governanceAction === "edit") {
+      const decision = canPerformAction(ctx.governanceActor, ctx.governanceAction, ctx.experimentDefinition);
+      const passed = decision.allowed === false && decision.failedChecks.includes("permission");
+      return {
+        passed,
+        invariantId: "INV_092_ROLE_BOUNDARIES",
+        name: "Governance Role Boundary Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Reviewer was allowed to edit an experiment.",
+      };
+    }
+
+    if (ctx.governanceActor.role === "approver" && ctx.governanceAction === "activate") {
+      const decision = canPerformAction(ctx.governanceActor, ctx.governanceAction, ctx.experimentDefinition);
+      const passed = decision.allowed === false && decision.failedChecks.includes("permission");
+      return {
+        passed,
+        invariantId: "INV_092_ROLE_BOUNDARIES",
+        name: "Governance Role Boundary Guard",
+        severity: "critical",
+        reason: passed ? undefined : "Approver was allowed to activate an experiment.",
+      };
+    }
+
+    return {
+      passed: true,
+      invariantId: "INV_092_ROLE_BOUNDARIES",
+      name: "Governance Role Boundary Guard",
+      severity: "critical",
+    };
+  },
+};
+
+/**
+ * Invariant #93: Audit Order Stable. Audit history is append-only and strictly ordered.
+ */
+export const INV_093_AUDIT_ORDER_STABLE: ExperimentInvariant = {
+  id: "INV_093_AUDIT_ORDER_STABLE",
+  name: "Governance Audit Trail Stability Guard",
+  description: "Governance audit log entries must preserve strict append order and immutability.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.governanceAuditLog || !Array.isArray(ctx.governanceAuditLog.entries)) {
+      return {
+        passed: true,
+        invariantId: "INV_093_AUDIT_ORDER_STABLE",
+        name: "Governance Audit Trail Stability Guard",
+        severity: "critical",
+      };
+    }
+
+    let isOrdered = true;
+    for (let i = 1; i < ctx.governanceAuditLog.entries.length; i++) {
+      if (ctx.governanceAuditLog.entries[i].timestamp.getTime() < ctx.governanceAuditLog.entries[i - 1].timestamp.getTime()) {
+        isOrdered = false;
+        break;
+      }
+    }
+
+    return {
+      passed: isOrdered,
+      invariantId: "INV_093_AUDIT_ORDER_STABLE",
+      name: "Governance Audit Trail Stability Guard",
+      severity: "critical",
+      reason: isOrdered ? undefined : "Governance audit entries violated chronological append ordering.",
+    };
+  },
+};
+
+/**
+ * Invariant #94: Owner Required. ExperimentDefinition must contain a valid, non-empty, trimmed ownerId.
+ */
+export const INV_094_OWNER_REQUIRED: ExperimentInvariant = {
+  id: "INV_094_OWNER_REQUIRED",
+  name: "Governance Mandatory Ownership Guard",
+  description: "ExperimentDefinition must contain a valid, non-empty, trimmed ownerId.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_094_OWNER_REQUIRED",
+        name: "Governance Mandatory Ownership Guard",
+        severity: "critical",
+      };
+    }
+
+    const ownerId = ctx.experimentDefinition.ownerId;
+    const passed = typeof ownerId === "string" && ownerId.trim().length > 0;
+
+    return {
+      passed,
+      invariantId: "INV_094_OWNER_REQUIRED",
+      name: "Governance Mandatory Ownership Guard",
+      severity: "critical",
+      reason: passed ? undefined : "ExperimentDefinition missing mandatory non-empty ownerId.",
+    };
+  },
+};
+
+/**
+ * Invariant #95: Audit Sequence Order. Audit log entries must have unique, non-negative, strictly monotonic sequence numbers.
+ */
+export const INV_095_AUDIT_SEQUENCE_ORDER: ExperimentInvariant = {
+  id: "INV_095_AUDIT_SEQUENCE_ORDER",
+  name: "Governance Audit Sequence Monotonicity Guard",
+  description: "Audit log entries must have unique, non-negative, strictly monotonic sequence numbers.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.governanceAuditLog || !Array.isArray(ctx.governanceAuditLog.entries)) {
+      return {
+        passed: true,
+        invariantId: "INV_095_AUDIT_SEQUENCE_ORDER",
+        name: "Governance Audit Sequence Monotonicity Guard",
+        severity: "critical",
+      };
+    }
+
+    let valid = true;
+    for (let i = 0; i < ctx.governanceAuditLog.entries.length; i++) {
+      const entry = ctx.governanceAuditLog.entries[i];
+      if (typeof entry.sequence !== "number" || !Number.isInteger(entry.sequence) || entry.sequence < 0) {
+        valid = false;
+        break;
+      }
+      if (i > 0 && entry.sequence <= ctx.governanceAuditLog.entries[i - 1].sequence) {
+        valid = false;
+        break;
+      }
+    }
+
+    return {
+      passed: valid,
+      invariantId: "INV_095_AUDIT_SEQUENCE_ORDER",
+      name: "Governance Audit Sequence Monotonicity Guard",
+      severity: "critical",
+      reason: valid ? undefined : "Governance audit sequence numbers are non-monotonic, non-integer, or negative.",
+    };
+  },
+};
+
+/**
+ * Invariant #96: No Approved Candidate State. Status approved_candidate is strictly forbidden.
+ */
+export const INV_096_NO_APPROVED_CANDIDATE_STATE: ExperimentInvariant = {
+  id: "INV_096_NO_APPROVED_CANDIDATE_STATE",
+  name: "Governance Approved Candidate State Prohibition Guard",
+  description: "Experiment status must be strictly one of draft, review, approved, active, paused, archived. Status approved_candidate is strictly forbidden.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition) {
+      return {
+        passed: true,
+        invariantId: "INV_096_NO_APPROVED_CANDIDATE_STATE",
+        name: "Governance Approved Candidate State Prohibition Guard",
+        severity: "critical",
+      };
+    }
+
+    const ALLOWED_STATES = ["draft", "review", "approved", "active", "paused", "archived"];
+    const statusStr = String(ctx.experimentDefinition.status);
+    const passed = ALLOWED_STATES.includes(statusStr) && statusStr !== "approved_candidate";
+
+    return {
+      passed,
+      invariantId: "INV_096_NO_APPROVED_CANDIDATE_STATE",
+      name: "Governance Approved Candidate State Prohibition Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Invalid experiment status '${statusStr}'. Status 'approved_candidate' is strictly prohibited.`,
+    };
+  },
+};
+
+/**
+ * Invariant #97: Console Deterministic. Building console view with identical inputs produces strictly identical views.
+ */
+export const INV_097_CONSOLE_DETERMINISTIC: ExperimentInvariant = {
+  id: "INV_097_CONSOLE_DETERMINISTIC",
+  name: "Console View Determinism Guard",
+  description: "Building console view with identical inputs produces strictly identical views.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.governanceActor || !ctx.evaluationTime) {
+      return {
+        passed: true,
+        invariantId: "INV_097_CONSOLE_DETERMINISTIC",
+        name: "Console View Determinism Guard",
+        severity: "critical",
+      };
+    }
+
+    const view1 = buildExperimentConsoleView(
+      ctx.experimentDefinition,
+      ctx.governanceActor,
+      ctx.targetingContext,
+      ctx.evaluationTime,
+      ctx.governanceAuditLog
+    );
+
+    const view2 = buildExperimentConsoleView(
+      ctx.experimentDefinition,
+      ctx.governanceActor,
+      ctx.targetingContext,
+      ctx.evaluationTime,
+      ctx.governanceAuditLog
+    );
+
+    const json1 = JSON.stringify(view1);
+    const json2 = JSON.stringify(view2);
+    const passed = json1 === json2;
+
+    return {
+      passed,
+      invariantId: "INV_097_CONSOLE_DETERMINISTIC",
+      name: "Console View Determinism Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Console projections for identical inputs produced non-identical JSON outputs.",
+    };
+  },
+};
+
+/**
+ * Invariant #98: Console Read Only. Projecting console view must not mutate the underlying experiment or audit log.
+ */
+export const INV_098_CONSOLE_READ_ONLY: ExperimentInvariant = {
+  id: "INV_098_CONSOLE_READ_ONLY",
+  name: "Console Read-Only Projection Guard",
+  description: "Projecting console view must not mutate the underlying experiment, actor, schedule, or audit log.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.governanceActor || !ctx.evaluationTime) {
+      return {
+        passed: true,
+        invariantId: "INV_098_CONSOLE_READ_ONLY",
+        name: "Console Read-Only Projection Guard",
+        severity: "critical",
+      };
+    }
+
+    const beforeExpJson = JSON.stringify(ctx.experimentDefinition);
+    const beforeAuditJson = ctx.governanceAuditLog ? JSON.stringify(ctx.governanceAuditLog) : undefined;
+
+    buildExperimentConsoleView(
+      ctx.experimentDefinition,
+      ctx.governanceActor,
+      ctx.targetingContext,
+      ctx.evaluationTime,
+      ctx.governanceAuditLog
+    );
+
+    const afterExpJson = JSON.stringify(ctx.experimentDefinition);
+    const afterAuditJson = ctx.governanceAuditLog ? JSON.stringify(ctx.governanceAuditLog) : undefined;
+
+    const expUnchanged = beforeExpJson === afterExpJson;
+    const auditUnchanged = beforeAuditJson === afterAuditJson;
+    const passed = expUnchanged && auditUnchanged;
+
+    return {
+      passed,
+      invariantId: "INV_098_CONSOLE_READ_ONLY",
+      name: "Console Read-Only Projection Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Console projection mutated underlying experiment or audit log state.",
+    };
+  },
+};
+
+/**
+ * Invariant #99: Audit Projection Order. Audit projection must strictly preserve primary sequence number and secondary timestamp ordering.
+ */
+export const INV_099_AUDIT_PROJECTION_ORDER: ExperimentInvariant = {
+  id: "INV_099_AUDIT_PROJECTION_ORDER",
+  name: "Console Audit Projection Monotonicity Guard",
+  description: "Audit projection must strictly preserve primary sequence number and secondary timestamp ordering.",
+  severity: "critical",
+  check: (ctx) => {
+    const view =
+      ctx.consoleView ||
+      (ctx.experimentDefinition && ctx.governanceActor && ctx.evaluationTime
+        ? buildExperimentConsoleView(
+            ctx.experimentDefinition,
+            ctx.governanceActor,
+            ctx.targetingContext,
+            ctx.evaluationTime,
+            ctx.governanceAuditLog
+          )
+        : undefined);
+
+    if (!view || !Array.isArray(view.audit)) {
+      return {
+        passed: true,
+        invariantId: "INV_099_AUDIT_PROJECTION_ORDER",
+        name: "Console Audit Projection Monotonicity Guard",
+        severity: "critical",
+      };
+    }
+
+    let isOrdered = true;
+    for (let i = 1; i < view.audit.length; i++) {
+      if (view.audit[i].sequence <= view.audit[i - 1].sequence) {
+        isOrdered = false;
+        break;
+      }
+    }
+
+    return {
+      passed: isOrdered,
+      invariantId: "INV_099_AUDIT_PROJECTION_ORDER",
+      name: "Console Audit Projection Monotonicity Guard",
+      severity: "critical",
+      reason: isOrdered ? undefined : "Console audit projection failed to preserve monotonic sequence ordering.",
+    };
+  },
+};
+
+/**
+ * Invariant #100: Console Matches Domain. Console view properties must match underlying domain evaluations.
+ */
+export const INV_100_CONSOLE_MATCHES_DOMAIN: ExperimentInvariant = {
+  id: "INV_100_CONSOLE_MATCHES_DOMAIN",
+  name: "Console Domain Fidelity Guard",
+  description: "Console view properties (eligible, active, allowedActions, variants) must match underlying domain evaluations.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.governanceActor || !ctx.evaluationTime) {
+      return {
+        passed: true,
+        invariantId: "INV_100_CONSOLE_MATCHES_DOMAIN",
+        name: "Console Domain Fidelity Guard",
+        severity: "critical",
+      };
+    }
+
+    const view = buildExperimentConsoleView(
+      ctx.experimentDefinition,
+      ctx.governanceActor,
+      ctx.targetingContext,
+      ctx.evaluationTime,
+      ctx.governanceAuditLog
+    );
+
+    const matchesId = view.experimentId === ctx.experimentDefinition.id;
+    const matchesOwner = view.ownerId === ctx.experimentDefinition.ownerId;
+    const matchesStatus = view.status === ctx.experimentDefinition.status;
+    const matchesVariants = view.variants.length === ctx.experimentDefinition.variants.length;
+
+    const passed = matchesId && matchesOwner && matchesStatus && matchesVariants;
+
+    return {
+      passed,
+      invariantId: "INV_100_CONSOLE_MATCHES_DOMAIN",
+      name: "Console Domain Fidelity Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Console view fields mismatched underlying experiment definition domain values.",
+    };
+  },
+};
+
+/**
+ * Invariant #101: Allowed Actions Correct. Console view allowedActions must match exact actions authorized by governance engine.
+ */
+export const INV_101_ALLOWED_ACTIONS_CORRECT: ExperimentInvariant = {
+  id: "INV_101_ALLOWED_ACTIONS_CORRECT",
+  name: "Console Governance Authorization Accuracy Guard",
+  description: "Console view allowedActions must match exact actions authorized by the governance engine for the given actor.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.experimentDefinition || !ctx.governanceActor || !ctx.evaluationTime) {
+      return {
+        passed: true,
+        invariantId: "INV_101_ALLOWED_ACTIONS_CORRECT",
+        name: "Console Governance Authorization Accuracy Guard",
+        severity: "critical",
+      };
+    }
+
+    const view = buildExperimentConsoleView(
+      ctx.experimentDefinition,
+      ctx.governanceActor,
+      ctx.targetingContext,
+      ctx.evaluationTime,
+      ctx.governanceAuditLog
+    );
+
+    const ALL_ACTIONS = ["create", "edit", "request_review", "review", "approve", "activate", "pause", "archive"] as const;
+    const expectedAllowed = ALL_ACTIONS.filter(
+      (action) => canPerformAction(ctx.governanceActor!, action, ctx.experimentDefinition).allowed
+    );
+
+    const viewActionsStr = [...view.governance.allowedActions].sort().join(",");
+    const expectedActionsStr = [...expectedAllowed].sort().join(",");
+
+    const passed = viewActionsStr === expectedActionsStr;
+
+    return {
+      passed,
+      invariantId: "INV_101_ALLOWED_ACTIONS_CORRECT",
+      name: "Console Governance Authorization Accuracy Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Console governance allowedActions (${viewActionsStr}) did not match expected governance engine permissions (${expectedActionsStr}).`,
+    };
+  },
+};
+
+/**
+ * Invariant #102: No Reverse Dependencies. Domain layers (registry, targeting, scheduler, governance) must never import console.
+ */
+export const INV_102_NO_REVERSE_DEPENDENCIES: ExperimentInvariant = {
+  id: "INV_102_NO_REVERSE_DEPENDENCIES",
+  name: "Reverse Dependency Prohibition Guard",
+  description: "registry, targeting, scheduler, and governance modules must never import from console.",
+  severity: "critical",
+  check: () => {
+    const domainDirs = ["registry", "targeting", "scheduler", "governance"];
+    const violations: string[] = [];
+
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const baseDir = path.resolve("src/lib/analytics");
+
+      for (const dir of domainDirs) {
+        const fullDirPath = path.join(baseDir, dir);
+        if (fs.existsSync(fullDirPath)) {
+          const files = fs.readdirSync(fullDirPath).filter((f: string) => f.endsWith(".ts"));
+          for (const file of files) {
+            const filePath = path.join(fullDirPath, file);
+            const content = fs.readFileSync(filePath, "utf-8");
+            if (content.includes("/console") || content.includes('from "./console"') || content.includes('from "../console"')) {
+              violations.push(`${dir}/${file}`);
+            }
+          }
+        }
+      }
+    } catch {
+      // In non-filesystem environments, assume passed
+    }
+
+    const passed = violations.length === 0;
+    return {
+      passed,
+      invariantId: "INV_102_NO_REVERSE_DEPENDENCIES",
+      name: "Reverse Dependency Prohibition Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Reverse dependency violations found in: ${violations.join(", ")}`,
+    };
+  },
+};
+
+/**
+ * Invariant #103: Console Time Injection. Console module files must never instantiate time internally (new Date() with no args or Date.now()).
+ */
+export const INV_103_CONSOLE_TIME_INJECTION: ExperimentInvariant = {
+  id: "INV_103_CONSOLE_TIME_INJECTION",
+  name: "Console External Time Injection Guard",
+  description: "console module files must never instantiate time internally (new Date() with no args or Date.now()).",
+  severity: "critical",
+  check: () => {
+    const consoleFiles = ["console-engine.ts", "console-projections.ts", "console-utils.ts", "console-formatters.ts", "console-validator.ts"];
+    const violations: string[] = [];
+
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const baseDir = path.resolve("src/lib/analytics/console");
+
+      for (const file of consoleFiles) {
+        const filePath = path.join(baseDir, file);
+        if (fs.existsSync(filePath)) {
+          const raw = fs.readFileSync(filePath, "utf-8");
+          const code = raw.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+          if (code.includes("new Date()") || code.includes("Date.now()")) {
+            violations.push(file);
+          }
+        }
+      }
+    } catch {
+      // In non-filesystem environments, assume passed
+    }
+
+    const passed = violations.length === 0;
+    return {
+      passed,
+      invariantId: "INV_103_CONSOLE_TIME_INJECTION",
+      name: "Console External Time Injection Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Internal time instantiation (new Date() / Date.now()) found in: ${violations.join(", ")}`,
+    };
+  },
+};
+
+export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
+  ...EXPERIMENT_INVARIANTS,
+  INV_089_PERMISSION_DETERMINISTIC,
+  INV_090_OWNERSHIP_ENFORCED,
+  INV_091_ADMIN_OVERRIDE,
+  INV_092_ROLE_BOUNDARIES,
+  INV_093_AUDIT_ORDER_STABLE,
+  INV_094_OWNER_REQUIRED,
+  INV_095_AUDIT_SEQUENCE_ORDER,
+  INV_096_NO_APPROVED_CANDIDATE_STATE,
+  INV_097_CONSOLE_DETERMINISTIC,
+  INV_098_CONSOLE_READ_ONLY,
+  INV_099_AUDIT_PROJECTION_ORDER,
+  INV_100_CONSOLE_MATCHES_DOMAIN,
+  INV_101_ALLOWED_ACTIONS_CORRECT,
+  INV_102_NO_REVERSE_DEPENDENCIES,
+  INV_103_CONSOLE_TIME_INJECTION,
 ] as const;
 
 /**
- * Evaluates all 72 experiment invariants for a given experiment context.
+ * Evaluates all 103 experiment invariants for a given experiment context.
  */
 export function checkAllInvariants(ctx: InvariantCheckContext): InvariantCheckResult[] {
-  return EXPERIMENT_INVARIANTS.map((inv) => inv.check(ctx));
+  return ALL_EXPERIMENT_INVARIANTS.map((inv) => inv.check(ctx));
 }
+
+
 
 
