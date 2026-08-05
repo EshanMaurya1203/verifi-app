@@ -29,6 +29,10 @@ import type { ExperimentMetrics, ExperimentHealth, ObservabilitySnapshot } from 
 import type { Anomaly } from "./runtime/anomaly-detector";
 import type { EventQueue } from "./runtime/event-queue";
 import type { QueuedEvent } from "./runtime/queue-types";
+import type { ValidationResult, CertificationReport } from "./runtime/validation-types";
+import type { BenchmarkMetadata } from "./runtime/benchmark-types";
+import type { MemoryProfile } from "./runtime/memory-profiler";
+import type { ConcurrencyValidationResult } from "./runtime/concurrency-validator";
 import {
   validateControlVariant,
   validateAllocations,
@@ -97,6 +101,14 @@ export interface InvariantCheckContext {
   deadLetterEvents?: QueuedEvent[];
   distributionCounts?: Record<string, number>;
   distributionTotal?: number;
+  stressResult?: ValidationResult;
+  chaosResult?: ValidationResult;
+  determinismScore?: number;
+  performanceResult?: ValidationResult;
+  concurrencyResult?: ConcurrencyValidationResult;
+  memoryProfile?: MemoryProfile;
+  benchmarkMetadata?: BenchmarkMetadata;
+  certificationReport?: CertificationReport;
 }
 
 export interface InvariantCheckResult {
@@ -2229,6 +2241,229 @@ export const INV_065_IDENTITY_STABILITY: ExperimentInvariant = {
   },
 };
 
+/**
+ * Invariant #66: Stress Resilience. System survives stress test without crash.
+ */
+export const INV_066_STRESS_RESILIENCE: ExperimentInvariant = {
+  id: "INV_066_STRESS_RESILIENCE",
+  name: "Stress Test Survival Guard",
+  description: "System must survive stress test (10,000 sessions, 1,000 experiments, 1,000,000 events) without crash.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.stressResult) {
+      return {
+        passed: true,
+        invariantId: "INV_066_STRESS_RESILIENCE",
+        name: "Stress Test Survival Guard",
+        severity: "critical",
+      };
+    }
+
+    return {
+      passed: ctx.stressResult.passed,
+      invariantId: "INV_066_STRESS_RESILIENCE",
+      name: "Stress Test Survival Guard",
+      severity: "critical",
+      reason: ctx.stressResult.passed ? undefined : "System failed stress validation.",
+    };
+  },
+};
+
+/**
+ * Invariant #67: Chaos Recovery. System recovers from all chaos scenarios.
+ */
+export const INV_067_CHAOS_RECOVERY: ExperimentInvariant = {
+  id: "INV_067_CHAOS_RECOVERY",
+  name: "Chaos Scenario Recovery Guard",
+  description: "System must recover from all chaos scenarios (kill switch, rollback, invalid variants, corruption).",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.chaosResult) {
+      return {
+        passed: true,
+        invariantId: "INV_067_CHAOS_RECOVERY",
+        name: "Chaos Scenario Recovery Guard",
+        severity: "critical",
+      };
+    }
+
+    return {
+      passed: ctx.chaosResult.passed,
+      invariantId: "INV_067_CHAOS_RECOVERY",
+      name: "Chaos Scenario Recovery Guard",
+      severity: "critical",
+      reason: ctx.chaosResult.passed ? undefined : `Chaos validation failed: ${JSON.stringify(ctx.chaosResult.metadata)}`,
+    };
+  },
+};
+
+/**
+ * Invariant #68: Full Determinism. Identical simulations must produce identical outputs.
+ */
+export const INV_068_FULL_DETERMINISM: ExperimentInvariant = {
+  id: "INV_068_FULL_DETERMINISM",
+  name: "Full Determinism Certification Guard",
+  description: "Identical simulation inputs must produce identical outputs 100/100 times.",
+  severity: "critical",
+  check: (ctx) => {
+    if (typeof ctx.determinismScore !== "number") {
+      return {
+        passed: true,
+        invariantId: "INV_068_FULL_DETERMINISM",
+        name: "Full Determinism Certification Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed = ctx.determinismScore === 100;
+
+    return {
+      passed,
+      invariantId: "INV_068_FULL_DETERMINISM",
+      name: "Full Determinism Certification Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Determinism score is ${ctx.determinismScore}/100 (required: 100/100).`,
+    };
+  },
+};
+
+/**
+ * Invariant #69: Certified Benchmarks. Benchmark reports must declare environment and assumptions.
+ */
+export const INV_069_CERTIFIED_BENCHMARKS: ExperimentInvariant = {
+  id: "INV_069_CERTIFIED_BENCHMARKS",
+  name: "Benchmark Metadata Integrity Guard",
+  description: "Benchmark reports must explicitly declare benchmark environment and non-empty assumptions array.",
+  severity: "critical",
+  check: (ctx) => {
+    const meta = ctx.certificationReport?.benchmarkMetadata || ctx.benchmarkMetadata;
+    if (!meta) {
+      return {
+        passed: true,
+        invariantId: "INV_069_CERTIFIED_BENCHMARKS",
+        name: "Benchmark Metadata Integrity Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed = Boolean(
+      meta.environment &&
+      Array.isArray(meta.assumptions) &&
+      meta.assumptions.length > 0
+    );
+
+    return {
+      passed,
+      invariantId: "INV_069_CERTIFIED_BENCHMARKS",
+      name: "Benchmark Metadata Integrity Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Benchmark metadata missing environment or assumptions array.",
+    };
+  },
+};
+
+/**
+ * Invariant #70: Certification Consistency. PASS only if every validation passed.
+ */
+export const INV_070_CERTIFICATION_CONSISTENCY: ExperimentInvariant = {
+  id: "INV_070_CERTIFICATION_CONSISTENCY",
+  name: "Certification Report Consistency Guard",
+  description: "CertificationReport verdict must be PASS only when every individual validation passed.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.certificationReport) {
+      return {
+        passed: true,
+        invariantId: "INV_070_CERTIFICATION_CONSISTENCY",
+        name: "Certification Report Consistency Guard",
+        severity: "critical",
+      };
+    }
+
+    const report = ctx.certificationReport;
+    const allPassed = report.validations.every((v) => v.passed);
+    const verdictCorrect =
+      (allPassed && report.determinismScore === 100 && report.invariantPassRate === 100)
+        ? report.verdict === "PASS"
+        : report.verdict === "FAIL";
+
+    return {
+      passed: verdictCorrect,
+      invariantId: "INV_070_CERTIFICATION_CONSISTENCY",
+      name: "Certification Report Consistency Guard",
+      severity: "critical",
+      reason: verdictCorrect ? undefined : `Certification verdict '${report.verdict}' inconsistent with validation results.`,
+    };
+  },
+};
+
+/**
+ * Invariant #71: Memory Profile Complete. heapUsedMb, heapTotalMb, rssMb, externalMb, arrayBuffersMb must exist.
+ */
+export const INV_071_MEMORY_PROFILE_COMPLETE: ExperimentInvariant = {
+  id: "INV_071_MEMORY_PROFILE_COMPLETE",
+  name: "Memory Profile Completeness Guard",
+  description: "MemoryProfile must contain heapUsedMb, heapTotalMb, rssMb, externalMb, and arrayBuffersMb metrics.",
+  severity: "critical",
+  check: (ctx) => {
+    const mem = ctx.certificationReport?.memoryProfile || ctx.memoryProfile;
+    if (!mem) {
+      return {
+        passed: true,
+        invariantId: "INV_071_MEMORY_PROFILE_COMPLETE",
+        name: "Memory Profile Completeness Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed =
+      typeof mem.heapUsedMb === "number" &&
+      typeof mem.heapTotalMb === "number" &&
+      typeof mem.rssMb === "number" &&
+      typeof mem.externalMb === "number" &&
+      typeof mem.arrayBuffersMb === "number";
+
+    return {
+      passed,
+      invariantId: "INV_071_MEMORY_PROFILE_COMPLETE",
+      name: "Memory Profile Completeness Guard",
+      severity: "critical",
+      reason: passed ? undefined : "Memory profile is missing one or more required memory usage metrics.",
+    };
+  },
+};
+
+/**
+ * Invariant #72: Concurrent Determinism. Concurrent deterministic simulations must produce identical outputs.
+ */
+export const INV_072_CONCURRENT_DETERMINISM: ExperimentInvariant = {
+  id: "INV_072_CONCURRENT_DETERMINISM",
+  name: "Concurrent Determinism Certification Guard",
+  description: "Simulated concurrent worker execution must produce 0 output mismatches across all iterations.",
+  severity: "critical",
+  check: (ctx) => {
+    if (!ctx.concurrencyResult) {
+      return {
+        passed: true,
+        invariantId: "INV_072_CONCURRENT_DETERMINISM",
+        name: "Concurrent Determinism Certification Guard",
+        severity: "critical",
+      };
+    }
+
+    const passed = ctx.concurrencyResult.passed && ctx.concurrencyResult.mismatches === 0;
+
+    return {
+      passed,
+      invariantId: "INV_072_CONCURRENT_DETERMINISM",
+      name: "Concurrent Determinism Certification Guard",
+      severity: "critical",
+      reason: passed ? undefined : `Concurrent determinism validation failed with ${ctx.concurrencyResult.mismatches} mismatches.`,
+    };
+  },
+};
+
+
 export const EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_001_SINGLE_CONTROL,
   INV_002_ALLOCATION_SUM,
@@ -2295,10 +2530,17 @@ export const EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_063_SNAPSHOT_PERFORMANCE,
   INV_064_DEAD_LETTER_RECOVERY,
   INV_065_IDENTITY_STABILITY,
+  INV_066_STRESS_RESILIENCE,
+  INV_067_CHAOS_RECOVERY,
+  INV_068_FULL_DETERMINISM,
+  INV_069_CERTIFIED_BENCHMARKS,
+  INV_070_CERTIFICATION_CONSISTENCY,
+  INV_071_MEMORY_PROFILE_COMPLETE,
+  INV_072_CONCURRENT_DETERMINISM,
 ] as const;
 
 /**
- * Evaluates all 65 experiment invariants for a given experiment context.
+ * Evaluates all 72 experiment invariants for a given experiment context.
  */
 export function checkAllInvariants(ctx: InvariantCheckContext): InvariantCheckResult[] {
   return EXPERIMENT_INVARIANTS.map((inv) => inv.check(ctx));

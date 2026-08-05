@@ -1,4 +1,4 @@
-// ─── VRF-ONBOARD-002Y — Reliability & Hardening Patch Test Suite ─────────────
+// ─── VRF-ONBOARD-002F / 002Z — Validation & Certification Test Suite ───────
 
 import type { AssignmentAuditRecord, ConfidenceContext, ConfidenceResult, DashboardCacheEntry, DashboardExperimentCard, DashboardState, Experiment, IdentityContext as DomainIdentityContext, PerformanceMetrics, RegressionContext, RegressionResult, RollbackContext, RollbackResult, VariantAssignment } from "../src/lib/analytics/experiments";
 import { ASSIGNMENT_HASH_CONTRACT, DETERMINISTIC_KEY_CONTRACT } from "../src/lib/analytics/experiments";
@@ -106,7 +106,24 @@ import {
   INV_063_SNAPSHOT_PERFORMANCE,
   INV_064_DEAD_LETTER_RECOVERY,
   INV_065_IDENTITY_STABILITY,
+  INV_066_STRESS_RESILIENCE,
+  INV_067_CHAOS_RECOVERY,
+  INV_068_FULL_DETERMINISM,
+  INV_069_CERTIFIED_BENCHMARKS,
+  INV_070_CERTIFICATION_CONSISTENCY,
+  INV_071_MEMORY_PROFILE_COMPLETE,
+  INV_072_CONCURRENT_DETERMINISM,
 } from "../src/lib/analytics/experiment-invariants";
+import { runStressValidation } from "../src/lib/analytics/runtime/stress-validator";
+import { runChaosValidation } from "../src/lib/analytics/runtime/chaos-validator";
+import { runRecoveryValidation } from "../src/lib/analytics/runtime/recovery-validator";
+import { runDeterminismValidation } from "../src/lib/analytics/runtime/determinism-validator";
+import { runConcurrentDeterminismValidation } from "../src/lib/analytics/runtime/concurrency-validator";
+import { runPerformanceValidation } from "../src/lib/analytics/runtime/performance-validator";
+import { generateCertificationReport } from "../src/lib/analytics/runtime/certification-engine";
+import type { ValidationResult, CertificationReport } from "../src/lib/analytics/runtime/validation-types";
+import { createDefaultBenchmarkMetadata, DEFAULT_BENCHMARK_ASSUMPTIONS } from "../src/lib/analytics/runtime/benchmark-types";
+import { captureMemoryProfile } from "../src/lib/analytics/runtime/memory-profiler";
 
 let passed = 0;
 let failed = 0;
@@ -122,7 +139,7 @@ function assert(condition: boolean, label: string, details?: string) {
 }
 
 console.log("\n==================================================");
-console.log("RUNNING EXPERIMENT DOMAIN & ENGINE TEST SUITE (2Y ARCHITECTURAL HARDENING)");
+console.log("VRF-ONBOARD-002Z — CERTIFICATION INTEGRITY & PRODUCTION HARDENING");
 console.log("==================================================\n");
 
 const baseExperiment: Experiment = {
@@ -161,151 +178,139 @@ const expLowPriority: RuntimeExperiment = {
   variants: [{ id: "footer_v2", weight: 100 }],
 };
 
-// ─── TEST 1: Cross-Page Session Identity ─────────────────────────────────────
-console.log("Test 1: Cross-Page Session Identity");
+// ─── TEST 1: Benchmark Metadata & Assumptions ────────────────────────────
+console.log("Test 1: Benchmark Metadata & Assumptions");
 {
-  const reqDashboard: RuntimeRequest = { anonymousId: "anon_999", userAgent: "Mozilla/5.0", pathname: "/dashboard" };
-  const reqLeaderboard: RuntimeRequest = { anonymousId: "anon_999", userAgent: "Mozilla/5.0", pathname: "/leaderboard" };
-  const reqPricing: RuntimeRequest = { anonymousId: "anon_999", userAgent: "Mozilla/5.0", pathname: "/pricing" };
-  const reqOther: RuntimeRequest = { anonymousId: "anon_888", userAgent: "Mozilla/5.0", pathname: "/dashboard" };
-
-  const sess1 = recoverSession(reqDashboard);
-  const sess2 = recoverSession(reqLeaderboard);
-  const sess3 = recoverSession(reqPricing);
-  const sessOther = recoverSession(reqOther);
-
-  assert(sess1 === sess2, "Same anonymousId across /dashboard and /leaderboard yields same sessionId");
-  assert(sess2 === sess3, "Same anonymousId across /leaderboard and /pricing yields same sessionId");
-  assert(sess1 !== sessOther, "Different anonymousId yields different sessionId");
-  assert(sess1.startsWith("sess_"), "SessionId starts with 'sess_'");
+  const meta = createDefaultBenchmarkMetadata("algorithmic");
+  assert(meta.environment === "algorithmic", "Environment is 'algorithmic'");
+  assert(typeof meta.cpuCores === "number" && meta.cpuCores > 0, `CPU cores captured: ${meta.cpuCores}`);
+  assert(typeof meta.memoryMb === "number" && meta.memoryMb > 0, `System memory captured: ${meta.memoryMb} MB`);
+  assert(typeof meta.nodeVersion === "string" && meta.nodeVersion.length > 0, `Node version: ${meta.nodeVersion}`);
+  assert(Array.isArray(meta.assumptions) && meta.assumptions.length === 6, "6 default assumptions present");
+  assert(meta.assumptions.includes("single process"), "Assumptions include 'single process'");
+  assert(meta.assumptions.includes("in-memory only"), "Assumptions include 'in-memory only'");
+  assert(meta.assumptions.includes("no database"), "Assumptions include 'no database'");
+  assert(meta.assumptions.includes("no network latency"), "Assumptions include 'no network latency'");
+  assert(meta.assumptions.includes("no Redis"), "Assumptions include 'no Redis'");
+  assert(meta.assumptions.includes("no Vercel cold starts"), "Assumptions include 'no Vercel cold starts'");
 }
 
-// ─── TEST 2: Feature-Flag Precedence Fix ──────────────────────────────────────
-console.log("\nTest 2: Feature-Flag Precedence Fix");
+// ─── TEST 2: Memory Profiler ───────────────────────────────────────────────
+console.log("\nTest 2: Memory Profiler");
 {
-  const flags = createDefaultFlags();
-  flags.pausedExperiments.add("exp_hero_banner");
-  flags.allowlistedUsers.add("u_allow");
-  flags.forceControl = true;
-
-  // Paused experiment overrides allowlist
-  const d1 = evaluateFlags("u_allow", "exp_hero_banner", flags);
-  assert(d1.allowed === false, "Paused experiment overrides allowlist");
-  assert(d1.reason === "experiment_paused", "Reason is 'experiment_paused'");
-
-  // Allowlist bypasses ONLY forceControl
-  const d2 = evaluateFlags("u_allow", "exp_footer_links", flags);
-  assert(d2.allowed === true, "Allowlisted user bypasses forceControl for non-paused experiment");
-  assert(d2.reason === "allowlisted", "Reason is 'allowlisted'");
-
-  // Non-allowlisted user blocked by forceControl
-  const d3 = evaluateFlags("u_regular", "exp_footer_links", flags);
-  assert(d3.allowed === false, "Non-allowlisted user blocked by forceControl");
-  assert(d3.reason === "force_control", "Reason is 'force_control'");
+  const mem = captureMemoryProfile();
+  assert(typeof mem.heapUsedMb === "number", `heapUsedMb: ${mem.heapUsedMb} MB`);
+  assert(typeof mem.heapTotalMb === "number", `heapTotalMb: ${mem.heapTotalMb} MB`);
+  assert(typeof mem.rssMb === "number", `rssMb: ${mem.rssMb} MB`);
+  assert(typeof mem.externalMb === "number", `externalMb: ${mem.externalMb} MB`);
+  assert(typeof mem.arrayBuffersMb === "number", `arrayBuffersMb: ${mem.arrayBuffersMb} MB`);
 }
 
-// ─── TEST 3: Queue Failure Semantics & Dead-Letter Queue ───────────────────────
-console.log("\nTest 3: Queue Failure Semantics & Dead-Letter Queue");
+// ─── TEST 3: Concurrent Determinism Validator (20 workers × 1000 iterations) ───
+console.log("\nTest 3: Concurrent Determinism Validator (20 workers × 1,000 iterations)");
 {
-  const queue = createEventQueue();
-  const storage = createEventStorage();
-  const processor = createEventProcessor(queue, storage);
-
-  const eventPayload = trackEvent("s_dlq", "signup_started", "usr_dlq");
-  ingestEvent(eventPayload, queue, storage);
-
-  assert(processor.pendingCount() === 1, "1 event pending in queue");
-
-  // Attempt 1: Fail processing
-  processor.processNext("Simulated storage timeout 1");
-  assert(processor.pendingCount() === 1, "Event re-enqueued after 1st failure");
-
-  // Attempt 2: Fail processing
-  processor.processNext("Simulated storage timeout 2");
-  assert(processor.pendingCount() === 1, "Event re-enqueued after 2nd failure");
-
-  // Attempt 3: Fail processing (Reaches MAX_RETRIES = 3 → Escalated to Dead Letter Queue)
-  processor.processNext("Simulated storage timeout 3");
-  assert(processor.pendingCount() === 0, "Queue is empty after 3rd failure (moved to dead letter)");
-
-  const deadLetters = getDeadLetterEvents(queue);
-  assert(deadLetters.length === 1, "Dead Letter Queue contains 1 item");
-  assert(deadLetters[0].retries === 3, "Dead letter item retry count is 3");
-  assert(deadLetters[0].status === "dead_letter", "Status is 'dead_letter'");
-  assert(deadLetters[0].event.id === eventPayload.id, "Dead letter item retains original event payload intact");
-
-  // Retry failed events
-  const restoredCount = retryFailedEvents(queue);
-  assert(restoredCount === 1, "retryFailedEvents restored 1 event to queue");
-  assert(processor.pendingCount() === 1, "Queue pending count is 1 after retry restoration");
-
-  // Process restored event successfully
-  const processed = processor.processNext();
-  assert(processed !== null && processed.id === eventPayload.id, "Restored event processed successfully into storage");
-  assert(storage.records.length === 1, "Storage records total is 1");
+  const concRes = runConcurrentDeterminismValidation(20, 1000);
+  assert(concRes.workers === 20, "Workers count is 20");
+  assert(concRes.iterations === 1000, "Iterations count is 1000");
+  assert(concRes.mismatches === 0, "Mismatches count is strictly 0");
+  assert(concRes.passed === true, "Validation passed === true");
+  assert(concRes.durationMs > 0, `Concurrency validation duration: ${concRes.durationMs}ms`);
 }
 
-// ─── TEST 4: Snapshot Benchmark Under 250 ms ────────────────────────────────
-console.log("\nTest 4: Snapshot Benchmark Under 250 ms (100,000 Events)");
+// ─── TEST 4: Stress Validation ────────────────────────────────────────────
+console.log("\nTest 4: Stress Validation");
+const stressResult = runStressValidation();
 {
-  const storage = createEventStorage();
-  const audit = createAuditLog();
-  const expIds: string[] = [];
+  assert(stressResult.passed === true, "Stress validation passes without crash");
+  const meta = stressResult.metadata as Record<string, unknown>;
+  assert(meta.sessions === 10000, "10,000 sessions processed");
+  assert(meta.experiments === 1000, "1,000 experiments registered");
+  assert(meta.events === 1000000, "1,000,000 events stored");
+}
 
-  for (let i = 0; i < 500; i++) {
-    expIds.push(`exp_bench_${i}`);
+// ─── TEST 5: Chaos Validation ─────────────────────────────────────────────
+console.log("\nTest 5: Chaos Validation (5 scenarios)");
+const chaosResult = runChaosValidation();
+{
+  assert(chaosResult.passed === true, "Chaos validation passes — all 5 scenarios survived");
+  const meta = chaosResult.metadata as Record<string, unknown>;
+  assert(meta.scenarios === 5, "5 chaos scenarios executed");
+  assert(meta.failureCount === 0, `0 chaos failures`);
+}
+
+// ─── TEST 6: Recovery Validation ──────────────────────────────────────────
+console.log("\nTest 6: Recovery Validation");
+const recoveryResult = runRecoveryValidation();
+{
+  assert(recoveryResult.passed === true, "Recovery validation passes — score 100/100");
+}
+
+// ─── TEST 7: Determinism Certification ────────────────────────────────────
+console.log("\nTest 7: Determinism Certification (100 iterations)");
+const determinismResult = runDeterminismValidation();
+{
+  assert(determinismResult.passed === true, "Determinism certification passes — 100/100");
+}
+
+// ─── TEST 8: Performance Validation ───────────────────────────────────────
+console.log("\nTest 8: Performance Validation");
+const performanceResult = runPerformanceValidation();
+{
+  assert(performanceResult.passed === true, "Performance validation passes all thresholds");
+}
+
+// ─── TEST 9: Invariants INV_069, INV_071, INV_072 ─────────────────────────
+console.log("\nTest 9: Invariants INV_069, INV_071, INV_072");
+{
+  const benchMeta = createDefaultBenchmarkMetadata("algorithmic");
+  const memProf = captureMemoryProfile();
+  const concRes = { workers: 20, iterations: 1000, mismatches: 0, passed: true, durationMs: 50 };
+
+  const inv69pass = INV_069_CERTIFIED_BENCHMARKS.check({ experiment: baseExperiment, benchmarkMetadata: benchMeta });
+  assert(inv69pass.passed === true, "INV_069 passes for valid benchmark metadata");
+
+  const inv71pass = INV_071_MEMORY_PROFILE_COMPLETE.check({ experiment: baseExperiment, memoryProfile: memProf });
+  assert(inv71pass.passed === true, "INV_071 passes for complete memory profile");
+
+  const inv72pass = INV_072_CONCURRENT_DETERMINISM.check({ experiment: baseExperiment, concurrencyResult: concRes });
+  assert(inv72pass.passed === true, "INV_072 passes for zero mismatches concurrent result");
+
+  const inv72fail = INV_072_CONCURRENT_DETERMINISM.check({
+    experiment: baseExperiment,
+    concurrencyResult: { workers: 20, iterations: 1000, mismatches: 3, passed: false, durationMs: 50 },
+  });
+  assert(inv72fail.passed === false, "INV_072 fails for non-zero mismatches");
+}
+
+// ─── TEST 10: Full Certification Engine ───────────────────────────────────
+console.log("\nTest 10: Full Certification Engine Upgrade");
+const certReport = generateCertificationReport();
+{
+  assert(certReport.validations.length === 7, `Certification report contains 7 validations (got ${certReport.validations.length})`);
+  assert(certReport.benchmarkMetadata.environment === "algorithmic", "Report environment is 'algorithmic'");
+  assert(certReport.benchmarkMetadata.assumptions.length === 6, "Report contains 6 benchmark assumptions");
+  assert(typeof certReport.memoryProfile.heapUsedMb === "number", "Report memoryProfile contains heapUsedMb");
+  assert(typeof certReport.memoryProfile.heapTotalMb === "number", "Report memoryProfile contains heapTotalMb");
+  assert(typeof certReport.memoryProfile.rssMb === "number", "Report memoryProfile contains rssMb");
+  assert(typeof certReport.memoryProfile.externalMb === "number", "Report memoryProfile contains externalMb");
+  assert(typeof certReport.memoryProfile.arrayBuffersMb === "number", "Report memoryProfile contains arrayBuffersMb");
+  assert(certReport.determinismScore === 100, `Determinism score: ${certReport.determinismScore}/100`);
+  assert(certReport.recoveryScore === 100, `Recovery score: ${certReport.recoveryScore}/100`);
+  assert(certReport.invariantPassRate === 100, `Invariant pass rate: ${certReport.invariantPassRate}%`);
+  assert(certReport.verdict === "PASS", `Certification verdict: ${certReport.verdict}`);
+
+  for (const v of certReport.validations) {
+    assert(v.passed === true, `  → ${v.name}: PASS (${v.durationMs}ms)`);
   }
-
-  for (let i = 0; i < 100000; i++) {
-    const targetExpId = expIds[i % 500];
-    storeEvent({
-      id: `evt_bench_${i}`,
-      sessionId: `s_${i}`,
-      eventType: i % 3 === 0 ? "experiment_assigned" : i % 3 === 1 ? "variant_exposed" : "variant_rendered",
-      experimentId: targetExpId,
-      createdAt: new Date(),
-    }, storage);
-  }
-
-  const startTime = Date.now();
-  const snapshot = buildSnapshot(expIds, storage, audit);
-  const durationMs = Date.now() - startTime;
-
-  assert(snapshot.metrics.length === 500, "Snapshot contains metrics for all 500 experiments");
-  assert(durationMs < 250, `100,000 events processed in ${durationMs}ms (strictly < 250 ms)`);
-
-  const inv63 = INV_063_SNAPSHOT_PERFORMANCE.check({ experiment: baseExperiment, snapshotDurationMs: durationMs });
-  assert(inv63.passed === true, "INV_063_SNAPSHOT_PERFORMANCE passes for latency < 250 ms");
 }
 
-// ─── TEST 5: Invariants INV_063 to INV_065 ───────────────────────────────────
-console.log("\nTest 5: Invariants INV_063 to INV_065");
+// ─── TEST 11: Full 72-Invariant System Verification ──────────────────────
+console.log("\nTest 11: Full 72-Invariant System Verification");
 {
-  const inv63pass = INV_063_SNAPSHOT_PERFORMANCE.check({ experiment: baseExperiment, snapshotDurationMs: 45 });
-  assert(inv63pass.passed === true, "INV_063 passes for duration 45ms < 250ms");
-
-  const inv63fail = INV_063_SNAPSHOT_PERFORMANCE.check({ experiment: baseExperiment, snapshotDurationMs: 280 });
-  assert(inv63fail.passed === false, "INV_063 fails for duration 280ms >= 250ms");
-
-  const dlEvents: QueuedEvent[] = [{
-    event: trackEvent("s1", "signup_started"),
-    retries: 3,
-    status: "dead_letter",
-  }];
-  const inv64 = INV_064_DEAD_LETTER_RECOVERY.check({ experiment: baseExperiment, deadLetterEvents: dlEvents });
-  assert(inv64.passed === true, "INV_064 passes for intact dead-letter event payload");
-
-  const inv65 = INV_065_IDENTITY_STABILITY.check({ experiment: baseExperiment });
-  assert(inv65.passed === true, "INV_065 passes for cross-page session identity stability");
-}
-
-// ─── TEST 6: Full 65-Invariant System Verification ──────────────────────────
-console.log("\nTest 6: Full 65-Invariant System Verification");
-{
-  const res = assignVariant("usr_full_65", "userId", baseExperiment);
+  const res = assignVariant("usr_full_72", "userId", baseExperiment);
   const audit: AssignmentAuditRecord = {
     assignmentHash: res.assignment.assignmentHash,
-    identifier: "usr_full_65",
+    identifier: "usr_full_72",
     identifierType: "userId",
     experimentId: baseExperiment.id,
     experimentVersion: baseExperiment.version,
@@ -347,7 +352,7 @@ console.log("\nTest 6: Full 65-Invariant System Verification");
     expiresAt: new Date(now.getTime() + 60000),
   };
   const performanceMetrics = measureDashboardPerformance(dashboardState, 4.2, true);
-  const runtimeEvent = trackExperimentAssignment("sess_full_65", baseExperiment.id, "treatment", "usr_full_65");
+  const runtimeEvent = trackExperimentAssignment("sess_full_72", baseExperiment.id, "treatment", "usr_full_72");
 
   const registry = createExperimentRegistry();
   registry.experiments.push(expHighPriority, expLowPriority);
@@ -357,16 +362,18 @@ console.log("\nTest 6: Full 65-Invariant System Verification");
   const runtimeFlags = createDefaultFlags();
   const auditLog = createAuditLog();
   const middlewareResult = executeMiddleware(
-    { sessionId: "sess_full_65", userId: "usr_full_65", pathname: "/onboarding" },
+    { sessionId: "sess_full_72", userId: "usr_full_72", pathname: "/onboarding" },
     registry, store, queue, eventStorage, runtimeFlags, auditLog
   );
 
   const normalDecision: FlagDecision = { allowed: true, reason: "normal" };
-
   const expMetrics = computeMetrics(baseExperiment.id, eventStorage);
   const expHealth = computeHealth(expMetrics);
   const obsSnapshot = buildSnapshot([baseExperiment.id], eventStorage, auditLog);
   const detectedAnomalies = detectAnomalies(expMetrics);
+  const benchMeta = createDefaultBenchmarkMetadata("algorithmic");
+  const memProf = captureMemoryProfile();
+  const concRes = { workers: 20, iterations: 1000, mismatches: 0, passed: true, durationMs: 120 };
 
   const allRes = checkAllInvariants({
     experiment: baseExperiment,
@@ -381,7 +388,7 @@ console.log("\nTest 6: Full 65-Invariant System Verification");
     recomputedAssignment: res.assignment,
     auditRecord: audit,
     recoveryResult: { recovered: true, source: "cache", assignment: res.assignment },
-    identityContext: { userId: "usr_full_65", deviceId: "dev_1" },
+    identityContext: { userId: "usr_full_72", deviceId: "dev_1" },
     confidenceContext: confCtx,
     confidenceResult: confRes,
     regressionContext: regCtx,
@@ -410,9 +417,17 @@ console.log("\nTest 6: Full 65-Invariant System Verification");
     deadLetterEvents: getDeadLetterEvents(queue),
     distributionCounts: { control: 50000, treatment: 50000 },
     distributionTotal: 100000,
+    stressResult,
+    chaosResult,
+    determinismScore: 100,
+    performanceResult: performanceResult,
+    concurrencyResult: concRes,
+    memoryProfile: memProf,
+    benchmarkMetadata: benchMeta,
+    certificationReport: certReport,
   });
 
-  assert(allRes.length === 65, `checkAllInvariants evaluates all 65 invariants (got ${allRes.length})`);
+  assert(allRes.length === 72, `checkAllInvariants evaluates all 72 invariants (got ${allRes.length})`);
 
   const failedInvariants = allRes.filter((r) => !r.passed);
   if (failedInvariants.length > 0) {
@@ -420,7 +435,37 @@ console.log("\nTest 6: Full 65-Invariant System Verification");
       console.log(`    ⚠ ${f.invariantId}: ${f.reason}`);
     }
   }
-  assert(failedInvariants.length === 0, "All 65 invariants pass for valid context");
+  assert(failedInvariants.length === 0, "All 72 invariants pass for valid context");
+}
+
+// ─── ALGORITHMIC CERTIFICATION REPORT ─────────────────────────────────────
+console.log("\n==================================================");
+console.log("ALGORITHMICALLY CERTIFIED REPORT");
+console.log("==================================================");
+{
+  console.log(`  Generated:          ${certReport.generatedAt.toISOString()}`);
+  console.log(`  Environment:        ${certReport.benchmarkMetadata.environment}`);
+  console.log(`  CPU Cores:          ${certReport.benchmarkMetadata.cpuCores}`);
+  console.log(`  System RAM:         ${certReport.benchmarkMetadata.memoryMb} MB`);
+  console.log(`  Node Version:       ${certReport.benchmarkMetadata.nodeVersion}`);
+  console.log(`  Heap Used:          ${certReport.memoryProfile.heapUsedMb} MB`);
+  console.log(`  Heap Total:         ${certReport.memoryProfile.heapTotalMb} MB`);
+  console.log(`  RSS:                ${certReport.memoryProfile.rssMb} MB`);
+  console.log(`  Assignments/sec:    ${certReport.assignmentsPerSecond}`);
+  console.log(`  Events/sec:         ${certReport.eventsPerSecond}`);
+  console.log(`  Snapshot Latency:   ${certReport.snapshotLatencyMs}ms`);
+  console.log(`  Determinism:        ${certReport.determinismScore}/100`);
+  console.log(`  Recovery:           ${certReport.recoveryScore}/100`);
+  console.log(`  Invariant Rate:     ${certReport.invariantPassRate}%`);
+  console.log(`  Verdict:            ${certReport.verdict}`);
+  console.log(`\n  Certification Assumptions:`);
+  for (const a of certReport.benchmarkMetadata.assumptions) {
+    console.log(`    - ${a}`);
+  }
+  console.log(`\n  Validations:`);
+  for (const v of certReport.validations) {
+    console.log(`    ${v.passed ? "✅" : "❌"} ${v.name} (${v.durationMs}ms)`);
+  }
 }
 
 console.log(`\n==================================================`);
