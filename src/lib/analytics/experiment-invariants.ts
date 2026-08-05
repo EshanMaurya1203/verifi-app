@@ -140,6 +140,8 @@ export interface InvariantCheckContext {
   governanceDecision?: GovernanceDecision;
   governanceAuditLog?: GovernanceAuditLog;
   consoleView?: ExperimentConsoleView;
+  runtimeRequest?: import("./runtime/runtime-types").RuntimeRequest;
+  runtimeResult?: import("./runtime/runtime-types").RuntimeResult;
 }
 
 export interface InvariantCheckResult {
@@ -3906,6 +3908,26 @@ export const INV_103_CONSOLE_TIME_INJECTION: ExperimentInvariant = {
   },
 };
 
+import {
+  INV_104_RUNTIME_DETERMINISTIC,
+  INV_105_RUNTIME_READ_ONLY,
+  INV_106_RUNTIME_ORDER_STABLE,
+  INV_107_ASSIGNMENT_STABLE,
+  INV_108_SKIPPED_EXPERIMENTS_CORRECT,
+  INV_109_VARIANT_ORDER_INDEPENDENT,
+  INV_110_VARIANT_INTEGRITY,
+} from "./runtime/runtime-invariants";
+
+export {
+  INV_104_RUNTIME_DETERMINISTIC,
+  INV_105_RUNTIME_READ_ONLY,
+  INV_106_RUNTIME_ORDER_STABLE,
+  INV_107_ASSIGNMENT_STABLE,
+  INV_108_SKIPPED_EXPERIMENTS_CORRECT,
+  INV_109_VARIANT_ORDER_INDEPENDENT,
+  INV_110_VARIANT_INTEGRITY,
+};
+
 export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   ...EXPERIMENT_INVARIANTS,
   INV_089_PERMISSION_DETERMINISTIC,
@@ -3923,10 +3945,17 @@ export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_101_ALLOWED_ACTIONS_CORRECT,
   INV_102_NO_REVERSE_DEPENDENCIES,
   INV_103_CONSOLE_TIME_INJECTION,
+  INV_104_RUNTIME_DETERMINISTIC,
+  INV_105_RUNTIME_READ_ONLY,
+  INV_106_RUNTIME_ORDER_STABLE,
+  INV_107_ASSIGNMENT_STABLE,
+  INV_108_SKIPPED_EXPERIMENTS_CORRECT,
+  INV_109_VARIANT_ORDER_INDEPENDENT,
+  INV_110_VARIANT_INTEGRITY,
 ] as const;
 
 /**
- * Evaluates all 103 experiment invariants for a given experiment context.
+ * Evaluates all 110 experiment invariants for a given experiment context.
  */
 export function checkAllInvariants(ctx: InvariantCheckContext): InvariantCheckResult[] {
   return ALL_EXPERIMENT_INVARIANTS.map((inv) => inv.check(ctx));

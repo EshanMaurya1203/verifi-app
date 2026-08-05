@@ -1,36 +1,77 @@
-// ─── VRF-ONBOARD-002A / 002X — Runtime Event Ingestion Domain Types ──────
+// ─── VRF-ONBOARD-004A & 002A — Runtime Types ───────────────────────────────
+
+import type { GovernanceActor } from "../governance/governance-types";
+import type { TargetingContext } from "../targeting/targeting-context";
 
 export type OnboardingEventType =
-  | "landing_page_viewed"
-  | "signup_started"
-  | "signup_completed"
   | "onboarding_started"
-  | "onboarding_step_completed"
-  | "onboarding_abandoned"
-  | "onboarding_completed"
-  | "stripe_connected"
-  | "stripe_sync_success"
-  | "stripe_sync_failed"
-  | "razorpay_connected"
-  | "razorpay_sync_success"
-  | "razorpay_sync_failed"
-  | "proof_uploaded"
-  | "verification_submitted"
-  | "verification_approved"
-  | "verification_rejected"
-  | "experiment_assigned"
-  | "variant_exposed"
-  | "variant_rendered"
-  | "variant_seen"
-  | "variant_completed";
+  | "step_1_completed"
+  | "step_2_completed"
+  | "step_3_completed"
+  | "submission_completed"
+  | "submission_failed"
+  | "draft_restored"
+  | "draft_discarded"
+  | "signup_started"
+  | (string & {});
 
 export interface RuntimeEvent {
-  id: string;
-  userId?: string;
+  id?: string;
+
+  eventId?: string;
+
   sessionId: string;
+
+  userId?: string;
+
   eventType: OnboardingEventType;
+
+  timestamp?: Date;
+
+  createdAt?: Date;
+
   experimentId?: string;
+
   variantId?: string;
+
   metadata?: Record<string, unknown>;
-  createdAt: Date;
+}
+
+export interface RuntimeRequest {
+  sessionId: string;
+
+  actor: GovernanceActor;
+
+  targetingContext: TargetingContext;
+
+  now: Date;
+}
+
+export interface RuntimeAssignment {
+  experimentId: string;
+
+  variantId: string;
+
+  assignmentKey: string;
+}
+
+export type RuntimeSkipReason =
+  | "governance"
+  | "schedule"
+  | "targeting"
+  | "archived"
+  | "paused";
+
+export interface RuntimeSkipped {
+  experimentId: string;
+
+  reason: RuntimeSkipReason;
+}
+
+export interface RuntimeResult {
+  assignments: readonly RuntimeAssignment[];
+
+  skipped: readonly RuntimeSkipped[];
+
+  evaluatedExperiments: readonly string[];
 }

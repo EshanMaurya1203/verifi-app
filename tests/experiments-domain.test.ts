@@ -201,6 +201,13 @@ import {
   INV_101_ALLOWED_ACTIONS_CORRECT,
   INV_102_NO_REVERSE_DEPENDENCIES,
   INV_103_CONSOLE_TIME_INJECTION,
+  INV_104_RUNTIME_DETERMINISTIC,
+  INV_105_RUNTIME_READ_ONLY,
+  INV_106_RUNTIME_ORDER_STABLE,
+  INV_107_ASSIGNMENT_STABLE,
+  INV_108_SKIPPED_EXPERIMENTS_CORRECT,
+  INV_109_VARIANT_ORDER_INDEPENDENT,
+  INV_110_VARIANT_INTEGRITY,
 } from "../src/lib/analytics/experiment-invariants";
 
 // ─── 003D GOVERNANCE IMPORTS ──────────────────────────────────────────────
@@ -223,6 +230,14 @@ import { validateConsoleView } from "../src/lib/analytics/console/console-valida
 import { formatConsoleView, formatAuditView, summarizeConsoleView } from "../src/lib/analytics/console/console-formatters";
 import { snapshotConsoleView } from "../src/lib/analytics/console/console-utils";
 import { ConsoleError, ProjectionError } from "../src/lib/analytics/console/console-errors";
+
+// ─── 004A RUNTIME IMPORTS ─────────────────────────────────────────────────
+import type { RuntimeRequest as ExecutionRuntimeRequest, RuntimeResult, RuntimeAssignment, RuntimeSkipped } from "../src/lib/analytics/runtime/runtime-types";
+import { executeRuntime } from "../src/lib/analytics/runtime/runtime-engine";
+import { buildAssignmentKey, assignVariant as assignRuntimeVariant, evaluateExperiment, validateVariants } from "../src/lib/analytics/runtime/runtime-utils";
+import { validateRuntimeRequest, validateRuntimeResult } from "../src/lib/analytics/runtime/runtime-validator";
+import { projectRuntimeResult, projectRuntimeAssignment } from "../src/lib/analytics/runtime/runtime-projections";
+import { RuntimeError, RuntimeValidationError, RuntimeAssignmentError } from "../src/lib/analytics/runtime/runtime-errors";
 
 let passed = 0;
 let failed = 0;
@@ -712,7 +727,7 @@ console.log("\nTest 19: Full 83-Invariant System Verification");
     governanceAuditLog: appendGovernanceAudit(createGovernanceAuditLog(), { sequence: 1, actorId: "growth_team", action: "edit", timestamp: now, experimentId: baseDefinition.id }),
   });
 
-  assert(allRes.length === 103, `checkAllInvariants evaluates all 103 invariants (got ${allRes.length})`);
+  assert(allRes.length === 110, `checkAllInvariants evaluates all 110 invariants (got ${allRes.length})`);
 
   const failedInvariants = allRes.filter((r) => !r.passed);
   if (failedInvariants.length > 0) {
@@ -720,7 +735,7 @@ console.log("\nTest 19: Full 83-Invariant System Verification");
       console.log(`    ⚠ ${f.invariantId}: ${f.reason}`);
     }
   }
-  assert(failedInvariants.length === 0, "All 103 invariants pass for valid context");
+  assert(failedInvariants.length === 0, "All 108 invariants pass for valid context");
 }
 
 // ─── TEST 20: 003B.1 Targeting Engine Hardening & Normalization ───────────
@@ -1233,6 +1248,276 @@ console.log("\nTest 24: 003E Console Projection Layer");
 
   const inv103 = INV_103_CONSOLE_TIME_INJECTION.check({});
   assert(inv103.passed === true, "INV_103 passes for prohibition of internal time creation in console");
+}
+
+// ─── TEST 25: 004A Experiment Execution Runtime ───────────────────────────
+console.log("\nTest 25: 004A Experiment Execution Runtime");
+{
+  const now = new Date("2026-08-05T12:00:00Z");
+  const authorActor: GovernanceActor = { id: "growth_team", role: "author" };
+  const tCtx: TargetingContext = {
+    userId: "founder_101",
+    country: "us",
+    provider: "stripe",
+    acquisitionSource: "google",
+    onboardingStep: "billing",
+    isReturningUser: false,
+  };
+
+  const expActive: ExperimentDefinition = {
+    id: "exp_b_active",
+    name: "Active Experiment",
+    description: "Active exp",
+    owner: "growth_team",
+    ownerId: "growth_team",
+    status: "active",
+    version: 3,
+    createdAt: new Date("2026-08-01T10:00:00Z"),
+    updatedAt: new Date("2026-08-02T10:00:00Z"),
+    variants: [
+      { id: "control", name: "Control Variant", weight: 50 },
+      { id: "variant_a", name: "Variant A", weight: 50 },
+    ],
+    targeting: { countries: ["us"] },
+    schedule: { enabled: true },
+    successMetric: "conversion",
+    rollbackPlan: "disable",
+  };
+
+  const expArchived: ExperimentDefinition = {
+    ...expActive,
+    id: "exp_a_archived",
+    name: "Archived Experiment",
+    status: "archived",
+    version: 1,
+  };
+
+  const expPaused: ExperimentDefinition = {
+    ...expActive,
+    id: "exp_c_paused",
+    name: "Paused Experiment",
+    status: "paused",
+    version: 2,
+  };
+
+  const expSchedFailed: ExperimentDefinition = {
+    ...expActive,
+    id: "exp_d_sched_failed",
+    name: "Schedule Failed Experiment",
+    schedule: { enabled: false },
+  };
+
+  const expTargetFailed: ExperimentDefinition = {
+    ...expActive,
+    id: "exp_e_target_failed",
+    name: "Targeting Failed Experiment",
+    targeting: { countries: ["uk"] },
+  };
+
+  const req: ExecutionRuntimeRequest = {
+    sessionId: "session_123",
+    actor: authorActor,
+    targetingContext: tCtx,
+    now,
+  };
+
+  // 1. Assignment Key & Determinism
+  const key = buildAssignmentKey("session_123", "onboarding_copy", 3);
+  assert(key === "session_123:onboarding_copy:v3", "buildAssignmentKey formats key as sessionId:experimentId:vVersion");
+
+  const v1 = assignRuntimeVariant(expActive, key);
+  const v2 = assignRuntimeVariant(expActive, key);
+  assert(v1.id === v2.id, "assignVariant is strictly deterministic for identical assignmentKey");
+
+  // 2. Execute Runtime
+  const experimentsList = [expSchedFailed, expTargetFailed, expActive, expPaused, expArchived];
+  const res1 = executeRuntime(req, experimentsList);
+  const res2 = executeRuntime(req, experimentsList);
+
+  assert(JSON.stringify(res1) === JSON.stringify(res2), "executeRuntime is strictly deterministic");
+
+  // 3. Immutability
+  const beforeJson = JSON.stringify(experimentsList);
+  executeRuntime(req, experimentsList);
+  const afterJson = JSON.stringify(experimentsList);
+  assert(beforeJson === afterJson, "executeRuntime does not mutate experiment definitions");
+
+  // 4. Order Stability (PRIMARY: id, SECONDARY: version)
+  assert(
+    res1.evaluatedExperiments.join(",") === "exp_a_archived,exp_b_active,exp_c_paused,exp_d_sched_failed,exp_e_target_failed",
+    "evaluatedExperiments order is strictly sorted by experiment.id and version"
+  );
+
+  // 5. Filtering & Skipped Reasons
+  assert(res1.assignments.length === 1 && res1.assignments[0].experimentId === "exp_b_active", "Active eligible experiment assigned");
+  assert(res1.assignments[0].assignmentKey === "session_123:exp_b_active:v3", "Assignment key populated correctly");
+
+  const skippedMap = new Map(res1.skipped.map((s) => [s.experimentId, s.reason]));
+  assert(skippedMap.get("exp_a_archived") === "archived", "Archived experiment skipped with reason 'archived'");
+  assert(skippedMap.get("exp_c_paused") === "paused", "Paused experiment skipped with reason 'paused'");
+  assert(skippedMap.get("exp_d_sched_failed") === "schedule", "Disabled experiment skipped with reason 'schedule'");
+  assert(skippedMap.get("exp_e_target_failed") === "targeting", "Ineligible experiment skipped with reason 'targeting'");
+
+  // 6. Governance filtering
+  const unauthorizedActorReq: ExecutionRuntimeRequest = { ...req, actor: { id: "guest_1", role: "reviewer" } };
+  const unauthorizedActorRes = executeRuntime(unauthorizedActorReq, [expActive]);
+  assert(unauthorizedActorRes.skipped.length === 1 && unauthorizedActorRes.skipped[0].reason === "governance", "Unauthorized actor request skipped with reason 'governance'");
+
+  // 7. Validator & Projection Checks
+  const reqVal = validateRuntimeRequest(req);
+  assert(reqVal.passed === true, "Valid RuntimeRequest passes validation");
+
+  const resVal = validateRuntimeResult(res1);
+  assert(resVal.passed === true, "Valid RuntimeResult passes validation");
+
+  const projectedRes = projectRuntimeResult(res1);
+  assert(Object.isFrozen(projectedRes), "projectRuntimeResult output is frozen");
+
+  // 8. Invariants INV_104 to INV_108 Verification
+  const inv104 = INV_104_RUNTIME_DETERMINISTIC.check({ runtimeRequest: req, experiments: experimentsList });
+  assert(inv104.passed === true, "INV_104 passes for runtime determinism");
+
+  const inv105 = INV_105_RUNTIME_READ_ONLY.check({ runtimeRequest: req, experiments: experimentsList });
+  assert(inv105.passed === true, "INV_105 passes for runtime immutability");
+
+  const inv106 = INV_106_RUNTIME_ORDER_STABLE.check({ runtimeRequest: req, experiments: experimentsList });
+  assert(inv106.passed === true, "INV_106 passes for runtime evaluation order stability");
+
+  const inv107 = INV_107_ASSIGNMENT_STABLE.check({ experiments: [expActive] });
+  assert(inv107.passed === true, "INV_107 passes for variant assignment stability");
+
+  const inv108 = INV_108_SKIPPED_EXPERIMENTS_CORRECT.check({ runtimeRequest: req, experiments: experimentsList });
+  assert(inv108.passed === true, "INV_108 passes for skipped experiment reason accuracy");
+}
+
+// ─── Test 26: 004A Assignment Determinism — Variant Order Independence ─────
+console.log("\nTest 26: 004A Assignment Determinism — Variant Order Independence");
+{
+  const variantsABC: ExperimentVariant[] = [
+    { id: "A", name: "Variant A", weight: 34 },
+    { id: "B", name: "Variant B", weight: 33 },
+    { id: "C", name: "Variant C", weight: 33 },
+  ];
+
+  const baseExp: ExperimentDefinition = {
+    id: "exp_order_test",
+    name: "Order Test",
+    description: "Tests variant order independence",
+    owner: "admin_1",
+    ownerId: "admin_1",
+    status: "active",
+    version: 1,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    variants: variantsABC,
+    targeting: {},
+    schedule: { enabled: true },
+    successMetric: "conversion_rate",
+    rollbackPlan: "revert",
+  };
+
+  const assignmentKey = buildAssignmentKey("user_123", "exp_order_test", 1);
+  const baseResult = assignRuntimeVariant(baseExp, assignmentKey);
+
+  // All 6 permutations of [A, B, C]
+  const permutations: ExperimentVariant[][] = [
+    [variantsABC[0], variantsABC[1], variantsABC[2]], // A, B, C
+    [variantsABC[0], variantsABC[2], variantsABC[1]], // A, C, B
+    [variantsABC[1], variantsABC[0], variantsABC[2]], // B, A, C
+    [variantsABC[1], variantsABC[2], variantsABC[0]], // B, C, A
+    [variantsABC[2], variantsABC[0], variantsABC[1]], // C, A, B
+    [variantsABC[2], variantsABC[1], variantsABC[0]], // C, B, A
+  ];
+
+  let allMatch = true;
+  for (const perm of permutations) {
+    const permExp = { ...baseExp, variants: perm };
+    const permResult = assignRuntimeVariant(permExp, assignmentKey);
+    if (permResult.id !== baseResult.id) {
+      allMatch = false;
+      break;
+    }
+  }
+  assert(allMatch, "Same variant assigned regardless of variant array order (6 permutations)");
+
+  // 2-variant permutation test
+  const variantsAB: ExperimentVariant[] = [
+    { id: "A", name: "Variant A", weight: 50 },
+    { id: "B", name: "Variant B", weight: 50 },
+  ];
+  const variantsBA: ExperimentVariant[] = [
+    { id: "B", name: "Variant B", weight: 50 },
+    { id: "A", name: "Variant A", weight: 50 },
+  ];
+
+  const key2 = buildAssignmentKey("user_123", "homepage_test", 1);
+  const expAB = { ...baseExp, id: "homepage_test", variants: variantsAB };
+  const expBA = { ...baseExp, id: "homepage_test", variants: variantsBA };
+  const resAB = assignRuntimeVariant(expAB, key2);
+  const resBA = assignRuntimeVariant(expBA, key2);
+  assert(resAB.id === resBA.id, "[A,B] and [B,A] produce identical assignment");
+
+  // validateVariants checks
+  const validResult = validateVariants(variantsABC);
+  assert(validResult.valid === true, "validateVariants passes for valid 3-variant array");
+
+  const dupResult = validateVariants([
+    { id: "A", name: "V1", weight: 50 },
+    { id: "A", name: "V2", weight: 50 },
+  ]);
+  assert(dupResult.valid === false, "validateVariants rejects duplicate variant IDs");
+  assert(dupResult.reason!.includes("Duplicate"), "validateVariants reason mentions Duplicate");
+
+  const zeroWeightResult = validateVariants([
+    { id: "A", name: "V1", weight: 0 },
+    { id: "B", name: "V2", weight: 100 },
+  ]);
+  assert(zeroWeightResult.valid === false, "validateVariants rejects weight = 0");
+
+  const negWeightResult = validateVariants([
+    { id: "A", name: "V1", weight: -10 },
+    { id: "B", name: "V2", weight: 110 },
+  ]);
+  assert(negWeightResult.valid === false, "validateVariants rejects negative weight");
+
+  const badSumResult = validateVariants([
+    { id: "A", name: "V1", weight: 60 },
+    { id: "B", name: "V2", weight: 60 },
+  ]);
+  assert(badSumResult.valid === false, "validateVariants rejects total weight != 100");
+  assert(badSumResult.reason!.includes("sum"), "validateVariants reason mentions sum");
+
+  const emptyResult = validateVariants([]);
+  assert(emptyResult.valid === false, "validateVariants rejects empty array");
+
+  // Multi-session determinism across permutations (100 sessions)
+  let multiSessionPass = true;
+  for (let i = 0; i < 100; i++) {
+    const sessionKey = buildAssignmentKey(`session_${i}`, "exp_order_test", 1);
+    const r1 = assignRuntimeVariant({ ...baseExp, variants: permutations[0] }, sessionKey);
+    for (let p = 1; p < permutations.length; p++) {
+      const r2 = assignRuntimeVariant({ ...baseExp, variants: permutations[p] }, sessionKey);
+      if (r2.id !== r1.id) {
+        multiSessionPass = false;
+        break;
+      }
+    }
+    if (!multiSessionPass) break;
+  }
+  assert(multiSessionPass, "100 sessions × 6 permutations all produce identical assignments");
+
+  // INV_109 invariant check
+  const inv109 = INV_109_VARIANT_ORDER_INDEPENDENT.check({ experiments: [baseExp] });
+  assert(inv109.passed === true, "INV_109 passes for variant order independence");
+
+  // INV_110 invariant check
+  const inv110 = INV_110_VARIANT_INTEGRITY.check({ experiments: [baseExp] });
+  assert(inv110.passed === true, "INV_110 passes for variant integrity");
+
+  // INV_110 fails for duplicate IDs
+  const dupExp = { ...baseExp, variants: [{ id: "A", name: "V1", weight: 50 }, { id: "A", name: "V2", weight: 50 }] };
+  const inv110Dup = INV_110_VARIANT_INTEGRITY.check({ experiments: [dupExp] });
+  assert(inv110Dup.passed === false, "INV_110 fails for duplicate variant IDs");
 }
 
 // ─── ALGORITHMIC CERTIFICATION REPORT ─────────────────────────────────────
