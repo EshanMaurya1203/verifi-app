@@ -1,6 +1,6 @@
-// ─── VRF-ONBOARD-001E.12H — Export, Cache, Performance & 36 Invariants Test Suite ─
+// ─── VRF-ONBOARD-002Y — Reliability & Hardening Patch Test Suite ─────────────
 
-import type { AssignmentAuditRecord, ConfidenceContext, ConfidenceResult, DashboardAlert, DashboardCacheEntry, DashboardExperimentCard, DashboardState, Experiment, IdentityContext, PerformanceMetrics, RegressionContext, RegressionResult, RollbackContext, RollbackResult, VariantAssignment } from "../src/lib/analytics/experiments";
+import type { AssignmentAuditRecord, ConfidenceContext, ConfidenceResult, DashboardCacheEntry, DashboardExperimentCard, DashboardState, Experiment, IdentityContext as DomainIdentityContext, PerformanceMetrics, RegressionContext, RegressionResult, RollbackContext, RollbackResult, VariantAssignment } from "../src/lib/analytics/experiments";
 import { ASSIGNMENT_HASH_CONTRACT, DETERMINISTIC_KEY_CONTRACT } from "../src/lib/analytics/experiments";
 import { computeAssignmentHash } from "../src/lib/analytics/hash";
 import { resolveVariant } from "../src/lib/analytics/allocation-resolver";
@@ -43,6 +43,57 @@ import {
   storeDashboard,
 } from "../src/lib/analytics/dashboard-cache";
 import { measureDashboardPerformance } from "../src/lib/analytics/performance-metrics";
+import type { OnboardingEventType, RuntimeEvent } from "../src/lib/analytics/runtime/runtime-types";
+import {
+  trackEvent,
+  trackExperimentAssignment,
+  trackVariantCompletion,
+  trackVariantExposed,
+  trackVariantRendered,
+  trackVariantSeen,
+} from "../src/lib/analytics/runtime/event-tracker";
+import { validateEvent } from "../src/lib/analytics/runtime/event-validator";
+import {
+  clearDeadLetterQueue,
+  createEventQueue,
+  dequeueEvent,
+  enqueueEvent,
+  getDeadLetterEvents,
+  peekEvent,
+  retryFailedEvents,
+} from "../src/lib/analytics/runtime/event-queue";
+import {
+  createEventStorage,
+  getEventsBySession,
+  getExperimentEvents,
+  storeEvent,
+} from "../src/lib/analytics/runtime/event-storage";
+import { ingestEvent } from "../src/lib/analytics/runtime/event-ingestion";
+import { createEventProcessor } from "../src/lib/analytics/runtime/event-processor";
+import type { QueuedEvent } from "../src/lib/analytics/runtime/queue-types";
+import { MAX_RETRIES } from "../src/lib/analytics/runtime/queue-types";
+import type { RouterContext, RouterExperimentVariant, RouterResult, RuntimeExperiment } from "../src/lib/analytics/runtime/router-types";
+import { createAssignmentStore, getAssignment, saveAssignment } from "../src/lib/analytics/runtime/assignment-store";
+import { detectConflict } from "../src/lib/analytics/runtime/router-conflicts";
+import { routeExperiment, selectVariant } from "../src/lib/analytics/runtime/experiment-router";
+import type { MiddlewareResult, RuntimeContext, RuntimeRequest } from "../src/lib/analytics/runtime/middleware-types";
+import { generateDeterministicSessionId, recoverSession } from "../src/lib/analytics/runtime/session-recovery";
+import { generateIdentityId } from "../src/lib/analytics/runtime/identity";
+import type { ExperimentRegistry } from "../src/lib/analytics/runtime/experiment-discovery";
+import { createExperimentRegistry, getActiveExperiments } from "../src/lib/analytics/runtime/experiment-discovery";
+import { executeMiddleware } from "../src/lib/analytics/runtime/runtime-middleware";
+import type { RuntimeFlags, FlagDecision } from "../src/lib/analytics/runtime/feature-flags";
+import { createDefaultFlags } from "../src/lib/analytics/runtime/feature-flags";
+import { evaluateFlags } from "../src/lib/analytics/runtime/flag-engine";
+import type { AuditLog, AuditEntry } from "../src/lib/analytics/runtime/audit-log";
+import { createAuditLog, recordAudit, getAuditTrail, triggerEmergencyRollback, MAX_AUDIT_ENTRIES } from "../src/lib/analytics/runtime/audit-log";
+import type { ExperimentMetrics, ExperimentHealth, ObservabilitySnapshot } from "../src/lib/analytics/runtime/observability-types";
+import { aggregateMetrics, computeMetrics } from "../src/lib/analytics/runtime/metrics-engine";
+import { computeHealth } from "../src/lib/analytics/runtime/health-engine";
+import { getAuditEntriesByAction, getAuditEntriesByExperiment, getRecentAuditEntries } from "../src/lib/analytics/runtime/audit-explorer";
+import { buildSnapshot } from "../src/lib/analytics/runtime/snapshot-engine";
+import type { Anomaly } from "../src/lib/analytics/runtime/anomaly-detector";
+import { detectAnomalies } from "../src/lib/analytics/runtime/anomaly-detector";
 import {
   validateControlVariant,
   validateAllocations,
@@ -52,9 +103,9 @@ import {
 } from "../src/lib/analytics/experiment-validators";
 import {
   checkAllInvariants,
-  INV_034_EXPORT_CONSISTENCY,
-  INV_035_CACHE_VALIDITY,
-  INV_036_PERFORMANCE_METRICS,
+  INV_063_SNAPSHOT_PERFORMANCE,
+  INV_064_DEAD_LETTER_RECOVERY,
+  INV_065_IDENTITY_STABILITY,
 } from "../src/lib/analytics/experiment-invariants";
 
 let passed = 0;
@@ -71,7 +122,7 @@ function assert(condition: boolean, label: string, details?: string) {
 }
 
 console.log("\n==================================================");
-console.log("RUNNING EXPERIMENT DOMAIN & ENGINE TEST SUITE (12H EXPORT & PERFORMANCE LAYER)");
+console.log("RUNNING EXPERIMENT DOMAIN & ENGINE TEST SUITE (2Y ARCHITECTURAL HARDENING)");
 console.log("==================================================\n");
 
 const baseExperiment: Experiment = {
@@ -94,134 +145,167 @@ const baseExperiment: Experiment = {
   ],
 };
 
-const sampleCards: DashboardExperimentCard[] = [
-  {
-    experimentId: "exp_1",
-    experimentName: "Checkout Test",
-    status: "running",
-    confidenceScore: 85,
-    confidenceLevel: "high",
-    regressionSeverity: "none",
-    rollbackRecommendation: "none",
-    safeToContinue: true,
-  },
-  {
-    experimentId: "exp_2",
-    experimentName: "Pricing Test",
-    status: "running",
-    confidenceScore: 60,
-    confidenceLevel: "medium",
-    regressionSeverity: "high",
-    rollbackRecommendation: "recommended",
-    safeToContinue: false,
-  },
-];
+const expHighPriority: RuntimeExperiment = {
+  id: "exp_hero_banner",
+  version: 1,
+  enabled: true,
+  priority: 10,
+  variants: [{ id: "hero_v1", weight: 50 }, { id: "hero_v2", weight: 50 }],
+};
 
-const sampleDashboard = buildDashboard(sampleCards);
+const expLowPriority: RuntimeExperiment = {
+  id: "exp_footer_links",
+  version: 1,
+  enabled: true,
+  priority: 2,
+  variants: [{ id: "footer_v2", weight: 100 }],
+};
 
-// ─── TEST 1: JSON Export Validity & Counts ────────────────────────────────────
-console.log("Test 1: JSON Export Validity & Counts");
+// ─── TEST 1: Cross-Page Session Identity ─────────────────────────────────────
+console.log("Test 1: Cross-Page Session Identity");
 {
-  const jsonResult = exportToJson(sampleDashboard);
-  assert(jsonResult.metadata.format === "json", "JSON export format metadata is 'json'");
-  assert(jsonResult.metadata.experimentCount === 2, "JSON export count = 2");
+  const reqDashboard: RuntimeRequest = { anonymousId: "anon_999", userAgent: "Mozilla/5.0", pathname: "/dashboard" };
+  const reqLeaderboard: RuntimeRequest = { anonymousId: "anon_999", userAgent: "Mozilla/5.0", pathname: "/leaderboard" };
+  const reqPricing: RuntimeRequest = { anonymousId: "anon_999", userAgent: "Mozilla/5.0", pathname: "/pricing" };
+  const reqOther: RuntimeRequest = { anonymousId: "anon_888", userAgent: "Mozilla/5.0", pathname: "/dashboard" };
 
-  const parsed = JSON.parse(jsonResult.content);
-  assert(parsed.metadata.experimentCount === 2, "Parsed JSON contains correct experimentCount");
-  assert(parsed.cards.length === 2, "Parsed JSON contains 2 cards");
-  assert(jsonResult.content.includes("  "), "JSON output is pretty-printed with 2 spaces");
+  const sess1 = recoverSession(reqDashboard);
+  const sess2 = recoverSession(reqLeaderboard);
+  const sess3 = recoverSession(reqPricing);
+  const sessOther = recoverSession(reqOther);
+
+  assert(sess1 === sess2, "Same anonymousId across /dashboard and /leaderboard yields same sessionId");
+  assert(sess2 === sess3, "Same anonymousId across /leaderboard and /pricing yields same sessionId");
+  assert(sess1 !== sessOther, "Different anonymousId yields different sessionId");
+  assert(sess1.startsWith("sess_"), "SessionId starts with 'sess_'");
 }
 
-// ─── TEST 2: CSV Export Validity & Header ─────────────────────────────────────
-console.log("\nTest 2: CSV Export Validity & Header");
+// ─── TEST 2: Feature-Flag Precedence Fix ──────────────────────────────────────
+console.log("\nTest 2: Feature-Flag Precedence Fix");
 {
-  const csvResult = exportToCsv(sampleDashboard);
-  assert(csvResult.metadata.format === "csv", "CSV export format metadata is 'csv'");
-  assert(csvResult.metadata.experimentCount === 2, "CSV export count = 2");
+  const flags = createDefaultFlags();
+  flags.pausedExperiments.add("exp_hero_banner");
+  flags.allowlistedUsers.add("u_allow");
+  flags.forceControl = true;
 
-  const lines = csvResult.content.split("\n");
-  assert(lines.length === 3, "CSV content contains 1 header line + 2 data lines");
-  assert(lines[0] === "experimentId,experimentName,status,confidenceScore,confidenceLevel,regressionSeverity,rollbackRecommendation,safeToContinue", "CSV header matches specification");
-  assert(lines[1].startsWith("exp_1,Checkout Test,running,85,high,none,none,true"), "CSV row 1 matches exp_1 data");
+  // Paused experiment overrides allowlist
+  const d1 = evaluateFlags("u_allow", "exp_hero_banner", flags);
+  assert(d1.allowed === false, "Paused experiment overrides allowlist");
+  assert(d1.reason === "experiment_paused", "Reason is 'experiment_paused'");
+
+  // Allowlist bypasses ONLY forceControl
+  const d2 = evaluateFlags("u_allow", "exp_footer_links", flags);
+  assert(d2.allowed === true, "Allowlisted user bypasses forceControl for non-paused experiment");
+  assert(d2.reason === "allowlisted", "Reason is 'allowlisted'");
+
+  // Non-allowlisted user blocked by forceControl
+  const d3 = evaluateFlags("u_regular", "exp_footer_links", flags);
+  assert(d3.allowed === false, "Non-allowlisted user blocked by forceControl");
+  assert(d3.reason === "force_control", "Reason is 'force_control'");
 }
 
-// ─── TEST 3: Dashboard Cache (Hit, Miss, Invalidation) ────────────────────────
-console.log("\nTest 3: Dashboard Cache (Hit, Miss, Invalidation)");
+// ─── TEST 3: Queue Failure Semantics & Dead-Letter Queue ───────────────────────
+console.log("\nTest 3: Queue Failure Semantics & Dead-Letter Queue");
 {
-  const cache = createDashboardCache();
-  const now = new Date();
+  const queue = createEventQueue();
+  const storage = createEventStorage();
+  const processor = createEventProcessor(queue, storage);
 
-  // Cache Miss
-  const miss = getCachedDashboard("dashboard_key_1", cache);
-  assert(miss === null, "Cache miss returns null for non-existent key");
+  const eventPayload = trackEvent("s_dlq", "signup_started", "usr_dlq");
+  ingestEvent(eventPayload, queue, storage);
 
-  // Store Valid Cache Entry
-  const validEntry: DashboardCacheEntry = {
-    key: "dashboard_key_1",
-    state: sampleDashboard,
-    createdAt: now,
-    expiresAt: new Date(now.getTime() + 60 * 1000), // expires in 60s
-  };
-  storeDashboard(validEntry, cache);
+  assert(processor.pendingCount() === 1, "1 event pending in queue");
 
-  const hit = getCachedDashboard("dashboard_key_1", cache);
-  assert(hit !== null, "Cache hit returns DashboardState for valid key");
-  assert(hit?.cards.length === 2, "Cached state contains 2 experiment cards");
+  // Attempt 1: Fail processing
+  processor.processNext("Simulated storage timeout 1");
+  assert(processor.pendingCount() === 1, "Event re-enqueued after 1st failure");
 
-  // Invalidation & Expired Cache Entry
-  const expiredEntry: DashboardCacheEntry = {
-    key: "dashboard_key_2",
-    state: sampleDashboard,
-    createdAt: new Date(now.getTime() - 120 * 1000),
-    expiresAt: new Date(now.getTime() - 60 * 1000), // expired 60s ago
-  };
-  storeDashboard(expiredEntry, cache);
+  // Attempt 2: Fail processing
+  processor.processNext("Simulated storage timeout 2");
+  assert(processor.pendingCount() === 1, "Event re-enqueued after 2nd failure");
 
-  assert(shouldInvalidateDashboard(expiredEntry) === true, "shouldInvalidateDashboard returns true for expired entry");
-  const expiredGet = getCachedDashboard("dashboard_key_2", cache);
-  assert(expiredGet === null, "getCachedDashboard returns null and invalidates expired entry");
+  // Attempt 3: Fail processing (Reaches MAX_RETRIES = 3 → Escalated to Dead Letter Queue)
+  processor.processNext("Simulated storage timeout 3");
+  assert(processor.pendingCount() === 0, "Queue is empty after 3rd failure (moved to dead letter)");
+
+  const deadLetters = getDeadLetterEvents(queue);
+  assert(deadLetters.length === 1, "Dead Letter Queue contains 1 item");
+  assert(deadLetters[0].retries === 3, "Dead letter item retry count is 3");
+  assert(deadLetters[0].status === "dead_letter", "Status is 'dead_letter'");
+  assert(deadLetters[0].event.id === eventPayload.id, "Dead letter item retains original event payload intact");
+
+  // Retry failed events
+  const restoredCount = retryFailedEvents(queue);
+  assert(restoredCount === 1, "retryFailedEvents restored 1 event to queue");
+  assert(processor.pendingCount() === 1, "Queue pending count is 1 after retry restoration");
+
+  // Process restored event successfully
+  const processed = processor.processNext();
+  assert(processed !== null && processed.id === eventPayload.id, "Restored event processed successfully into storage");
+  assert(storage.records.length === 1, "Storage records total is 1");
 }
 
-// ─── TEST 4: Performance Metrics Measurement ─────────────────────────────────
-console.log("\nTest 4: Performance Metrics Measurement");
+// ─── TEST 4: Snapshot Benchmark Under 250 ms ────────────────────────────────
+console.log("\nTest 4: Snapshot Benchmark Under 250 ms (100,000 Events)");
 {
-  const metrics: PerformanceMetrics = measureDashboardPerformance(sampleDashboard, 12.5, true);
-  assert(metrics.experimentCount === 2, "Performance metrics experimentCount = 2");
-  assert(metrics.alertCount === sampleDashboard.alerts.length, "Performance metrics alertCount matches dashboard alerts");
-  assert(metrics.renderTimeMs === 12.5, "Performance metrics renderTimeMs = 12.5");
-  assert(metrics.cacheHit === true, "Performance metrics cacheHit = true");
+  const storage = createEventStorage();
+  const audit = createAuditLog();
+  const expIds: string[] = [];
+
+  for (let i = 0; i < 500; i++) {
+    expIds.push(`exp_bench_${i}`);
+  }
+
+  for (let i = 0; i < 100000; i++) {
+    const targetExpId = expIds[i % 500];
+    storeEvent({
+      id: `evt_bench_${i}`,
+      sessionId: `s_${i}`,
+      eventType: i % 3 === 0 ? "experiment_assigned" : i % 3 === 1 ? "variant_exposed" : "variant_rendered",
+      experimentId: targetExpId,
+      createdAt: new Date(),
+    }, storage);
+  }
+
+  const startTime = Date.now();
+  const snapshot = buildSnapshot(expIds, storage, audit);
+  const durationMs = Date.now() - startTime;
+
+  assert(snapshot.metrics.length === 500, "Snapshot contains metrics for all 500 experiments");
+  assert(durationMs < 250, `100,000 events processed in ${durationMs}ms (strictly < 250 ms)`);
+
+  const inv63 = INV_063_SNAPSHOT_PERFORMANCE.check({ experiment: baseExperiment, snapshotDurationMs: durationMs });
+  assert(inv63.passed === true, "INV_063_SNAPSHOT_PERFORMANCE passes for latency < 250 ms");
 }
 
-// ─── TEST 5: Invariants INV_034, INV_035, INV_036 Verification ───────────────
-console.log("\nTest 5: Invariants INV_034, INV_035, INV_036 Verification");
+// ─── TEST 5: Invariants INV_063 to INV_065 ───────────────────────────────────
+console.log("\nTest 5: Invariants INV_063 to INV_065");
 {
-  const jsonExport = exportToJson(sampleDashboard);
-  const now = new Date();
-  const cacheEntry: DashboardCacheEntry = {
-    key: "dash_valid",
-    state: sampleDashboard,
-    createdAt: now,
-    expiresAt: new Date(now.getTime() + 30 * 1000),
-  };
-  const perf = measureDashboardPerformance(sampleDashboard, 5.0, false);
+  const inv63pass = INV_063_SNAPSHOT_PERFORMANCE.check({ experiment: baseExperiment, snapshotDurationMs: 45 });
+  assert(inv63pass.passed === true, "INV_063 passes for duration 45ms < 250ms");
 
-  const inv34Pass = INV_034_EXPORT_CONSISTENCY.check({ experiment: baseExperiment, exportResult: jsonExport, dashboardState: sampleDashboard });
-  assert(inv34Pass.passed === true, "INV_034 passes for consistent export count");
+  const inv63fail = INV_063_SNAPSHOT_PERFORMANCE.check({ experiment: baseExperiment, snapshotDurationMs: 280 });
+  assert(inv63fail.passed === false, "INV_063 fails for duration 280ms >= 250ms");
 
-  const inv35Pass = INV_035_CACHE_VALIDITY.check({ experiment: baseExperiment, dashboardCacheEntry: cacheEntry });
-  assert(inv35Pass.passed === true, "INV_035 passes for valid unexpired cache entry");
+  const dlEvents: QueuedEvent[] = [{
+    event: trackEvent("s1", "signup_started"),
+    retries: 3,
+    status: "dead_letter",
+  }];
+  const inv64 = INV_064_DEAD_LETTER_RECOVERY.check({ experiment: baseExperiment, deadLetterEvents: dlEvents });
+  assert(inv64.passed === true, "INV_064 passes for intact dead-letter event payload");
 
-  const inv36Pass = INV_036_PERFORMANCE_METRICS.check({ experiment: baseExperiment, performanceMetrics: perf, dashboardState: sampleDashboard });
-  assert(inv36Pass.passed === true, "INV_036 passes for valid performance metrics");
+  const inv65 = INV_065_IDENTITY_STABILITY.check({ experiment: baseExperiment });
+  assert(inv65.passed === true, "INV_065 passes for cross-page session identity stability");
 }
 
-// ─── TEST 6: Full Engine Invariants Verification (36 Invariants) ───────────────
-console.log("\nTest 6: Full Engine Invariants Verification (36 Invariants)");
+// ─── TEST 6: Full 65-Invariant System Verification ──────────────────────────
+console.log("\nTest 6: Full 65-Invariant System Verification");
 {
-  const res = assignVariant("usr_full_36", "userId", baseExperiment);
+  const res = assignVariant("usr_full_65", "userId", baseExperiment);
   const audit: AssignmentAuditRecord = {
     assignmentHash: res.assignment.assignmentHash,
-    identifier: "usr_full_36",
+    identifier: "usr_full_65",
     identifierType: "userId",
     experimentId: baseExperiment.id,
     experimentVersion: baseExperiment.version,
@@ -263,6 +347,26 @@ console.log("\nTest 6: Full Engine Invariants Verification (36 Invariants)");
     expiresAt: new Date(now.getTime() + 60000),
   };
   const performanceMetrics = measureDashboardPerformance(dashboardState, 4.2, true);
+  const runtimeEvent = trackExperimentAssignment("sess_full_65", baseExperiment.id, "treatment", "usr_full_65");
+
+  const registry = createExperimentRegistry();
+  registry.experiments.push(expHighPriority, expLowPriority);
+  const store = createAssignmentStore();
+  const queue = createEventQueue();
+  const eventStorage = createEventStorage();
+  const runtimeFlags = createDefaultFlags();
+  const auditLog = createAuditLog();
+  const middlewareResult = executeMiddleware(
+    { sessionId: "sess_full_65", userId: "usr_full_65", pathname: "/onboarding" },
+    registry, store, queue, eventStorage, runtimeFlags, auditLog
+  );
+
+  const normalDecision: FlagDecision = { allowed: true, reason: "normal" };
+
+  const expMetrics = computeMetrics(baseExperiment.id, eventStorage);
+  const expHealth = computeHealth(expMetrics);
+  const obsSnapshot = buildSnapshot([baseExperiment.id], eventStorage, auditLog);
+  const detectedAnomalies = detectAnomalies(expMetrics);
 
   const allRes = checkAllInvariants({
     experiment: baseExperiment,
@@ -277,7 +381,7 @@ console.log("\nTest 6: Full Engine Invariants Verification (36 Invariants)");
     recomputedAssignment: res.assignment,
     auditRecord: audit,
     recoveryResult: { recovered: true, source: "cache", assignment: res.assignment },
-    identityContext: { userId: "usr_full_36", deviceId: "dev_1" },
+    identityContext: { userId: "usr_full_65", deviceId: "dev_1" },
     confidenceContext: confCtx,
     confidenceResult: confRes,
     regressionContext: regCtx,
@@ -288,12 +392,35 @@ console.log("\nTest 6: Full Engine Invariants Verification (36 Invariants)");
     exportResult,
     dashboardCacheEntry,
     performanceMetrics,
+    runtimeEvent,
+    routerResult: middlewareResult.context.assignments[0],
+    runtimeExperiment: expHighPriority,
+    assignedRouterResults: [],
+    middlewareResult,
+    experimentRegistry: registry,
+    flagDecision: normalDecision,
+    auditLog,
+    experimentMetrics: expMetrics,
+    experimentHealth: expHealth,
+    observabilitySnapshot: obsSnapshot,
+    anomalies: detectedAnomalies,
+    eventQueue: queue,
+    simulationErrorPercentage: 0.25,
+    snapshotDurationMs: 15,
+    deadLetterEvents: getDeadLetterEvents(queue),
     distributionCounts: { control: 50000, treatment: 50000 },
     distributionTotal: 100000,
   });
 
-  assert(allRes.length === 36, `checkAllInvariants evaluates all 36 invariants (got ${allRes.length})`);
-  assert(allRes.every((r) => r.passed), "All 36 invariants pass for valid context");
+  assert(allRes.length === 65, `checkAllInvariants evaluates all 65 invariants (got ${allRes.length})`);
+
+  const failedInvariants = allRes.filter((r) => !r.passed);
+  if (failedInvariants.length > 0) {
+    for (const f of failedInvariants) {
+      console.log(`    ⚠ ${f.invariantId}: ${f.reason}`);
+    }
+  }
+  assert(failedInvariants.length === 0, "All 65 invariants pass for valid context");
 }
 
 console.log(`\n==================================================`);
