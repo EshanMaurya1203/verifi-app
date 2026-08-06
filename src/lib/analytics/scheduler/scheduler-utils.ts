@@ -1,38 +1,59 @@
-// ─── VRF-ONBOARD-003C / 003C.1 — Scheduler Utilities Module ───────────────
+// ─── VRF-ONBOARD-005D — Experiment Scheduler Utils ───────────────────────────
 
-import type { ExperimentSchedule } from "./scheduler-types";
+import type { ExecutionReport } from "../execution/execution-types";
+import type { SchedulingPolicy, StageSchedule, ScheduleHistoryEntry } from "./scheduler-types";
+
+export const DEFAULT_SCHEDULING_POLICY: Readonly<SchedulingPolicy> = Object.freeze({
+  stageDurationTicks: 24,
+  cooldownTicks: 6,
+  expirationTicks: 168,
+  autoPauseOnExpiration: true,
+});
 
 /**
- * Pure predicate checking if the current time has reached or passed startsAt.
- * Undefined startsAt implies the experiment has started (no start boundary).
- * Requires explicit timestamp injection (`now: Date`).
+ * Builds non-overlapping StageSchedule list based on logical clock and policy.
+ * Rule 1: Stage 1 startsAtTick = currentTick
+ * Rule 2: Stage N startsAtTick = Stage (N-1).endsAtTick + cooldownTicks
+ * Rule 3: endsAtTick = startsAtTick + stageDurationTicks
  */
-export function hasStarted(startsAt: Date | undefined, now: Date): boolean {
-  if (!startsAt) {
-    return true;
-  }
-  return now.getTime() >= startsAt.getTime();
+export function generateStageSchedules(
+  executionReport: ExecutionReport,
+  startTick: number,
+  policy: SchedulingPolicy
+): readonly StageSchedule[] {
+  const executionStages = executionReport.stages || [];
+  let currentStart = startTick;
+
+  return Object.freeze(
+    executionStages.map((stg, idx) => {
+      const sNum = idx + 1;
+      const sStart = idx === 0 ? currentStart : currentStart + policy.cooldownTicks;
+      const sEnd = sStart + policy.stageDurationTicks;
+      currentStart = sEnd;
+
+      return Object.freeze({
+        stageNumber: sNum,
+        trafficPercentage: stg.trafficPercentage,
+        startsAtTick: sStart,
+        endsAtTick: sEnd,
+      });
+    })
+  );
 }
 
 /**
- * Pure predicate checking if current time is strictly after endsAt.
- * Undefined endsAt implies the experiment never expires (no end boundary).
- * Requires explicit timestamp injection (`now: Date`).
+ * Builds a frozen ScheduleHistoryEntry.
  */
-export function hasExpired(endsAt: Date | undefined, now: Date): boolean {
-  if (!endsAt) {
-    return false;
-  }
-  return now.getTime() > endsAt.getTime();
-}
-
-/**
- * Pure predicate evaluating if a schedule is enabled and within its temporal window.
- * Requires explicit timestamp injection (`now: Date`).
- */
-export function isWithinWindow(schedule: ExperimentSchedule, now: Date): boolean {
-  if (!schedule || schedule.enabled !== true) {
-    return false;
-  }
-  return hasStarted(schedule.startsAt, now) && !hasExpired(schedule.endsAt, now);
+export function buildScheduleHistoryEntry(
+  sequence: number,
+  stageNumber: number,
+  startsAtTick: number,
+  endsAtTick: number
+): Readonly<ScheduleHistoryEntry> {
+  return Object.freeze({
+    sequence,
+    stageNumber,
+    startsAtTick,
+    endsAtTick,
+  });
 }

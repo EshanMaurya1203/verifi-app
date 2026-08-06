@@ -1,3 +1,16 @@
+/**
+ * VRF-ONBOARD ARCHIVE
+ *
+ * Status: FROZEN
+ *
+ * Not required for launch.
+ *
+ * Do not extend.
+ *
+ * Revisit after:
+ * - 100 founders
+ * - 10 paying users
+ */
 // ─── VRF-ONBOARD-004A — Runtime Utils Module ────────────────────────────────
 
 import type { ExperimentDefinition, ExperimentVariant } from "../registry/experiment-types";

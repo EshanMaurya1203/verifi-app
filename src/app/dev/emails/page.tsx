@@ -1,7 +1,12 @@
+import { notFound } from "next/navigation";
 import { Mail } from "lucide-react";
 import * as React from "react";
 
 export default function DevEmailsIndex() {
+  if (process.env.NODE_ENV === "production") {
+    notFound();
+  }
+
   return (
     <div className="flex-1 flex items-center justify-center h-full">
       <div className="text-center max-w-md p-6">

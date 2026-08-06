@@ -175,7 +175,7 @@ import { isMissingContextValue } from "../src/lib/analytics/targeting/context-ut
 import * as fs from "fs";
 
 // ─── 003C SCHEDULER IMPORTS ────────────────────────────────────────────────
-import type { ExperimentSchedule, ScheduleResult } from "../src/lib/analytics/scheduler/scheduler-types";
+import type { ExperimentSchedule, ScheduleEvaluationResult } from "../src/lib/analytics/scheduler/scheduler-types";
 import { isExperimentActive } from "../src/lib/analytics/scheduler/scheduler-engine";
 import { ScheduleEvaluationError } from "../src/lib/analytics/scheduler/scheduler-errors";
 import { validateSchedule } from "../src/lib/analytics/scheduler/scheduler-validator";
@@ -215,6 +215,73 @@ import {
   INV_115_EXPOSURE_ID_STABLE,
   INV_116_EXPOSURE_TIME_INJECTION,
   INV_117_EXPOSURE_ORDER_INDEPENDENT,
+  INV_118_CONVERSION_DETERMINISTIC,
+  INV_119_CONVERSION_READ_ONLY,
+  INV_120_CONVERSION_IDEMPOTENT,
+  INV_121_CONVERSION_DEDUPLICATION,
+  INV_122_CONVERSION_ID_STABLE,
+  INV_123_CONVERSION_TIME_INJECTION,
+  INV_124_CONVERSION_ORDER_INDEPENDENT,
+  INV_125_GOAL_OWNERSHIP,
+  INV_126_CONVERSION_REQUIRES_EXPOSURE,
+  INV_127_METRICS_DETERMINISTIC,
+  INV_128_METRICS_READ_ONLY,
+  INV_129_METRICS_ORDER_INDEPENDENT,
+  INV_130_METRICS_CONSISTENT_TOTALS,
+  INV_131_METRICS_ZERO_DIVISION_SAFE,
+  INV_132_METRICS_ID_STABLE,
+  INV_133_METRICS_TIME_INJECTION,
+  INV_134_UNIQUE_COUNTS_CONSISTENT,
+  INV_135_VARIANT_ORDER_CANONICAL,
+  INV_136_METRICS_DERIVED_ONLY,
+  INV_137_STATISTICS_DETERMINISTIC,
+  INV_138_STATISTICS_READ_ONLY,
+  INV_139_STATISTICS_ORDER_INDEPENDENT,
+  INV_140_ZERO_SAMPLE_SAFE,
+  INV_141_PVALUE_RANGE,
+  INV_142_ZSCORE_FINITE,
+  INV_143_REPORT_ID_STABLE,
+  INV_144_TIME_FREE,
+  INV_145_DECISION_DETERMINISTIC,
+  INV_146_DECISION_READ_ONLY,
+  INV_147_DECISION_ORDER_INDEPENDENT,
+  INV_148_SIGNIFICANCE_REQUIRED,
+  INV_149_SAMPLE_SIZE_REQUIRED,
+  INV_150_DECISION_PROJECTION_ONLY,
+  INV_151_DECISION_REASON_STABLE,
+  INV_152_TIME_FREE,
+  INV_153_ROLLOUT_DETERMINISTIC,
+  INV_154_ROLLOUT_READ_ONLY,
+  INV_155_TRAFFIC_SUM_100,
+  INV_156_VALID_TRAFFIC_RANGE,
+  INV_157_DECISION_REQUIRED,
+  INV_158_POLICY_STABLE,
+  INV_159_PROJECTION_ONLY,
+  INV_160_TIME_FREE,
+  INV_161_EXECUTION_DETERMINISTIC,
+  INV_162_EXECUTION_READ_ONLY,
+  INV_163_STAGE_ORDER_MONOTONIC,
+  INV_164_STAGE_RANGE_VALID,
+  INV_165_ROLLOUT_PLAN_REQUIRED,
+  INV_166_EXECUTION_HISTORY_STABLE,
+  INV_167_EXECUTION_ONLY,
+  INV_168_TIME_FREE,
+  INV_169_HISTORY_SEQUENCE_MONOTONIC,
+  INV_170_HISTORY_APPEND_ONLY,
+  INV_171_HISTORY_REPLAYABLE,
+  INV_172_STAGE_HISTORY_CONSISTENT,
+  INV_173_SCHEDULE_DETERMINISTIC,
+  INV_174_SCHEDULE_READ_ONLY,
+  INV_175_STAGE_TICK_MONOTONIC,
+  INV_176_NON_OVERLAPPING_WINDOWS,
+  INV_177_EXECUTION_REQUIRED,
+  INV_178_SCHEDULE_HISTORY_STABLE,
+  INV_179_PROJECTION_ONLY,
+  INV_180_LOGICAL_TIME_ONLY,
+  INV_181_HISTORY_SEQUENCE_MONOTONIC,
+  INV_182_HISTORY_APPEND_ONLY,
+  INV_183_EXPIRATION_AFTER_LAST_STAGE,
+  INV_184_CURRENT_STAGE_CONSISTENT,
 } from "../src/lib/analytics/experiment-invariants";
 
 // ─── 003D GOVERNANCE IMPORTS ──────────────────────────────────────────────
@@ -253,6 +320,62 @@ import { buildExposureId, createExposureEvent } from "../src/lib/analytics/expos
 import { validateExposureRequest, validateExposureEvent } from "../src/lib/analytics/exposure/exposure-validator";
 import { recordExposure } from "../src/lib/analytics/exposure/exposure-engine";
 import { projectExposureEvent, projectExposureResult } from "../src/lib/analytics/exposure/exposure-projections";
+
+// ─── 004C CONVERSION IMPORTS ─────────────────────────────────────────────
+import type { GoalDefinition, GoalCandidate, ConversionEvent, ConversionResult } from "../src/lib/analytics/conversion/conversion-types";
+import { ConversionError, ConversionValidationError, ConversionIntegrityError } from "../src/lib/analytics/conversion/conversion-errors";
+import { buildConversionId, createConversionEvent } from "../src/lib/analytics/conversion/conversion-utils";
+import { validateGoalDefinition, validateGoalCandidate, validateConversionEvent, validateConversionAttribution } from "../src/lib/analytics/conversion/conversion-validator";
+import { recordConversion } from "../src/lib/analytics/conversion/conversion-engine";
+import { projectConversionEvent, projectConversionResult } from "../src/lib/analytics/conversion/conversion-projections";
+
+// ─── 004D METRICS IMPORTS ────────────────────────────────────────────────
+import type { VariantMetrics, ExperimentMetrics as DomainExperimentMetrics, MetricsSnapshot, MetricsResult } from "../src/lib/analytics/metrics/metrics-types";
+import { MetricsError, MetricsValidationError, MetricsIntegrityError } from "../src/lib/analytics/metrics/metrics-errors";
+import { buildMetricsSnapshotId, computeSafeConversionRate } from "../src/lib/analytics/metrics/metrics-utils";
+import { validateMetricsRequest } from "../src/lib/analytics/metrics/metrics-validator";
+import { aggregateMetrics as aggregateDomainMetrics } from "../src/lib/analytics/metrics/metrics-engine";
+import { projectVariantMetrics, projectExperimentMetrics, projectMetricsSnapshot, projectMetricsResult } from "../src/lib/analytics/metrics/metrics-projections";
+
+// ─── 004E STATISTICS IMPORTS ─────────────────────────────────────────────
+import type { VariantStatistics, SignificanceReport, StatisticsResult } from "../src/lib/analytics/statistics/statistics-types";
+import { StatisticsError, StatisticsValidationError, StatisticsIntegrityError } from "../src/lib/analytics/statistics/statistics-errors";
+import { computeConversionRate, computeLift, computeStandardError, computePooledProbability, computeZScore, cdfNormal, computePValue } from "../src/lib/analytics/statistics/statistics-utils";
+import { validateStatisticsRequest } from "../src/lib/analytics/statistics/statistics-validator";
+import { analyzeSignificance } from "../src/lib/analytics/statistics/statistics-engine";
+import { projectVariantStatistics, projectSignificanceReport, projectStatisticsResult } from "../src/lib/analytics/statistics/statistics-projections";
+
+// ─── 005A DECISION IMPORTS ───────────────────────────────────────────────
+import type { DecisionState, DecisionConfig, DecisionReason, DecisionReport, DecisionResult } from "../src/lib/analytics/decision/decision-types";
+import { DecisionError, DecisionValidationError, DecisionIntegrityError } from "../src/lib/analytics/decision/decision-errors";
+import { DEFAULT_DECISION_CONFIG, DECISION_REASON_CODES, buildDecisionReason } from "../src/lib/analytics/decision/decision-utils";
+import { validateDecisionRequest } from "../src/lib/analytics/decision/decision-validator";
+import { makeDecision } from "../src/lib/analytics/decision/decision-engine";
+import { projectDecisionReason, projectDecisionReport, projectDecisionResult } from "../src/lib/analytics/decision/decision-projections";
+
+// ─── 005B ROLLOUT IMPORTS ────────────────────────────────────────────────
+import type { RolloutAction, RolloutPolicy, TrafficAllocation, RolloutPlan, RolloutResult } from "../src/lib/analytics/rollout/rollout-types";
+import { RolloutError, RolloutValidationError, RolloutIntegrityError } from "../src/lib/analytics/rollout/rollout-errors";
+import { DEFAULT_ROLLOUT_POLICY, ROLLOUT_REASON_CODES, buildTrafficAllocation } from "../src/lib/analytics/rollout/rollout-utils";
+import { validateRolloutRequest } from "../src/lib/analytics/rollout/rollout-validator";
+import { buildRolloutPlan } from "../src/lib/analytics/rollout/rollout-engine";
+import { projectTrafficAllocation, projectRolloutPlan, projectRolloutResult } from "../src/lib/analytics/rollout/rollout-projections";
+
+// ─── 005C EXECUTION IMPORTS ──────────────────────────────────────────────
+import type { ExecutionState, ExecutionPolicy, ExecutionStage, ExecutionHistoryEntry, ExecutionReport, ExecutionResult } from "../src/lib/analytics/execution/execution-types";
+import { ExecutionError, ExecutionValidationError, ExecutionIntegrityError } from "../src/lib/analytics/execution/execution-errors";
+import { DEFAULT_EXECUTION_POLICY, buildExecutionStages, buildHistoryEntry } from "../src/lib/analytics/execution/execution-utils";
+import { validateExecutionRequest } from "../src/lib/analytics/execution/execution-validator";
+import { executeRollout } from "../src/lib/analytics/execution/execution-engine";
+import { projectExecutionStage, projectExecutionHistoryEntry, projectExecutionReport, projectExecutionResult } from "../src/lib/analytics/execution/execution-projections";
+
+// ─── 005D SCHEDULER IMPORTS ──────────────────────────────────────────────
+import type { LogicalClock, SchedulingPolicy, StageSchedule, ScheduleHistoryEntry, SchedulePlan, ScheduleResult } from "../src/lib/analytics/scheduler/scheduler-types";
+import { SchedulerError, SchedulerValidationError, SchedulerIntegrityError } from "../src/lib/analytics/scheduler/scheduler-errors";
+import { DEFAULT_SCHEDULING_POLICY, generateStageSchedules, buildScheduleHistoryEntry } from "../src/lib/analytics/scheduler/scheduler-utils";
+import { validateScheduleRequest } from "../src/lib/analytics/scheduler/scheduler-validator";
+import { buildSchedule } from "../src/lib/analytics/scheduler/scheduler-engine";
+import { projectStageSchedule, projectScheduleHistoryEntry, projectSchedulePlan, projectScheduleResult } from "../src/lib/analytics/scheduler/scheduler-projections";
 
 let passed = 0;
 let failed = 0;
@@ -735,14 +858,14 @@ console.log("\nTest 19: Full 83-Invariant System Verification");
     eligibilityResult: eligRes,
     schedule: baseDefinition.schedule,
     evaluationTime: now,
-    scheduleResult: isExperimentActive(baseDefinition, now),
+    scheduleEvaluationResult: isExperimentActive(baseDefinition, now),
     governanceActor: { id: "growth_team", role: "author" },
     governanceAction: "edit",
     governanceDecision: canPerformAction({ id: "growth_team", role: "author" }, "edit", baseDefinition),
     governanceAuditLog: appendGovernanceAudit(createGovernanceAuditLog(), { sequence: 1, actorId: "growth_team", action: "edit", timestamp: now, experimentId: baseDefinition.id }),
   });
 
-  assert(allRes.length === 117, `checkAllInvariants evaluates all 117 invariants (got ${allRes.length})`);
+  assert(allRes.length === 184, `checkAllInvariants evaluates all 184 invariants (got ${allRes.length})`);
 
   const failedInvariants = allRes.filter((r) => !r.passed);
   if (failedInvariants.length > 0) {
@@ -1725,6 +1848,1051 @@ console.log("\nTest 28: 004B Exposure Order Independence Certification");
 
   const inv117 = INV_117_EXPOSURE_ORDER_INDEPENDENT.check({});
   assert(inv117.passed === true, "INV_117 passes for exposure engine order independence");
+}
+
+// ─── Test 29: 004C Goal & Conversion Engine & Invariants ──────────────────
+console.log("\nTest 29: 004C Goal & Conversion Engine & Invariants");
+{
+  const now = new Date("2026-02-01T12:00:00Z");
+
+  const goalDefA: GoalDefinition = {
+    id: "signup_goal",
+    experimentId: "exp_a",
+    name: "Signup Goal",
+    type: "signup",
+  };
+
+  const candA: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_a",
+    variantId: "variant_a",
+    goalId: "signup_goal",
+    completedAt: now,
+  };
+
+  // 1. buildConversionId format verification
+  const convId1 = buildConversionId("session_1", "exp_a", "variant_a", "signup_goal");
+  assert(convId1 === "session_1:exp_a:variant_a:signup_goal", "buildConversionId format is sessionId:experimentId:variantId:goalId");
+
+  const convIdSame = buildConversionId("session_1", "exp_a", "variant_a", "signup_goal");
+  assert(convId1 === convIdSame, "Same tuple produces identical conversionId");
+
+  // 2. Architectural Separation Rule verification
+  const eventA = createConversionEvent(candA);
+  assert(!("goal" in eventA), "ConversionEvent does not embed GoalDefinition");
+  assert(Object.keys(eventA).length === 6, "ConversionEvent contains only factual data (6 keys)");
+
+  // 3. Validators verification
+  const valDef = validateGoalDefinition(goalDefA);
+  assert(valDef.passed === true, "validateGoalDefinition passes for valid definition");
+
+  const valCand = validateGoalCandidate(candA, goalDefA);
+  assert(valCand.passed === true, "validateGoalCandidate passes for valid candidate matching goal definition");
+
+  const valEvent = validateConversionEvent(eventA);
+  assert(valEvent.passed === true, "validateConversionEvent passes for valid event");
+
+  // 4. Goal ownership mismatch test (REFINEMENT 1)
+  const candOwnerMismatch: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_b", // Candidate experimentId exp_b !== Definition experimentId exp_a
+    variantId: "variant_a",
+    goalId: "signup_goal",
+    completedAt: now,
+  };
+
+  let ownerMismatchThrew = false;
+  try {
+    recordConversion(candOwnerMismatch, [], goalDefA);
+  } catch (err) {
+    if (err instanceof ConversionValidationError) {
+      ownerMismatchThrew = true;
+    }
+  }
+  assert(ownerMismatchThrew, "Goal ownership mismatch throws ConversionValidationError");
+
+  // 5. recordConversion deduplication and acceptance verification
+  const res1 = recordConversion(candA, [], goalDefA);
+  assert(res1.accepted.length === 1, "recordConversion accepts new conversion candidate");
+  assert(res1.deduplicated.length === 0, "Deduplicated array is empty for new conversion candidate");
+  assert(Object.isFrozen(res1), "recordConversion result is frozen");
+  assert(Object.isFrozen(res1.accepted), "Accepted array is frozen");
+
+  // Duplicate candidate (same tuple)
+  const resDup = recordConversion(candA, [res1.accepted[0]], goalDefA);
+  assert(resDup.accepted.length === 0, "Duplicate conversion candidate yields 0 accepted events");
+  assert(resDup.deduplicated.length === 1, "Duplicate conversion candidate routes to deduplicated array");
+
+  // Different goal accepted
+  const candDiffGoal: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_a",
+    variantId: "variant_a",
+    goalId: "purchase_goal",
+    completedAt: now,
+  };
+  const resDiffGoal = recordConversion(candDiffGoal, [res1.accepted[0]]);
+  assert(resDiffGoal.accepted.length === 1, "Different goal for same session & variant accepted");
+
+  // Different variant accepted
+  const candDiffVar: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_a",
+    variantId: "variant_b",
+    goalId: "signup_goal",
+    completedAt: now,
+  };
+  const resDiffVar = recordConversion(candDiffVar, [res1.accepted[0]]);
+  assert(resDiffVar.accepted.length === 1, "Different variant for same session & goal accepted");
+
+  // 6. Projections verification
+  const projEvent = projectConversionEvent(res1.accepted[0]);
+  assert(Object.isFrozen(projEvent), "projectConversionEvent output is frozen");
+
+  const projRes = projectConversionResult(res1);
+  assert(Object.isFrozen(projRes), "projectConversionResult output is frozen");
+
+  // 7. Duplicate Permutation Hardening Matrix (REFINEMENT 3)
+  const candMatA: GoalCandidate = { sessionId: "session_1", experimentId: "exp_a", variantId: "variant_a", goalId: "signup", completedAt: now };
+  const candMatB: GoalCandidate = { sessionId: "session_1", experimentId: "exp_a", variantId: "variant_b", goalId: "signup", completedAt: now };
+  const candMatC: GoalCandidate = { sessionId: "session_2", experimentId: "exp_b", variantId: "variant_a", goalId: "purchase", completedAt: now };
+
+  const dupPerms: GoalCandidate[][] = [
+    [candMatA, candMatA, candMatB, candMatC],
+    [candMatA, candMatB, candMatA, candMatC],
+    [candMatB, candMatA, candMatC, candMatA],
+    [candMatC, candMatB, candMatA, candMatA],
+  ];
+
+  const evalDupPerm = (perm: GoalCandidate[]) => {
+    let accum: ConversionEvent[] = [];
+    let deduplicatedCount = 0;
+    for (const cand of perm) {
+      const res = recordConversion(cand, accum);
+      accum = [...accum, ...res.accepted];
+      deduplicatedCount += res.deduplicated.length;
+    }
+    const conversionIds = accum.map((c) => c.conversionId).sort();
+    const projections = accum.map((c) => projectConversionEvent(c));
+    return { acceptedCount: accum.length, deduplicatedCount, conversionIds, projections };
+  };
+
+  const baseDupRes = evalDupPerm(dupPerms[0]);
+  assert(baseDupRes.acceptedCount === 3, "Duplicate permutation matrix base has 3 accepted conversions");
+  assert(baseDupRes.deduplicatedCount === 1, "Duplicate permutation matrix base has 1 deduplicated conversion");
+
+  let allDupPermsIdentical = true;
+  for (let i = 0; i < dupPerms.length; i++) {
+    const pRes = evalDupPerm(dupPerms[i]);
+    if (
+      pRes.acceptedCount !== baseDupRes.acceptedCount ||
+      pRes.deduplicatedCount !== baseDupRes.deduplicatedCount ||
+      JSON.stringify(pRes.conversionIds) !== JSON.stringify(baseDupRes.conversionIds)
+    ) {
+      allDupPermsIdentical = false;
+      break;
+    }
+    for (const proj of pRes.projections) {
+      if (!Object.isFrozen(proj)) {
+        allDupPermsIdentical = false;
+        break;
+      }
+    }
+  }
+  assert(allDupPermsIdentical, "Duplicate permutations [A,A,B,C], [A,B,A,C], [B,A,C,A], [C,B,A,A] produce identical outputs");
+
+  // 8. Invariants Verification (INV_118 - INV_125)
+  const inv118 = INV_118_CONVERSION_DETERMINISTIC.check({ goalCandidate: candA });
+  assert(inv118.passed === true, "INV_118 passes for deterministic conversion recording");
+
+  const inv119 = INV_119_CONVERSION_READ_ONLY.check({ goalCandidate: candA });
+  assert(inv119.passed === true, "INV_119 passes for conversion engine read-only execution");
+
+  const inv120 = INV_120_CONVERSION_IDEMPOTENT.check({ goalCandidate: candA });
+  assert(inv120.passed === true, "INV_120 passes for conversion engine idempotency");
+
+  const inv121 = INV_121_CONVERSION_DEDUPLICATION.check({ goalCandidate: candA });
+  assert(inv121.passed === true, "INV_121 passes for conversion 4-tuple deduplication");
+
+  const inv122 = INV_122_CONVERSION_ID_STABLE.check({ goalCandidate: candA });
+  assert(inv122.passed === true, "INV_122 passes for stable conversionId format");
+
+  const inv123 = INV_123_CONVERSION_TIME_INJECTION.check({});
+  assert(inv123.passed === true, "INV_123 passes for strict external time injection in conversion module");
+
+  const inv124 = INV_124_CONVERSION_ORDER_INDEPENDENT.check({});
+  assert(inv124.passed === true, "INV_124 passes for conversion engine order independence");
+
+  const inv125 = INV_125_GOAL_OWNERSHIP.check({ goalCandidate: candA, goalDefinition: goalDefA });
+  assert(inv125.passed === true, "INV_125 passes for valid goal ownership");
+
+  const inv125Fail = INV_125_GOAL_OWNERSHIP.check({ goalCandidate: candOwnerMismatch, goalDefinition: goalDefA });
+  assert(inv125Fail.passed === false, "INV_125 fails for goal ownership mismatch");
+}
+
+// ─── Test 30: 004C-H1 Conversion Attribution Certification ──────────────────
+console.log("\nTest 30: 004C-H1 Conversion Attribution Certification");
+{
+  const now = new Date("2026-02-01T12:00:00Z");
+
+  const expBase: ExposureEvent = {
+    exposureId: "session_1:exp_a:variant_a",
+    sessionId: "session_1",
+    experimentId: "exp_a",
+    variantId: "variant_a",
+    assignmentKey: "session_1:exp_a:v1",
+    seenAt: now,
+  };
+
+  const candE1: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_a",
+    variantId: "variant_a",
+    goalId: "signup",
+    completedAt: now,
+  };
+
+  // E1: Exposed user converts -> accepted
+  const resE1 = recordConversion(candE1, [], expBase);
+  assert(resE1.accepted.length === 1, "E1: Exposed user converts -> accepted");
+
+  // E2: Wrong variant exposure -> ConversionIntegrityError
+  const candE2: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_a",
+    variantId: "variant_b", // Mismatched variantId
+    goalId: "signup",
+    completedAt: now,
+  };
+  let e2Threw = false;
+  try {
+    recordConversion(candE2, [], expBase);
+  } catch (err) {
+    if (err instanceof ConversionIntegrityError) {
+      e2Threw = true;
+    }
+  }
+  assert(e2Threw, "E2: Wrong variant exposure rejected -> ConversionIntegrityError");
+
+  // E3: Wrong experiment exposure -> ConversionIntegrityError
+  const candE3: GoalCandidate = {
+    sessionId: "session_1",
+    experimentId: "exp_b", // Mismatched experimentId
+    variantId: "variant_a",
+    goalId: "signup",
+    completedAt: now,
+  };
+  let e3Threw = false;
+  try {
+    recordConversion(candE3, [], expBase);
+  } catch (err) {
+    if (err instanceof ConversionIntegrityError) {
+      e3Threw = true;
+    }
+  }
+  assert(e3Threw, "E3: Wrong experiment exposure rejected -> ConversionIntegrityError");
+
+  // E4: Wrong session exposure -> ConversionIntegrityError
+  const candE4: GoalCandidate = {
+    sessionId: "session_2", // Mismatched sessionId
+    experimentId: "exp_a",
+    variantId: "variant_a",
+    goalId: "signup",
+    completedAt: now,
+  };
+  let e4Threw = false;
+  try {
+    recordConversion(candE4, [], expBase);
+  } catch (err) {
+    if (err instanceof ConversionIntegrityError) {
+      e4Threw = true;
+    }
+  }
+  assert(e4Threw, "E4: Wrong session exposure rejected -> ConversionIntegrityError");
+
+  // E5: No exposure -> ConversionIntegrityError
+  let e5Threw = false;
+  try {
+    recordConversion(candE1, [], undefined);
+  } catch (err) {
+    if (err instanceof ConversionIntegrityError) {
+      e5Threw = true;
+    }
+  }
+  assert(e5Threw, "E5: Missing exposure rejected -> ConversionIntegrityError");
+
+  // INV_126 check
+  const inv126Pass = INV_126_CONVERSION_REQUIRES_EXPOSURE.check({ goalCandidate: candE1, exposureEvent: expBase });
+  assert(inv126Pass.passed === true, "INV_126 passes for attributable exposure and conversion candidate");
+
+  const inv126Fail = INV_126_CONVERSION_REQUIRES_EXPOSURE.check({ goalCandidate: candE2, exposureEvent: expBase });
+  assert(inv126Fail.passed === false, "INV_126 fails for mismatched exposure and candidate");
+}
+
+// ─── Test 31: 004D Metrics Aggregation & Invariants ───────────────────────
+console.log("\nTest 31: 004D Metrics Aggregation & Invariants");
+{
+  const now = new Date("2026-02-01T12:00:00Z");
+
+  // 1. Snapshot ID format verification
+  const snapId1 = buildMetricsSnapshotId("exp_a", now);
+  assert(snapId1 === "exp_a:2026-02-01T12:00:00.000Z", "buildMetricsSnapshotId format is experimentId:toISOString()");
+
+  const snapIdSame = buildMetricsSnapshotId("exp_a", now);
+  assert(snapId1 === snapIdSame, "Same experimentId & generatedAt produce identical snapshotId");
+
+  // 2. Safe conversion rate computation
+  const rateNormal = computeSafeConversionRate(1, 4);
+  assert(rateNormal === 0.25, "computeSafeConversionRate calculates 1/4 = 0.25");
+
+  const rateZeroExp = computeSafeConversionRate(0, 0);
+  assert(rateZeroExp === 0, "0 exposures safe yields 0 rate");
+  assert(!isNaN(rateZeroExp) && isFinite(rateZeroExp) && !Object.is(rateZeroExp, -0), "0 exposures rate is not NaN, Infinity, or -0");
+
+  // 3. Validator verification
+  const valValid = validateMetricsRequest("exp_a", [], [], now);
+  assert(valValid.passed === true, "validateMetricsRequest passes for valid request");
+
+  let valErrThrew = false;
+  try {
+    aggregateDomainMetrics("", [], [], now);
+  } catch (err) {
+    if (err instanceof MetricsValidationError) {
+      valErrThrew = true;
+    }
+  }
+  assert(valErrThrew, "Invalid request throws MetricsValidationError");
+
+  // 4. Sample data aggregation & Unique counts verification
+  // Session s1 has 2 exposures & 2 conversions for variant_a -> exposures=2, uniqueExposures=1, conversions=2, uniqueConversions=1
+  // Session s2 has 1 exposure & 1 conversion for variant_a -> uniqueExposures becomes 2, uniqueConversions becomes 2
+  const expA1: ExposureEvent = { exposureId: "s1:exp_a:va:1", sessionId: "s1", experimentId: "exp_a", variantId: "variant_a", assignmentKey: "s1:exp_a:v1", seenAt: now };
+  const expA2: ExposureEvent = { exposureId: "s1:exp_a:va:2", sessionId: "s1", experimentId: "exp_a", variantId: "variant_a", assignmentKey: "s1:exp_a:v1", seenAt: now };
+  const expA3: ExposureEvent = { exposureId: "s2:exp_a:va:1", sessionId: "s2", experimentId: "exp_a", variantId: "variant_a", assignmentKey: "s2:exp_a:v1", seenAt: now };
+
+  const convA1: ConversionEvent = { conversionId: "s1:exp_a:va:g1", sessionId: "s1", experimentId: "exp_a", variantId: "variant_a", goalId: "g1", completedAt: now };
+  const convA2: ConversionEvent = { conversionId: "s1:exp_a:va:g2", sessionId: "s1", experimentId: "exp_a", variantId: "variant_a", goalId: "g2", completedAt: now };
+
+  const expB1: ExposureEvent = { exposureId: "s3:exp_a:vb:1", sessionId: "s3", experimentId: "exp_a", variantId: "variant_b", assignmentKey: "s3:exp_a:v1", seenAt: now };
+  const convB1: ConversionEvent = { conversionId: "s3:exp_a:vb:g1", sessionId: "s3", experimentId: "exp_a", variantId: "variant_b", goalId: "g1", completedAt: now };
+
+  const expC1: ExposureEvent = { exposureId: "s4:exp_a:vc:1", sessionId: "s4", experimentId: "exp_a", variantId: "variant_c", assignmentKey: "s4:exp_a:v1", seenAt: now };
+
+  const exposuresSample = [expC1, expA1, expA2, expA3, expB1];
+  const conversionsSample = [convA1, convA2, convB1];
+
+  const resSample = aggregateDomainMetrics("exp_a", exposuresSample, conversionsSample, now);
+  const snap = resSample.snapshot;
+
+  assert(snap.experimentId === "exp_a", "Snapshot experimentId correct");
+  assert(snap.snapshotId === "exp_a:2026-02-01T12:00:00.000Z", "Snapshot snapshotId correct");
+  assert(Object.isFrozen(resSample), "MetricsResult is frozen");
+  assert(Object.isFrozen(snap), "MetricsSnapshot is frozen");
+  assert(Object.isFrozen(snap.metrics), "ExperimentMetrics is frozen");
+  assert(Object.isFrozen(snap.metrics.variants), "Variants array is frozen");
+
+  // Canonical ordering verification (variant_a, variant_b, variant_c)
+  const variantIds = snap.metrics.variants.map((v) => v.variantId);
+  assert(JSON.stringify(variantIds) === JSON.stringify(["variant_a", "variant_b", "variant_c"]), "Variants sorted lexicographically in canonical order");
+
+  // Variant A metrics checks
+  const vmA = snap.metrics.variants[0];
+  assert(vmA.exposures === 3, "Variant A exposures count correct (3)");
+  assert(vmA.uniqueExposures === 2, "Variant A uniqueExposures count correct (2)");
+  assert(vmA.conversions === 2, "Variant A conversions count correct (2)");
+  assert(vmA.uniqueConversions === 1, "Variant A uniqueConversions count correct (1)");
+  assert(vmA.uniqueExposures <= vmA.exposures, "Variant A uniqueExposures <= exposures");
+  assert(vmA.uniqueConversions <= vmA.conversions, "Variant A uniqueConversions <= conversions");
+  assert(vmA.conversionRate === 2 / 3, "Variant A conversionRate correct (2/3)");
+
+  // Variant B metrics checks
+  const vmB = snap.metrics.variants[1];
+  assert(vmB.exposures === 1, "Variant B exposures count correct (1)");
+  assert(vmB.uniqueExposures === 1, "Variant B uniqueExposures count correct (1)");
+  assert(vmB.conversions === 1, "Variant B conversions count correct (1)");
+  assert(vmB.uniqueConversions === 1, "Variant B uniqueConversions count correct (1)");
+
+  // Variant C metrics checks (0 conversions)
+  const vmC = snap.metrics.variants[2];
+  assert(vmC.exposures === 1, "Variant C exposures count correct (1)");
+  assert(vmC.conversions === 0, "Variant C conversions count correct (0)");
+  assert(vmC.conversionRate === 0, "Variant C conversionRate correct (0)");
+
+  // Total metrics checks
+  assert(snap.metrics.totalExposures === 5, "Total exposures count correct (5)");
+  assert(snap.metrics.totalConversions === 3, "Total conversions count correct (3)");
+  assert(snap.metrics.overallConversionRate === 3 / 5, "Overall conversion rate correct (3/5)");
+
+  // 5. Projections verification
+  const projVM = projectVariantMetrics(vmA);
+  assert(Object.isFrozen(projVM), "projectVariantMetrics output is frozen");
+
+  const projEM = projectExperimentMetrics(snap.metrics);
+  assert(Object.isFrozen(projEM), "projectExperimentMetrics output is frozen");
+
+  const projSnap = projectMetricsSnapshot(snap);
+  assert(Object.isFrozen(projSnap), "projectMetricsSnapshot output is frozen");
+
+  const projRes = projectMetricsResult(resSample);
+  assert(Object.isFrozen(projRes), "projectMetricsResult output is frozen");
+
+  // 6. Hardening Permutation Matrix ([C, A, B], [B, C, A], [A, B, C])
+  const inputA = [expA1, expA2, expA3];
+  const inputB = [expB1];
+  const inputC = [expC1];
+
+  const permMatrix = [
+    [...inputC, ...inputA, ...inputB],
+    [...inputB, ...inputC, ...inputA],
+    [...inputA, ...inputB, ...inputC],
+  ];
+
+  let matrixPassed = true;
+  for (let i = 0; i < permMatrix.length; i++) {
+    const resP = aggregateDomainMetrics("exp_a", permMatrix[i], conversionsSample, now);
+    if (JSON.stringify(resP) !== JSON.stringify(resSample)) {
+      matrixPassed = false;
+      break;
+    }
+  }
+  assert(matrixPassed, "Permutation matrix [C,A,B], [B,C,A], [A,B,C] produces identical metrics, snapshotId, and canonical ordering");
+
+  // 7. Invariants Verification (INV_127 - INV_136)
+  const inv127 = INV_127_METRICS_DETERMINISTIC.check({ metricsExperimentId: "exp_a", metricsExposures: exposuresSample, metricsConversions: conversionsSample, metricsGeneratedAt: now });
+  assert(inv127.passed === true, "INV_127 passes for deterministic metrics aggregation");
+
+  const inv128 = INV_128_METRICS_READ_ONLY.check({ metricsExperimentId: "exp_a", metricsExposures: exposuresSample, metricsConversions: conversionsSample, metricsGeneratedAt: now });
+  assert(inv128.passed === true, "INV_128 passes for metrics aggregation read-only execution");
+
+  const inv129 = INV_129_METRICS_ORDER_INDEPENDENT.check({ metricsExperimentId: "exp_a", metricsGeneratedAt: now });
+  assert(inv129.passed === true, "INV_129 passes for metrics engine order independence");
+
+  const inv130 = INV_130_METRICS_CONSISTENT_TOTALS.check({ metricsResult: resSample });
+  assert(inv130.passed === true, "INV_130 passes for metrics totals consistency");
+
+  const inv131 = INV_131_METRICS_ZERO_DIVISION_SAFE.check({ metricsGeneratedAt: now });
+  assert(inv131.passed === true, "INV_131 passes for zero-division safety");
+
+  const inv132 = INV_132_METRICS_ID_STABLE.check({ metricsExperimentId: "exp_a", metricsGeneratedAt: now });
+  assert(inv132.passed === true, "INV_132 passes for stable snapshotId format");
+
+  const inv133 = INV_133_METRICS_TIME_INJECTION.check({});
+  assert(inv133.passed === true, "INV_133 passes for strict external time injection in metrics module");
+
+  const inv134 = INV_134_UNIQUE_COUNTS_CONSISTENT.check({ metricsResult: resSample });
+  assert(inv134.passed === true, "INV_134 passes for unique counts consistency");
+
+  const inv135 = INV_135_VARIANT_ORDER_CANONICAL.check({ metricsExperimentId: "exp_a", metricsGeneratedAt: now });
+  assert(inv135.passed === true, "INV_135 passes for canonical variant ordering");
+
+  const inv136 = INV_136_METRICS_DERIVED_ONLY.check({ metricsExperimentId: "exp_a", metricsGeneratedAt: now });
+  assert(inv136.passed === true, "INV_136 passes for metrics fact provenance");
+}
+
+// ─── Test 32: 004E Statistics & Significance Engine ───────────────────────
+console.log("\nTest 32: 004E Statistics & Significance Engine");
+{
+  const baseMetrics: VariantMetrics = {
+    experimentId: "exp_a",
+    variantId: "variant_a",
+    exposures: 100,
+    uniqueExposures: 100,
+    conversions: 10,
+    uniqueConversions: 10,
+    conversionRate: 0.1,
+  };
+
+  const candMetrics: VariantMetrics = {
+    experimentId: "exp_a",
+    variantId: "variant_b",
+    exposures: 100,
+    uniqueExposures: 100,
+    conversions: 15,
+    uniqueConversions: 15,
+    conversionRate: 0.15,
+  };
+
+  // 1. Math formulas verification
+  const bRate = computeConversionRate(baseMetrics.conversions, baseMetrics.exposures);
+  assert(bRate === 0.1, "Baseline conversion rate correct (0.1)");
+
+  const cRate = computeConversionRate(candMetrics.conversions, candMetrics.exposures);
+  assert(cRate === 0.15, "Candidate conversion rate correct (0.15)");
+
+  const lift = computeLift(cRate, bRate);
+  assert(lift === 0.5, "Lift correct ((0.15 - 0.1)/0.1 = 0.5)");
+
+  const liftZeroBase = computeLift(0.15, 0);
+  assert(liftZeroBase === 0, "Lift on zero baseline rate yields 0");
+
+  const poolP = computePooledProbability(10, 100, 15, 100);
+  assert(poolP === 0.125, "Pooled probability correct ((10+15)/(100+100) = 0.125)");
+
+  const seBase = computeStandardError(10, 100);
+  assert(seBase > 0 && isFinite(seBase), "Standard error is finite positive number");
+
+  const z = computeZScore(10, 100, 15, 100);
+  assert(isFinite(z) && !isNaN(z) && z > 0, "Z-score is finite positive number for lift");
+
+  const pVal = computePValue(z);
+  assert(pVal >= 0 && pVal <= 1 && isFinite(pVal) && !isNaN(pVal), "p-value satisfies 0 <= pValue <= 1");
+
+  // 2. Validator verification
+  const valValid = validateStatisticsRequest("exp_a", baseMetrics, candMetrics, 0.95);
+  assert(valValid.passed === true, "validateStatisticsRequest passes for valid request");
+
+  let valErrThrew = false;
+  try {
+    analyzeSignificance("exp_mismatch", baseMetrics, candMetrics, 0.95);
+  } catch (err) {
+    if (err instanceof StatisticsValidationError) {
+      valErrThrew = true;
+    }
+  }
+  assert(valErrThrew, "Invalid request throws StatisticsValidationError");
+
+  // 3. Significance Engine Execution
+  const res = analyzeSignificance("exp_a", baseMetrics, candMetrics, 0.95);
+  const rep = res.report;
+
+  assert(rep.experimentId === "exp_a", "Report experimentId correct");
+  assert(rep.baselineVariantId === "variant_a", "Report baselineVariantId correct");
+  assert(rep.candidateVariantId === "variant_b", "Report candidateVariantId correct");
+  assert(rep.baselineRate === 0.1, "Report baselineRate correct");
+  assert(rep.candidateRate === 0.15, "Report candidateRate correct");
+  assert(rep.lift === 0.5, "Report lift correct");
+  assert(rep.confidenceLevel === 0.95, "Report confidenceLevel correct");
+  assert(Object.isFrozen(res), "StatisticsResult is frozen");
+  assert(Object.isFrozen(rep), "SignificanceReport is frozen");
+
+  // 4. Zero sample safety
+  const zeroBase: VariantMetrics = { experimentId: "exp_z", variantId: "v_a", exposures: 0, uniqueExposures: 0, conversions: 0, uniqueConversions: 0, conversionRate: 0 };
+  const zeroCand: VariantMetrics = { experimentId: "exp_z", variantId: "v_b", exposures: 0, uniqueExposures: 0, conversions: 0, uniqueConversions: 0, conversionRate: 0 };
+
+  const resZero = analyzeSignificance("exp_z", zeroBase, zeroCand, 0.95);
+  assert(resZero.report.statisticallySignificant === false, "Zero sample yields statisticallySignificant = false");
+  assert(resZero.report.pValue === 1.0, "Zero sample yields pValue = 1.0");
+  assert(resZero.report.zScore === 0, "Zero sample yields zScore = 0");
+
+  // 5. Projections verification
+  const vsSample: VariantStatistics = { experimentId: "exp_a", variantId: "v1", exposures: 100, conversions: 10, conversionRate: 0.1, standardError: seBase };
+  const projVS = projectVariantStatistics(vsSample);
+  assert(Object.isFrozen(projVS), "projectVariantStatistics output is frozen");
+
+  const projRep = projectSignificanceReport(rep);
+  assert(Object.isFrozen(projRep), "projectSignificanceReport output is frozen");
+
+  const projRes = projectStatisticsResult(res);
+  assert(Object.isFrozen(projRes), "projectStatisticsResult output is frozen");
+
+  // 6. Hardening Permutation Matrix ((A, B) vs (B, A))
+  const resAB = analyzeSignificance("exp_a", baseMetrics, candMetrics, 0.95);
+  const resBA = analyzeSignificance("exp_a", candMetrics, baseMetrics, 0.95);
+
+  assert(Math.abs(resAB.report.zScore) === Math.abs(resBA.report.zScore), "Symmetric permutation (A,B vs B,A) produces identical absolute zScore");
+  assert(resAB.report.pValue === resBA.report.pValue, "Symmetric permutation produces identical pValue");
+  assert(resAB.report.statisticallySignificant === resBA.report.statisticallySignificant, "Symmetric permutation produces identical statistical significance");
+
+  // 7. Invariants Verification (INV_137 - INV_144)
+  const inv137 = INV_137_STATISTICS_DETERMINISTIC.check({ statsExperimentId: "exp_a", statsBaseline: baseMetrics, statsCandidate: candMetrics });
+  assert(inv137.passed === true, "INV_137 passes for deterministic statistical analysis");
+
+  const inv138 = INV_138_STATISTICS_READ_ONLY.check({ statsExperimentId: "exp_a", statsBaseline: baseMetrics, statsCandidate: candMetrics });
+  assert(inv138.passed === true, "INV_138 passes for statistics engine read-only execution");
+
+  const inv139 = INV_139_STATISTICS_ORDER_INDEPENDENT.check({ statsExperimentId: "exp_a", statsBaseline: baseMetrics, statsCandidate: candMetrics });
+  assert(inv139.passed === true, "INV_139 passes for statistics engine order independence");
+
+  const inv140 = INV_140_ZERO_SAMPLE_SAFE.check({ statsExperimentId: "exp_z" });
+  assert(inv140.passed === true, "INV_140 passes for zero sample safety");
+
+  const inv141 = INV_141_PVALUE_RANGE.check({ statsResult: res });
+  assert(inv141.passed === true, "INV_141 passes for pValue range integrity");
+
+  const inv142 = INV_142_ZSCORE_FINITE.check({ statsResult: res });
+  assert(inv142.passed === true, "INV_142 passes for zScore finiteness");
+
+  const inv143 = INV_143_REPORT_ID_STABLE.check({ statsExperimentId: "exp_a", statsBaseline: baseMetrics, statsCandidate: candMetrics });
+  assert(inv143.passed === true, "INV_143 passes for significance report field stability");
+
+  const inv144 = INV_144_TIME_FREE.check({});
+  assert(inv144.passed === true, "INV_144 passes for time-free execution in statistics module");
+}
+
+// ─── Test 33: 005A Decision Engine ─────────────────────────────────────────
+console.log("\nTest 33: 005A Decision Engine");
+{
+  const expId = "exp_decision";
+
+  // CASE 1: Winner Detected (1000 exp, 100 vs 150 conv, p=0.01)
+  const b1: VariantMetrics = { experimentId: expId, variantId: "variant_a", exposures: 1000, uniqueExposures: 1000, conversions: 100, uniqueConversions: 100, conversionRate: 0.1 };
+  const c1: VariantMetrics = { experimentId: expId, variantId: "variant_b", exposures: 1000, uniqueExposures: 1000, conversions: 150, uniqueConversions: 150, conversionRate: 0.15 };
+  const sig1: SignificanceReport = { experimentId: expId, baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselineRate: 0.1, candidateRate: 0.15, lift: 0.5, zScore: 3.2, pValue: 0.01, confidenceLevel: 0.95, statisticallySignificant: true };
+
+  const res1 = makeDecision(sig1, b1, c1);
+  assert(res1.report.decision === "winner_detected", "CASE 1: winner_detected decision produced");
+  assert(res1.report.reason.code === "CANDIDATE_OUTPERFORMS_BASELINE", "CASE 1: CANDIDATE_OUTPERFORMS_BASELINE reason code");
+  assert(res1.report.sampleSizeReached === true, "CASE 1: sampleSizeReached is true");
+  assert(res1.report.confidence === 0.95, "CASE 1: confidence level preserved");
+
+  // CASE 2: Regression Detected (1000 exp, 150 vs 100 conv, p=0.01)
+  const b2: VariantMetrics = { experimentId: expId, variantId: "variant_a", exposures: 1000, uniqueExposures: 1000, conversions: 150, uniqueConversions: 150, conversionRate: 0.15 };
+  const c2: VariantMetrics = { experimentId: expId, variantId: "variant_b", exposures: 1000, uniqueExposures: 1000, conversions: 100, uniqueConversions: 100, conversionRate: 0.1 };
+  const sig2: SignificanceReport = { experimentId: expId, baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselineRate: 0.15, candidateRate: 0.1, lift: -0.33, zScore: -3.2, pValue: 0.01, confidenceLevel: 0.95, statisticallySignificant: true };
+
+  const res2 = makeDecision(sig2, b2, c2);
+  assert(res2.report.decision === "regression_detected", "CASE 2: regression_detected decision produced");
+  assert(res2.report.reason.code === "CANDIDATE_UNDERPERFORMS_BASELINE", "CASE 2: CANDIDATE_UNDERPERFORMS_BASELINE reason code");
+
+  // CASE 3: Insufficient Sample (100 exp, 10 vs 15 conv)
+  const b3: VariantMetrics = { experimentId: expId, variantId: "variant_a", exposures: 100, uniqueExposures: 100, conversions: 10, uniqueConversions: 10, conversionRate: 0.1 };
+  const c3: VariantMetrics = { experimentId: expId, variantId: "variant_b", exposures: 100, uniqueExposures: 100, conversions: 15, uniqueConversions: 15, conversionRate: 0.15 };
+  const sig3: SignificanceReport = { experimentId: expId, baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselineRate: 0.1, candidateRate: 0.15, lift: 0.5, zScore: 1.1, pValue: 0.27, confidenceLevel: 0.95, statisticallySignificant: false };
+
+  const res3 = makeDecision(sig3, b3, c3, { minimumSampleSize: 1000 });
+  assert(res3.report.decision === "insufficient_sample", "CASE 3: insufficient_sample decision produced");
+  assert(res3.report.reason.code === "INSUFFICIENT_SAMPLE", "CASE 3: INSUFFICIENT_SAMPLE reason code");
+  assert(res3.report.sampleSizeReached === false, "CASE 3: sampleSizeReached is false");
+
+  // CASE 4: Inconclusive Result (1000 exp, 100 vs 102 conv, p=0.65)
+  const b4: VariantMetrics = { experimentId: expId, variantId: "variant_a", exposures: 1000, uniqueExposures: 1000, conversions: 100, uniqueConversions: 100, conversionRate: 0.1 };
+  const c4: VariantMetrics = { experimentId: expId, variantId: "variant_b", exposures: 1000, uniqueExposures: 1000, conversions: 102, uniqueConversions: 102, conversionRate: 0.102 };
+  const sig4: SignificanceReport = { experimentId: expId, baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselineRate: 0.1, candidateRate: 0.102, lift: 0.02, zScore: 0.15, pValue: 0.65, confidenceLevel: 0.95, statisticallySignificant: false };
+
+  const res4 = makeDecision(sig4, b4, c4);
+  assert(res4.report.decision === "inconclusive", "CASE 4: inconclusive decision produced");
+  assert(res4.report.reason.code === "INCONCLUSIVE_RESULT", "CASE 4: INCONCLUSIVE_RESULT reason code");
+
+  // Validator test
+  const valValid = validateDecisionRequest(sig1, b1, c1);
+  assert(valValid.passed === true, "validateDecisionRequest passes for valid request");
+
+  let valErrThrew = false;
+  try {
+    makeDecision({ ...sig1, experimentId: "mismatch" }, b1, c1);
+  } catch (err) {
+    if (err instanceof DecisionValidationError) {
+      valErrThrew = true;
+    }
+  }
+  assert(valErrThrew, "Mismatched experimentId throws DecisionValidationError");
+
+  // Projections verification
+  const projReason = projectDecisionReason(res1.report.reason);
+  assert(Object.isFrozen(projReason), "projectDecisionReason output is frozen");
+
+  const projReport = projectDecisionReport(res1.report);
+  assert(Object.isFrozen(projReport), "projectDecisionReport output is frozen");
+
+  const projRes = projectDecisionResult(res1);
+  assert(Object.isFrozen(projRes), "projectDecisionResult output is frozen");
+
+  // Invariants Verification (INV_145 - INV_152)
+  const inv145 = INV_145_DECISION_DETERMINISTIC.check({});
+  assert(inv145.passed === true, "INV_145 passes for deterministic decision engine");
+
+  const inv146 = INV_146_DECISION_READ_ONLY.check({});
+  assert(inv146.passed === true, "INV_146 passes for decision engine read-only execution");
+
+  const inv147 = INV_147_DECISION_ORDER_INDEPENDENT.check({});
+  assert(inv147.passed === true, "INV_147 passes for decision engine order independence");
+
+  const inv148 = INV_148_SIGNIFICANCE_REQUIRED.check({});
+  assert(inv148.passed === true, "INV_148 passes for significance required guard");
+
+  const inv149 = INV_149_SAMPLE_SIZE_REQUIRED.check({});
+  assert(inv149.passed === true, "INV_149 passes for sample size required guard");
+
+  const inv150 = INV_150_DECISION_PROJECTION_ONLY.check({});
+  assert(inv150.passed === true, "INV_150 passes for advisory projection only guard");
+
+  const inv151 = INV_151_DECISION_REASON_STABLE.check({});
+  assert(inv151.passed === true, "INV_151 passes for decision reason stability");
+
+  const inv152 = INV_152_TIME_FREE.check({});
+  assert(inv152.passed === true, "INV_152 passes for time-free execution in decision module");
+}
+
+// ─── Test 34: 005B Rollout Engine ──────────────────────────────────────────
+console.log("\nTest 34: 005B Rollout Engine");
+{
+  const expId = "exp_rollout";
+  const bId = "variant_a";
+  const cId = "variant_b";
+
+  function makeTestDecision(dState: DecisionState): DecisionReport {
+    return {
+      experimentId: expId,
+      baselineVariantId: bId,
+      candidateVariantId: cId,
+      decision: dState,
+      confidence: 0.95,
+      statisticallySignificant: dState === "winner_detected" || dState === "regression_detected",
+      sampleSizeReached: true,
+      reason: { code: "TEST", message: "test decision" },
+    };
+  }
+
+  // CASE 1: winner_detected -> 25 / 75, increase_traffic
+  const dWinner = makeTestDecision("winner_detected");
+  const res1 = buildRolloutPlan(dWinner, bId, cId);
+  assert(res1.plan.action === "increase_traffic", "CASE 1: winner_detected yields increase_traffic action");
+  assert(res1.plan.allocation.baselinePercentage === 25, "CASE 1: baseline traffic is 25%");
+  assert(res1.plan.allocation.candidatePercentage === 75, "CASE 1: candidate traffic is 75%");
+  assert(res1.plan.allocation.baselinePercentage + res1.plan.allocation.candidatePercentage === 100, "CASE 1: percentages sum to 100%");
+
+  // CASE 2: regression_detected (archiveOnRegression=false) -> 90 / 10, decrease_traffic
+  const dRegression = makeTestDecision("regression_detected");
+  const res2 = buildRolloutPlan(dRegression, bId, cId, { archiveOnRegression: false });
+  assert(res2.plan.action === "decrease_traffic", "CASE 2: regression_detected yields decrease_traffic action");
+  assert(res2.plan.allocation.baselinePercentage === 90, "CASE 2: baseline traffic is 90%");
+  assert(res2.plan.allocation.candidatePercentage === 10, "CASE 2: candidate traffic is 10%");
+
+  // CASE 3: regression_detected (archiveOnRegression=true) -> 100 / 0, archive_experiment
+  const res3 = buildRolloutPlan(dRegression, bId, cId, { archiveOnRegression: true });
+  assert(res3.plan.action === "archive_experiment", "CASE 3: archiveOnRegression=true yields archive_experiment action");
+  assert(res3.plan.allocation.baselinePercentage === 100, "CASE 3: baseline traffic is 100%");
+  assert(res3.plan.allocation.candidatePercentage === 0, "CASE 3: candidate traffic is 0%");
+
+  // CASE 4: inconclusive -> 50 / 50, keep_running
+  const dInconclusive = makeTestDecision("inconclusive");
+  const res4 = buildRolloutPlan(dInconclusive, bId, cId);
+  assert(res4.plan.action === "keep_running", "CASE 4: inconclusive yields keep_running action");
+  assert(res4.plan.allocation.baselinePercentage === 50, "CASE 4: baseline traffic is 50%");
+  assert(res4.plan.allocation.candidatePercentage === 50, "CASE 4: candidate traffic is 50%");
+
+  // insufficient_sample & continue checks
+  const dSample = makeTestDecision("insufficient_sample");
+  const resSample = buildRolloutPlan(dSample, bId, cId);
+  assert(resSample.plan.action === "keep_running", "insufficient_sample yields keep_running");
+
+  const dContinue = makeTestDecision("continue");
+  const resContinue = buildRolloutPlan(dContinue, bId, cId);
+  assert(resContinue.plan.action === "keep_running", "continue yields keep_running");
+
+  // Non-negative allocation check
+  assert(res1.plan.allocation.baselinePercentage >= 0 && res1.plan.allocation.candidatePercentage >= 0, "No negative allocations");
+  assert(res3.plan.allocation.baselinePercentage >= 0 && res3.plan.allocation.candidatePercentage >= 0, "No negative allocations in archive");
+
+  // Validator tests
+  const valValid = validateRolloutRequest(dWinner, bId, cId);
+  assert(valValid.passed === true, "validateRolloutRequest passes for valid request");
+
+  let valErrThrew = false;
+  try {
+    buildRolloutPlan(dWinner, "wrong_baseline", cId);
+  } catch (err) {
+    if (err instanceof RolloutValidationError) {
+      valErrThrew = true;
+    }
+  }
+  assert(valErrThrew, "Mismatched baselineVariantId throws RolloutValidationError");
+
+  // Projections verification
+  const projAlloc = projectTrafficAllocation(res1.plan.allocation);
+  assert(Object.isFrozen(projAlloc), "projectTrafficAllocation output is frozen");
+
+  const projPlan = projectRolloutPlan(res1.plan);
+  assert(Object.isFrozen(projPlan), "projectRolloutPlan output is frozen");
+
+  const projRes = projectRolloutResult(res1);
+  assert(Object.isFrozen(projRes), "projectRolloutResult output is frozen");
+
+  // Invariants Verification (INV_153 - INV_160)
+  const inv153 = INV_153_ROLLOUT_DETERMINISTIC.check({});
+  assert(inv153.passed === true, "INV_153 passes for deterministic rollout engine");
+
+  const inv154 = INV_154_ROLLOUT_READ_ONLY.check({});
+  assert(inv154.passed === true, "INV_154 passes for rollout engine read-only execution");
+
+  const inv155 = INV_155_TRAFFIC_SUM_100.check({});
+  assert(inv155.passed === true, "INV_155 passes for traffic sum 100 guard");
+
+  const inv156 = INV_156_VALID_TRAFFIC_RANGE.check({});
+  assert(inv156.passed === true, "INV_156 passes for valid traffic range guard");
+
+  const inv157 = INV_157_DECISION_REQUIRED.check({});
+  assert(inv157.passed === true, "INV_157 passes for decision required guard");
+
+  const inv158 = INV_158_POLICY_STABLE.check({});
+  assert(inv158.passed === true, "INV_158 passes for policy stability guard");
+
+  const inv159 = INV_159_PROJECTION_ONLY.check({});
+  assert(inv159.passed === true, "INV_159 passes for rollout projection only guard");
+
+  const inv160 = INV_160_TIME_FREE.check({});
+  assert(inv160.passed === true, "INV_160 passes for time-free execution in rollout module");
+}
+
+// ─── Test 35: 005C Deployment Executor ─────────────────────────────────────
+console.log("\nTest 35: 005C Deployment Executor");
+{
+  const expId = "exp_exec";
+  const planIncrease: RolloutPlan = {
+    experimentId: expId,
+    action: "increase_traffic",
+    allocation: { baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselinePercentage: 25, candidatePercentage: 75 },
+    reasonCode: "INCREASE_TRAFFIC_WINNER_DETECTED",
+    decision: "winner_detected",
+  };
+
+  const planKeep: RolloutPlan = {
+    experimentId: expId,
+    action: "keep_running",
+    allocation: { baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselinePercentage: 50, candidatePercentage: 50 },
+    reasonCode: "KEEP_RUNNING_CONTINUE",
+    decision: "continue",
+  };
+
+  const planDecrease: RolloutPlan = {
+    experimentId: expId,
+    action: "decrease_traffic",
+    allocation: { baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselinePercentage: 90, candidatePercentage: 10 },
+    reasonCode: "DECREASE_TRAFFIC_REGRESSION_DETECTED",
+    decision: "regression_detected",
+  };
+
+  const planArchive: RolloutPlan = {
+    experimentId: expId,
+    action: "archive_experiment",
+    allocation: { baselineVariantId: "variant_a", candidateVariantId: "variant_b", baselinePercentage: 100, candidatePercentage: 0 },
+    reasonCode: "ARCHIVE_EXPERIMENT_REGRESSION_DETECTED",
+    decision: "regression_detected",
+  };
+
+  // RULE 1: keep_running on empty history -> scheduled, stage 0, empty history
+  const resKeep = executeRollout(planKeep, []);
+  assert(resKeep.report.currentState === "scheduled", "RULE 1: keep_running yields scheduled state");
+  assert(resKeep.report.currentStage === 0, "RULE 1: keep_running yields currentStage 0");
+  assert(resKeep.report.executionHistory.length === 0, "RULE 1: keep_running history is empty");
+
+  // RULE 2: increase_traffic on empty history -> executing, stage 1, history entry seq 1, stage 1, 10%
+  const resInc1 = executeRollout(planIncrease, []);
+  assert(resInc1.report.currentState === "executing", "RULE 2: increase_traffic yields executing state");
+  assert(resInc1.report.currentStage === 1, "RULE 2: increase_traffic yields currentStage 1");
+  assert(resInc1.report.executionHistory.length === 1, "RULE 2: executionHistory contains 1 entry");
+  assert(resInc1.report.executionHistory[0].sequence === 1, "RULE 2: entry sequence is 1");
+  assert(resInc1.report.executionHistory[0].stageNumber === 1, "RULE 2: entry stageNumber is 1");
+  assert(resInc1.report.executionHistory[0].trafficPercentage === 10, "RULE 2: entry trafficPercentage is 10");
+
+  // RULE 3: decrease_traffic -> rolled_back, history entry added
+  const resDec = executeRollout(planDecrease, resInc1.report.executionHistory);
+  assert(resDec.report.currentState === "rolled_back", "RULE 3: decrease_traffic yields rolled_back state");
+  assert(resDec.report.executionHistory.length === 2, "RULE 3: executionHistory length is 2");
+  assert(resDec.report.executionHistory[1].sequence === 2, "RULE 3: new entry sequence is 2");
+  assert(resDec.report.executionHistory[1].state === "rolled_back", "RULE 3: new entry state is rolled_back");
+
+  // RULE 4: archive_experiment -> completed, stage 5, history entry added
+  const resArch = executeRollout(planArchive, resInc1.report.executionHistory);
+  assert(resArch.report.currentState === "completed", "RULE 4: archive_experiment yields completed state");
+  assert(resArch.report.currentStage === 5, "RULE 4: currentStage is 5 (final stage)");
+  assert(resArch.report.executionHistory.length === 2, "RULE 4: executionHistory length is 2");
+  assert(resArch.report.executionHistory[1].trafficPercentage === 0, "RULE 4: archive entry traffic is 0");
+
+  // RULE 5: autoPromote = false -> execution stage does not advance automatically
+  const resInc2 = executeRollout(planIncrease, resInc1.report.executionHistory, { autoPromote: false });
+  assert(resInc2.report.currentStage === 1, "RULE 5: autoPromote=false preserves stage 1");
+
+  // History Monotonic & Append-Only Assertions
+  const h1 = resInc1.report.executionHistory[0];
+  const h2 = resDec.report.executionHistory[1];
+  assert(h2.sequence > h1.sequence, "History sequence strictly monotonic (1 < 2)");
+  assert(resDec.report.executionHistory[0].sequence === h1.sequence, "History append-only (entry 0 untouched)");
+
+  // Stage & History Consistency
+  assert(resDec.report.currentStage === resDec.report.executionHistory[resDec.report.executionHistory.length - 1].stageNumber, "currentStage equals last history entry stageNumber");
+
+  // Replay Determinism & Report Reproduction
+  const resReplay = executeRollout(planDecrease, resInc1.report.executionHistory);
+  assert(JSON.stringify(resReplay) === JSON.stringify(resDec), "Replaying history produces identical report");
+
+  // Validator test
+  const valValid = validateExecutionRequest(planIncrease, []);
+  assert(valValid.passed === true, "validateExecutionRequest passes for valid request");
+
+  let valErrThrew = false;
+  try {
+    executeRollout({ ...planIncrease, experimentId: "" }, []);
+  } catch (err) {
+    if (err instanceof ExecutionValidationError) {
+      valErrThrew = true;
+    }
+  }
+  assert(valErrThrew, "Empty experimentId throws ExecutionValidationError");
+
+  // Projections verification
+  const projStage = projectExecutionStage(resInc1.report.stages[0]);
+  assert(Object.isFrozen(projStage), "projectExecutionStage output is frozen");
+
+  const projEntry = projectExecutionHistoryEntry(resInc1.report.executionHistory[0]);
+  assert(Object.isFrozen(projEntry), "projectExecutionHistoryEntry output is frozen");
+
+  const projReport = projectExecutionReport(resInc1.report);
+  assert(Object.isFrozen(projReport), "projectExecutionReport output is frozen");
+
+  const projRes = projectExecutionResult(resInc1);
+  assert(Object.isFrozen(projRes), "projectExecutionResult output is frozen");
+
+  // Invariants Verification (INV_161 - INV_172)
+  const inv161 = INV_161_EXECUTION_DETERMINISTIC.check({});
+  assert(inv161.passed === true, "INV_161 passes for deterministic deployment executor");
+
+  const inv162 = INV_162_EXECUTION_READ_ONLY.check({});
+  assert(inv162.passed === true, "INV_162 passes for execution engine read-only guard");
+
+  const inv163 = INV_163_STAGE_ORDER_MONOTONIC.check({});
+  assert(inv163.passed === true, "INV_163 passes for stage order monotonic guard");
+
+  const inv164 = INV_164_STAGE_RANGE_VALID.check({});
+  assert(inv164.passed === true, "INV_164 passes for stage range valid guard");
+
+  const inv165 = INV_165_ROLLOUT_PLAN_REQUIRED.check({});
+  assert(inv165.passed === true, "INV_165 passes for rollout plan required guard");
+
+  const inv166 = INV_166_EXECUTION_HISTORY_STABLE.check({});
+  assert(inv166.passed === true, "INV_166 passes for execution history stability guard");
+
+  const inv167 = INV_167_EXECUTION_ONLY.check({});
+  assert(inv167.passed === true, "INV_167 passes for execution projection only guard");
+
+  const inv168 = INV_168_TIME_FREE.check({});
+  assert(inv168.passed === true, "INV_168 passes for time-free execution in execution module");
+
+  const inv169 = INV_169_HISTORY_SEQUENCE_MONOTONIC.check({});
+  assert(inv169.passed === true, "INV_169 passes for history sequence monotonic guard");
+
+  const inv170 = INV_170_HISTORY_APPEND_ONLY.check({});
+  assert(inv170.passed === true, "INV_170 passes for history append-only guard");
+
+  const inv171 = INV_171_HISTORY_REPLAYABLE.check({});
+  assert(inv171.passed === true, "INV_171 passes for history replayable guard");
+
+  const inv172 = INV_172_STAGE_HISTORY_CONSISTENT.check({});
+  assert(inv172.passed === true, "INV_172 passes for stage history consistency guard");
+}
+
+// ─── Test 36: 005D Experiment Scheduler ───────────────────────────────────
+console.log("\nTest 36: 005D Experiment Scheduler");
+{
+  const expId = "exp_sched";
+  const execReport: ExecutionReport = {
+    experimentId: expId,
+    action: "increase_traffic",
+    currentStage: 1,
+    currentState: "executing",
+    stages: [
+      { stageNumber: 1, trafficPercentage: 10, state: "executing" },
+      { stageNumber: 2, trafficPercentage: 25, state: "scheduled" },
+      { stageNumber: 3, trafficPercentage: 50, state: "scheduled" },
+      { stageNumber: 4, trafficPercentage: 75, state: "scheduled" },
+      { stageNumber: 5, trafficPercentage: 100, state: "scheduled" },
+    ],
+    executionHistory: [
+      { sequence: 1, stageNumber: 1, trafficPercentage: 10, state: "executing" },
+    ],
+    rollbackEnabled: true,
+  };
+
+  const clock: LogicalClock = { currentTick: 0 };
+  const pol: Partial<SchedulingPolicy> = { stageDurationTicks: 24, cooldownTicks: 6, expirationTicks: 168 };
+
+  // CASE 1: Stage schedule calculation (0 -> 24, 30 -> 54, 60 -> 84)
+  const res1 = buildSchedule(execReport, [], clock, pol);
+  const stages = res1.plan.stages;
+
+  assert(stages.length === 5, "CASE 1: 5 stage schedules generated");
+  assert(stages[0].startsAtTick === 0 && stages[0].endsAtTick === 24, "CASE 1: Stage 1 is 0 -> 24");
+  assert(stages[1].startsAtTick === 30 && stages[1].endsAtTick === 54, "CASE 1: Stage 2 is 30 -> 54");
+  assert(stages[2].startsAtTick === 60 && stages[2].endsAtTick === 84, "CASE 1: Stage 3 is 60 -> 84");
+
+  // CASE 2: Expiration tick calculation
+  assert(res1.plan.expiresAtTick === 168, "CASE 2: expiresAtTick is 168");
+  assert(res1.plan.expiresAtTick > stages[stages.length - 1].endsAtTick, "CASE 2: expiresAtTick > last stage endsAtTick");
+
+  // Non-overlapping windows assertion
+  let nonOverlapping = true;
+  for (let i = 1; i < stages.length; i++) {
+    if (stages[i].startsAtTick < stages[i - 1].endsAtTick) {
+      nonOverlapping = false;
+      break;
+    }
+  }
+  assert(nonOverlapping, "Logical stage windows never overlap");
+
+  // CASE 3: Replay determinism
+  const resReplay = buildSchedule(execReport, res1.plan.history, clock, pol);
+  assert(JSON.stringify(resReplay.plan) === JSON.stringify(res1.plan), "CASE 3: Replaying history produces identical schedule plan");
+
+  // History append-only assertion
+  const execReportStage2: ExecutionReport = { ...execReport, currentStage: 2 };
+  const resStage2 = buildSchedule(execReportStage2, res1.plan.history, clock, pol);
+  assert(resStage2.plan.history.length === 2, "History entries appended on stage progression (length 2)");
+  assert(resStage2.plan.history[0].sequence === 1, "Previous history entry 0 untouched");
+  assert(resStage2.plan.history[1].sequence === 2, "New history entry sequence is 2");
+
+  // Validator test
+  const valValid = validateScheduleRequest(execReport, [], clock);
+  assert(valValid.passed === true, "validateScheduleRequest passes for valid request");
+
+  let valErrThrew = false;
+  try {
+    buildSchedule({ ...execReport, experimentId: "" }, [], clock);
+  } catch (err) {
+    if (err instanceof SchedulerValidationError) {
+      valErrThrew = true;
+    }
+  }
+  assert(valErrThrew, "Empty experimentId throws SchedulerValidationError");
+
+  // Projections verification
+  const projStage = projectStageSchedule(res1.plan.stages[0]);
+  assert(Object.isFrozen(projStage), "projectStageSchedule output is frozen");
+
+  const projEntry = projectScheduleHistoryEntry(res1.plan.history[0]);
+  assert(Object.isFrozen(projEntry), "projectScheduleHistoryEntry output is frozen");
+
+  const projPlan = projectSchedulePlan(res1.plan);
+  assert(Object.isFrozen(projPlan), "projectSchedulePlan output is frozen");
+
+  const projRes = projectScheduleResult(res1);
+  assert(Object.isFrozen(projRes), "projectScheduleResult output is frozen");
+
+  // Invariants Verification (INV_173 - INV_184)
+  const inv173 = INV_173_SCHEDULE_DETERMINISTIC.check({});
+  assert(inv173.passed === true, "INV_173 passes for deterministic scheduler");
+
+  const inv174 = INV_174_SCHEDULE_READ_ONLY.check({});
+  assert(inv174.passed === true, "INV_174 passes for scheduler read-only guard");
+
+  const inv175 = INV_175_STAGE_TICK_MONOTONIC.check({});
+  assert(inv175.passed === true, "INV_175 passes for stage tick monotonic guard");
+
+  const inv176 = INV_176_NON_OVERLAPPING_WINDOWS.check({});
+  assert(inv176.passed === true, "INV_176 passes for non-overlapping windows guard");
+
+  const inv177 = INV_177_EXECUTION_REQUIRED.check({});
+  assert(inv177.passed === true, "INV_177 passes for execution report required guard");
+
+  const inv178 = INV_178_SCHEDULE_HISTORY_STABLE.check({});
+  assert(inv178.passed === true, "INV_178 passes for schedule history stability guard");
+
+  const inv179 = INV_179_PROJECTION_ONLY.check({});
+  assert(inv179.passed === true, "INV_179 passes for scheduler projection only guard");
+
+  const inv180 = INV_180_LOGICAL_TIME_ONLY.check({});
+  assert(inv180.passed === true, "INV_180 passes for logical time only guard (zero Date usage)");
+
+  const inv181 = INV_181_HISTORY_SEQUENCE_MONOTONIC.check({});
+  assert(inv181.passed === true, "INV_181 passes for schedule history sequence monotonic guard");
+
+  const inv182 = INV_182_HISTORY_APPEND_ONLY.check({});
+  assert(inv182.passed === true, "INV_182 passes for schedule history append-only guard");
+
+  const inv183 = INV_183_EXPIRATION_AFTER_LAST_STAGE.check({});
+  assert(inv183.passed === true, "INV_183 passes for expiration after last stage guard");
+
+  const inv184 = INV_184_CURRENT_STAGE_CONSISTENT.check({});
+  assert(inv184.passed === true, "INV_184 passes for current stage history consistency guard");
 }
 
 // ─── ALGORITHMIC CERTIFICATION REPORT ─────────────────────────────────────

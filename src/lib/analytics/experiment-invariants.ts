@@ -41,7 +41,7 @@ import type { ExperimentTargetingRules } from "./targeting/targeting-rules";
 import type { EligibilityResult } from "./targeting/targeting-types";
 import { isEligible } from "./targeting/targeting-engine";
 import { validateTargetingRules } from "./targeting/targeting-validator";
-import type { ExperimentSchedule, ScheduleResult } from "./scheduler/scheduler-types";
+import type { ExperimentSchedule, ScheduleEvaluationResult } from "./scheduler/scheduler-types";
 import { isExperimentActive } from "./scheduler/scheduler-engine";
 import type { GovernanceActor, GovernanceAction, GovernanceDecision } from "./governance/governance-types";
 import type { GovernanceAuditLog } from "./governance/governance-audit";
@@ -134,7 +134,7 @@ export interface InvariantCheckContext {
   eligibilityResult?: EligibilityResult;
   schedule?: ExperimentSchedule;
   evaluationTime?: Date;
-  scheduleResult?: ScheduleResult;
+  scheduleEvaluationResult?: ScheduleEvaluationResult;
   governanceActor?: GovernanceActor;
   governanceAction?: GovernanceAction;
   governanceDecision?: GovernanceDecision;
@@ -145,6 +145,40 @@ export interface InvariantCheckContext {
   exposureRequest?: import("./exposure/exposure-types").ExposureRequest;
   existingEvents?: import("./exposure/exposure-types").ExposureEvent[];
   exposureResult?: import("./exposure/exposure-types").ExposureResult;
+  exposureEvent?: import("./exposure/exposure-types").ExposureEvent;
+  goalCandidate?: import("./conversion/conversion-types").GoalCandidate;
+  goalDefinition?: import("./conversion/conversion-types").GoalDefinition;
+  existingConversions?: import("./conversion/conversion-types").ConversionEvent[];
+  conversionResult?: import("./conversion/conversion-types").ConversionResult;
+  metricsExperimentId?: string;
+  metricsExposures?: import("./exposure/exposure-types").ExposureEvent[];
+  metricsConversions?: import("./conversion/conversion-types").ConversionEvent[];
+  metricsGeneratedAt?: Date;
+  metricsResult?: import("./metrics/metrics-types").MetricsResult;
+  statsExperimentId?: string;
+  statsBaseline?: import("./metrics/metrics-types").VariantMetrics;
+  statsCandidate?: import("./metrics/metrics-types").VariantMetrics;
+  statsConfidenceLevel?: number;
+  statsResult?: import("./statistics/statistics-types").StatisticsResult;
+  decisionSignificance?: import("./statistics/statistics-types").SignificanceReport;
+  decisionBaseline?: import("./metrics/metrics-types").VariantMetrics;
+  decisionCandidate?: import("./metrics/metrics-types").VariantMetrics;
+  decisionConfig?: Partial<import("./decision/decision-types").DecisionConfig>;
+  decisionResult?: import("./decision/decision-types").DecisionResult;
+  rolloutDecision?: import("./decision/decision-types").DecisionReport;
+  rolloutBaselineVariantId?: string;
+  rolloutCandidateVariantId?: string;
+  rolloutPolicy?: Partial<import("./rollout/rollout-types").RolloutPolicy>;
+  rolloutResult?: import("./rollout/rollout-types").RolloutResult;
+  executionPlan?: import("./rollout/rollout-types").RolloutPlan;
+  executionHistory?: readonly import("./execution/execution-types").ExecutionHistoryEntry[];
+  executionPolicy?: Partial<import("./execution/execution-types").ExecutionPolicy>;
+  executionResult?: import("./execution/execution-types").ExecutionResult;
+  scheduleExecutionReport?: import("./execution/execution-types").ExecutionReport;
+  scheduleHistory?: readonly import("./scheduler/scheduler-types").ScheduleHistoryEntry[];
+  scheduleClock?: import("./scheduler/scheduler-types").LogicalClock;
+  schedulePolicy?: Partial<import("./scheduler/scheduler-types").SchedulingPolicy>;
+  scheduleResult?: import("./scheduler/scheduler-types").ScheduleResult;
 }
 
 export interface InvariantCheckResult {
@@ -2998,7 +3032,7 @@ export const INV_085_START_WINDOW_ENFORCED: ExperimentInvariant = {
       };
     }
 
-    const result = ctx.scheduleResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
+    const result = ctx.scheduleEvaluationResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
     if (!result) {
       return {
         passed: true,
@@ -3049,7 +3083,7 @@ export const INV_086_END_WINDOW_ENFORCED: ExperimentInvariant = {
       };
     }
 
-    const result = ctx.scheduleResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
+    const result = ctx.scheduleEvaluationResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
     if (!result) {
       return {
         passed: true,
@@ -3101,7 +3135,7 @@ export const INV_087_DISABLED_EXPERIMENT_BLOCKED: ExperimentInvariant = {
     }
 
     if (schedule.enabled === false) {
-      const result = ctx.scheduleResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
+      const result = ctx.scheduleEvaluationResult || (ctx.experimentDefinition ? isExperimentActive(ctx.experimentDefinition, now) : undefined);
       if (result) {
         const passed = result.active === false && result.failedChecks.includes("enabled");
         return {
@@ -3931,6 +3965,94 @@ import {
   INV_117_EXPOSURE_ORDER_INDEPENDENT,
 } from "./exposure/exposure-invariants";
 
+import {
+  INV_118_CONVERSION_DETERMINISTIC,
+  INV_119_CONVERSION_READ_ONLY,
+  INV_120_CONVERSION_IDEMPOTENT,
+  INV_121_CONVERSION_DEDUPLICATION,
+  INV_122_CONVERSION_ID_STABLE,
+  INV_123_CONVERSION_TIME_INJECTION,
+  INV_124_CONVERSION_ORDER_INDEPENDENT,
+  INV_125_GOAL_OWNERSHIP,
+  INV_126_CONVERSION_REQUIRES_EXPOSURE,
+} from "./conversion/conversion-invariants";
+
+import {
+  INV_127_METRICS_DETERMINISTIC,
+  INV_128_METRICS_READ_ONLY,
+  INV_129_METRICS_ORDER_INDEPENDENT,
+  INV_130_METRICS_CONSISTENT_TOTALS,
+  INV_131_METRICS_ZERO_DIVISION_SAFE,
+  INV_132_METRICS_ID_STABLE,
+  INV_133_METRICS_TIME_INJECTION,
+  INV_134_UNIQUE_COUNTS_CONSISTENT,
+  INV_135_VARIANT_ORDER_CANONICAL,
+  INV_136_METRICS_DERIVED_ONLY,
+} from "./metrics/metrics-invariants";
+
+import {
+  INV_137_STATISTICS_DETERMINISTIC,
+  INV_138_STATISTICS_READ_ONLY,
+  INV_139_STATISTICS_ORDER_INDEPENDENT,
+  INV_140_ZERO_SAMPLE_SAFE,
+  INV_141_PVALUE_RANGE,
+  INV_142_ZSCORE_FINITE,
+  INV_143_REPORT_ID_STABLE,
+  INV_144_TIME_FREE,
+} from "./statistics/statistics-invariants";
+
+import {
+  INV_145_DECISION_DETERMINISTIC,
+  INV_146_DECISION_READ_ONLY,
+  INV_147_DECISION_ORDER_INDEPENDENT,
+  INV_148_SIGNIFICANCE_REQUIRED,
+  INV_149_SAMPLE_SIZE_REQUIRED,
+  INV_150_DECISION_PROJECTION_ONLY,
+  INV_151_DECISION_REASON_STABLE,
+  INV_152_TIME_FREE,
+} from "./decision/decision-invariants";
+
+import {
+  INV_153_ROLLOUT_DETERMINISTIC,
+  INV_154_ROLLOUT_READ_ONLY,
+  INV_155_TRAFFIC_SUM_100,
+  INV_156_VALID_TRAFFIC_RANGE,
+  INV_157_DECISION_REQUIRED,
+  INV_158_POLICY_STABLE,
+  INV_159_PROJECTION_ONLY,
+  INV_160_TIME_FREE,
+} from "./rollout/rollout-invariants";
+
+import {
+  INV_161_EXECUTION_DETERMINISTIC,
+  INV_162_EXECUTION_READ_ONLY,
+  INV_163_STAGE_ORDER_MONOTONIC,
+  INV_164_STAGE_RANGE_VALID,
+  INV_165_ROLLOUT_PLAN_REQUIRED,
+  INV_166_EXECUTION_HISTORY_STABLE,
+  INV_167_EXECUTION_ONLY,
+  INV_168_TIME_FREE,
+  INV_169_HISTORY_SEQUENCE_MONOTONIC,
+  INV_170_HISTORY_APPEND_ONLY,
+  INV_171_HISTORY_REPLAYABLE,
+  INV_172_STAGE_HISTORY_CONSISTENT,
+} from "./execution/execution-invariants";
+
+import {
+  INV_173_SCHEDULE_DETERMINISTIC,
+  INV_174_SCHEDULE_READ_ONLY,
+  INV_175_STAGE_TICK_MONOTONIC,
+  INV_176_NON_OVERLAPPING_WINDOWS,
+  INV_177_EXECUTION_REQUIRED,
+  INV_178_SCHEDULE_HISTORY_STABLE,
+  INV_179_PROJECTION_ONLY,
+  INV_180_LOGICAL_TIME_ONLY,
+  INV_181_HISTORY_SEQUENCE_MONOTONIC,
+  INV_182_HISTORY_APPEND_ONLY,
+  INV_183_EXPIRATION_AFTER_LAST_STAGE,
+  INV_184_CURRENT_STAGE_CONSISTENT,
+} from "./scheduler/scheduler-invariants";
+
 export {
   INV_104_RUNTIME_DETERMINISTIC,
   INV_105_RUNTIME_READ_ONLY,
@@ -3946,6 +4068,73 @@ export {
   INV_115_EXPOSURE_ID_STABLE,
   INV_116_EXPOSURE_TIME_INJECTION,
   INV_117_EXPOSURE_ORDER_INDEPENDENT,
+  INV_118_CONVERSION_DETERMINISTIC,
+  INV_119_CONVERSION_READ_ONLY,
+  INV_120_CONVERSION_IDEMPOTENT,
+  INV_121_CONVERSION_DEDUPLICATION,
+  INV_122_CONVERSION_ID_STABLE,
+  INV_123_CONVERSION_TIME_INJECTION,
+  INV_124_CONVERSION_ORDER_INDEPENDENT,
+  INV_125_GOAL_OWNERSHIP,
+  INV_126_CONVERSION_REQUIRES_EXPOSURE,
+  INV_127_METRICS_DETERMINISTIC,
+  INV_128_METRICS_READ_ONLY,
+  INV_129_METRICS_ORDER_INDEPENDENT,
+  INV_130_METRICS_CONSISTENT_TOTALS,
+  INV_131_METRICS_ZERO_DIVISION_SAFE,
+  INV_132_METRICS_ID_STABLE,
+  INV_133_METRICS_TIME_INJECTION,
+  INV_134_UNIQUE_COUNTS_CONSISTENT,
+  INV_135_VARIANT_ORDER_CANONICAL,
+  INV_136_METRICS_DERIVED_ONLY,
+  INV_137_STATISTICS_DETERMINISTIC,
+  INV_138_STATISTICS_READ_ONLY,
+  INV_139_STATISTICS_ORDER_INDEPENDENT,
+  INV_140_ZERO_SAMPLE_SAFE,
+  INV_141_PVALUE_RANGE,
+  INV_142_ZSCORE_FINITE,
+  INV_143_REPORT_ID_STABLE,
+  INV_144_TIME_FREE,
+  INV_145_DECISION_DETERMINISTIC,
+  INV_146_DECISION_READ_ONLY,
+  INV_147_DECISION_ORDER_INDEPENDENT,
+  INV_148_SIGNIFICANCE_REQUIRED,
+  INV_149_SAMPLE_SIZE_REQUIRED,
+  INV_150_DECISION_PROJECTION_ONLY,
+  INV_151_DECISION_REASON_STABLE,
+  INV_152_TIME_FREE,
+  INV_153_ROLLOUT_DETERMINISTIC,
+  INV_154_ROLLOUT_READ_ONLY,
+  INV_155_TRAFFIC_SUM_100,
+  INV_156_VALID_TRAFFIC_RANGE,
+  INV_157_DECISION_REQUIRED,
+  INV_158_POLICY_STABLE,
+  INV_159_PROJECTION_ONLY,
+  INV_160_TIME_FREE,
+  INV_161_EXECUTION_DETERMINISTIC,
+  INV_162_EXECUTION_READ_ONLY,
+  INV_163_STAGE_ORDER_MONOTONIC,
+  INV_164_STAGE_RANGE_VALID,
+  INV_165_ROLLOUT_PLAN_REQUIRED,
+  INV_166_EXECUTION_HISTORY_STABLE,
+  INV_167_EXECUTION_ONLY,
+  INV_168_TIME_FREE,
+  INV_169_HISTORY_SEQUENCE_MONOTONIC,
+  INV_170_HISTORY_APPEND_ONLY,
+  INV_171_HISTORY_REPLAYABLE,
+  INV_172_STAGE_HISTORY_CONSISTENT,
+  INV_173_SCHEDULE_DETERMINISTIC,
+  INV_174_SCHEDULE_READ_ONLY,
+  INV_175_STAGE_TICK_MONOTONIC,
+  INV_176_NON_OVERLAPPING_WINDOWS,
+  INV_177_EXECUTION_REQUIRED,
+  INV_178_SCHEDULE_HISTORY_STABLE,
+  INV_179_PROJECTION_ONLY,
+  INV_180_LOGICAL_TIME_ONLY,
+  INV_181_HISTORY_SEQUENCE_MONOTONIC,
+  INV_182_HISTORY_APPEND_ONLY,
+  INV_183_EXPIRATION_AFTER_LAST_STAGE,
+  INV_184_CURRENT_STAGE_CONSISTENT,
 };
 
 export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
@@ -3979,10 +4168,77 @@ export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_115_EXPOSURE_ID_STABLE,
   INV_116_EXPOSURE_TIME_INJECTION,
   INV_117_EXPOSURE_ORDER_INDEPENDENT,
+  INV_118_CONVERSION_DETERMINISTIC,
+  INV_119_CONVERSION_READ_ONLY,
+  INV_120_CONVERSION_IDEMPOTENT,
+  INV_121_CONVERSION_DEDUPLICATION,
+  INV_122_CONVERSION_ID_STABLE,
+  INV_123_CONVERSION_TIME_INJECTION,
+  INV_124_CONVERSION_ORDER_INDEPENDENT,
+  INV_125_GOAL_OWNERSHIP,
+  INV_126_CONVERSION_REQUIRES_EXPOSURE,
+  INV_127_METRICS_DETERMINISTIC,
+  INV_128_METRICS_READ_ONLY,
+  INV_129_METRICS_ORDER_INDEPENDENT,
+  INV_130_METRICS_CONSISTENT_TOTALS,
+  INV_131_METRICS_ZERO_DIVISION_SAFE,
+  INV_132_METRICS_ID_STABLE,
+  INV_133_METRICS_TIME_INJECTION,
+  INV_134_UNIQUE_COUNTS_CONSISTENT,
+  INV_135_VARIANT_ORDER_CANONICAL,
+  INV_136_METRICS_DERIVED_ONLY,
+  INV_137_STATISTICS_DETERMINISTIC,
+  INV_138_STATISTICS_READ_ONLY,
+  INV_139_STATISTICS_ORDER_INDEPENDENT,
+  INV_140_ZERO_SAMPLE_SAFE,
+  INV_141_PVALUE_RANGE,
+  INV_142_ZSCORE_FINITE,
+  INV_143_REPORT_ID_STABLE,
+  INV_144_TIME_FREE,
+  INV_145_DECISION_DETERMINISTIC,
+  INV_146_DECISION_READ_ONLY,
+  INV_147_DECISION_ORDER_INDEPENDENT,
+  INV_148_SIGNIFICANCE_REQUIRED,
+  INV_149_SAMPLE_SIZE_REQUIRED,
+  INV_150_DECISION_PROJECTION_ONLY,
+  INV_151_DECISION_REASON_STABLE,
+  INV_152_TIME_FREE,
+  INV_153_ROLLOUT_DETERMINISTIC,
+  INV_154_ROLLOUT_READ_ONLY,
+  INV_155_TRAFFIC_SUM_100,
+  INV_156_VALID_TRAFFIC_RANGE,
+  INV_157_DECISION_REQUIRED,
+  INV_158_POLICY_STABLE,
+  INV_159_PROJECTION_ONLY,
+  INV_160_TIME_FREE,
+  INV_161_EXECUTION_DETERMINISTIC,
+  INV_162_EXECUTION_READ_ONLY,
+  INV_163_STAGE_ORDER_MONOTONIC,
+  INV_164_STAGE_RANGE_VALID,
+  INV_165_ROLLOUT_PLAN_REQUIRED,
+  INV_166_EXECUTION_HISTORY_STABLE,
+  INV_167_EXECUTION_ONLY,
+  INV_168_TIME_FREE,
+  INV_169_HISTORY_SEQUENCE_MONOTONIC,
+  INV_170_HISTORY_APPEND_ONLY,
+  INV_171_HISTORY_REPLAYABLE,
+  INV_172_STAGE_HISTORY_CONSISTENT,
+  INV_173_SCHEDULE_DETERMINISTIC,
+  INV_174_SCHEDULE_READ_ONLY,
+  INV_175_STAGE_TICK_MONOTONIC,
+  INV_176_NON_OVERLAPPING_WINDOWS,
+  INV_177_EXECUTION_REQUIRED,
+  INV_178_SCHEDULE_HISTORY_STABLE,
+  INV_179_PROJECTION_ONLY,
+  INV_180_LOGICAL_TIME_ONLY,
+  INV_181_HISTORY_SEQUENCE_MONOTONIC,
+  INV_182_HISTORY_APPEND_ONLY,
+  INV_183_EXPIRATION_AFTER_LAST_STAGE,
+  INV_184_CURRENT_STAGE_CONSISTENT,
 ] as const;
 
 /**
- * Evaluates all 117 experiment invariants for a given experiment context.
+ * Evaluates all 184 experiment invariants for a given experiment context.
  */
 export function checkAllInvariants(ctx: InvariantCheckContext): InvariantCheckResult[] {
   return ALL_EXPERIMENT_INVARIANTS.map((inv) => inv.check(ctx));
