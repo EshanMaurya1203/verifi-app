@@ -208,6 +208,13 @@ import {
   INV_108_SKIPPED_EXPERIMENTS_CORRECT,
   INV_109_VARIANT_ORDER_INDEPENDENT,
   INV_110_VARIANT_INTEGRITY,
+  INV_111_EXPOSURE_DETERMINISTIC,
+  INV_112_EXPOSURE_READ_ONLY,
+  INV_113_EXPOSURE_IDEMPOTENT,
+  INV_114_EXPOSURE_DEDUPLICATION,
+  INV_115_EXPOSURE_ID_STABLE,
+  INV_116_EXPOSURE_TIME_INJECTION,
+  INV_117_EXPOSURE_ORDER_INDEPENDENT,
 } from "../src/lib/analytics/experiment-invariants";
 
 // ─── 003D GOVERNANCE IMPORTS ──────────────────────────────────────────────
@@ -238,6 +245,14 @@ import { buildAssignmentKey, assignVariant as assignRuntimeVariant, evaluateExpe
 import { validateRuntimeRequest, validateRuntimeResult } from "../src/lib/analytics/runtime/runtime-validator";
 import { projectRuntimeResult, projectRuntimeAssignment } from "../src/lib/analytics/runtime/runtime-projections";
 import { RuntimeError, RuntimeValidationError, RuntimeAssignmentError } from "../src/lib/analytics/runtime/runtime-errors";
+
+// ─── 004B EXPOSURE IMPORTS ───────────────────────────────────────────────
+import type { ExposureRequest, ExposureEvent, ExposureResult } from "../src/lib/analytics/exposure/exposure-types";
+import { ExposureError, ExposureValidationError, ExposureIntegrityError } from "../src/lib/analytics/exposure/exposure-errors";
+import { buildExposureId, createExposureEvent } from "../src/lib/analytics/exposure/exposure-utils";
+import { validateExposureRequest, validateExposureEvent } from "../src/lib/analytics/exposure/exposure-validator";
+import { recordExposure } from "../src/lib/analytics/exposure/exposure-engine";
+import { projectExposureEvent, projectExposureResult } from "../src/lib/analytics/exposure/exposure-projections";
 
 let passed = 0;
 let failed = 0;
@@ -727,7 +742,7 @@ console.log("\nTest 19: Full 83-Invariant System Verification");
     governanceAuditLog: appendGovernanceAudit(createGovernanceAuditLog(), { sequence: 1, actorId: "growth_team", action: "edit", timestamp: now, experimentId: baseDefinition.id }),
   });
 
-  assert(allRes.length === 110, `checkAllInvariants evaluates all 110 invariants (got ${allRes.length})`);
+  assert(allRes.length === 117, `checkAllInvariants evaluates all 117 invariants (got ${allRes.length})`);
 
   const failedInvariants = allRes.filter((r) => !r.passed);
   if (failedInvariants.length > 0) {
@@ -1518,6 +1533,198 @@ console.log("\nTest 26: 004A Assignment Determinism — Variant Order Independen
   const dupExp = { ...baseExp, variants: [{ id: "A", name: "V1", weight: 50 }, { id: "A", name: "V2", weight: 50 }] };
   const inv110Dup = INV_110_VARIANT_INTEGRITY.check({ experiments: [dupExp] });
   assert(inv110Dup.passed === false, "INV_110 fails for duplicate variant IDs");
+}
+
+// ─── Test 27: 004B Exposure Tracking Domain Engine & Invariants ────────────
+console.log("\nTest 27: 004B Exposure Tracking Domain Engine & Invariants");
+{
+  const now = new Date("2026-02-01T12:00:00Z");
+
+  const req1: ExposureRequest = {
+    sessionId: "session_1",
+    assignment: {
+      experimentId: "exp_a",
+      variantId: "variant_a",
+      assignmentKey: "session_1:exp_a:v1",
+    },
+    seenAt: now,
+  };
+
+  // 1. buildExposureId format verification
+  const expId1 = buildExposureId("session_1", "exp_a", "variant_a");
+  assert(expId1 === "session_1:exp_a:variant_a", "buildExposureId format is sessionId:experimentId:variantId");
+
+  const expIdSame = buildExposureId("session_1", "exp_a", "variant_a");
+  assert(expId1 === expIdSame, "Same session + experiment + variant produces identical exposureId");
+
+  const expIdDiffVar = buildExposureId("session_1", "exp_a", "variant_b");
+  assert(expId1 !== expIdDiffVar, "Different variants produce different exposureIds");
+
+  // 2. createExposureEvent verification
+  const event1 = createExposureEvent(req1);
+  assert(event1.exposureId === "session_1:exp_a:variant_a", "createExposureEvent sets exposureId correctly");
+  assert(Object.isFrozen(event1), "createExposureEvent output is frozen");
+
+  // 3. recordExposure verification
+  const res1 = recordExposure(req1, []);
+  assert(res1.accepted.length === 1, "recordExposure accepts new exposure candidate");
+  assert(res1.deduplicated.length === 0, "Deduplicated array is empty for new exposure candidate");
+  assert(res1.rejected.length === 0, "No rejected ExposureEvent is ever created");
+  assert(Object.isFrozen(res1), "recordExposure result is frozen");
+  assert(Object.isFrozen(res1.accepted), "Accepted array is frozen");
+
+  // 4. Duplicate detection tuple assertions (Cases 1, 2, 3, 4)
+  const existingEvents: ExposureEvent[] = [res1.accepted[0]];
+
+  // Case 1: Same (session_1, exp_a, variant_a) -> Duplicate
+  const reqCase1: ExposureRequest = {
+    sessionId: "session_1",
+    assignment: { experimentId: "exp_a", variantId: "variant_a", assignmentKey: "session_1:exp_a:v1" },
+    seenAt: now,
+  };
+  const resCase1 = recordExposure(reqCase1, existingEvents);
+  assert(resCase1.accepted.length === 0 && resCase1.deduplicated.length === 1, "Case 1: (session_1, exp_a, variant_a) detected as duplicate");
+
+  // Case 2: Same session & exp, different variant (session_1, exp_a, variant_b) -> Accepted
+  const reqCase2: ExposureRequest = {
+    sessionId: "session_1",
+    assignment: { experimentId: "exp_a", variantId: "variant_b", assignmentKey: "session_1:exp_a:v1" },
+    seenAt: now,
+  };
+  const resCase2 = recordExposure(reqCase2, existingEvents);
+  assert(resCase2.accepted.length === 1 && resCase2.deduplicated.length === 0, "Case 2: (session_1, exp_a, variant_b) accepted");
+
+  // Case 3: Same session & variant, different experiment (session_1, exp_b, variant_a) -> Accepted
+  const reqCase3: ExposureRequest = {
+    sessionId: "session_1",
+    assignment: { experimentId: "exp_b", variantId: "variant_a", assignmentKey: "session_1:exp_b:v1" },
+    seenAt: now,
+  };
+  const resCase3 = recordExposure(reqCase3, existingEvents);
+  assert(resCase3.accepted.length === 1 && resCase3.deduplicated.length === 0, "Case 3: (session_1, exp_b, variant_a) accepted");
+
+  // Case 4: Same experiment & variant, different session (session_2, exp_a, variant_a) -> Accepted
+  const reqCase4: ExposureRequest = {
+    sessionId: "session_2",
+    assignment: { experimentId: "exp_a", variantId: "variant_a", assignmentKey: "session_2:exp_a:v1" },
+    seenAt: now,
+  };
+  const resCase4 = recordExposure(reqCase4, existingEvents);
+  assert(resCase4.accepted.length === 1 && resCase4.deduplicated.length === 0, "Case 4: (session_2, exp_a, variant_a) accepted");
+
+  // 5. Option A Validation Error handling (Invalid requests throw ExposureValidationError)
+  let invalidThrew = false;
+  try {
+    recordExposure({ sessionId: "", assignment: req1.assignment, seenAt: now });
+  } catch (err) {
+    if (err instanceof ExposureValidationError) {
+      invalidThrew = true;
+    }
+  }
+  assert(invalidThrew, "Invalid request throws ExposureValidationError (Option A)");
+
+  // 6. Projections verification
+  const projEvent = projectExposureEvent(res1.accepted[0]);
+  assert(Object.isFrozen(projEvent), "projectExposureEvent output is frozen");
+
+  const projResult = projectExposureResult(res1);
+  assert(Object.isFrozen(projResult), "projectExposureResult output is frozen");
+
+  // 7. Invariants Verification (INV_111 - INV_116)
+  const inv111 = INV_111_EXPOSURE_DETERMINISTIC.check({ exposureRequest: req1, existingEvents: [] });
+  assert(inv111.passed === true, "INV_111 passes for deterministic exposure recording");
+
+  const inv112 = INV_112_EXPOSURE_READ_ONLY.check({ exposureRequest: req1, existingEvents: [] });
+  assert(inv112.passed === true, "INV_112 passes for exposure engine read-only execution");
+
+  const inv113 = INV_113_EXPOSURE_IDEMPOTENT.check({ exposureRequest: req1, existingEvents: [] });
+  assert(inv113.passed === true, "INV_113 passes for exposure engine idempotency");
+
+  const inv114 = INV_114_EXPOSURE_DEDUPLICATION.check({ exposureRequest: req1 });
+  assert(inv114.passed === true, "INV_114 passes for exposure deduplication tuple integrity");
+
+  const inv115 = INV_115_EXPOSURE_ID_STABLE.check({ exposureRequest: req1 });
+  assert(inv115.passed === true, "INV_115 passes for stable exposureId format");
+
+  const inv116 = INV_116_EXPOSURE_TIME_INJECTION.check({});
+  assert(inv116.passed === true, "INV_116 passes for strict external time injection in exposure module");
+}
+
+// ─── Test 28: 004B Exposure Order Independence Certification ────────────────
+console.log("\nTest 28: 004B Exposure Order Independence Certification");
+{
+  const now = new Date("2026-02-01T12:00:00Z");
+
+  const reqA: ExposureRequest = {
+    sessionId: "session_1",
+    assignment: { experimentId: "exp_a", variantId: "variant_a", assignmentKey: "session_1:exp_a:v1" },
+    seenAt: now,
+  };
+  const reqB: ExposureRequest = {
+    sessionId: "session_1",
+    assignment: { experimentId: "exp_b", variantId: "variant_a", assignmentKey: "session_1:exp_b:v1" },
+    seenAt: now,
+  };
+  const reqC: ExposureRequest = {
+    sessionId: "session_2",
+    assignment: { experimentId: "exp_a", variantId: "variant_b", assignmentKey: "session_2:exp_a:v1" },
+    seenAt: now,
+  };
+
+  const requests = [reqA, reqB, reqC];
+  const permutations: ExposureRequest[][] = [
+    [requests[0], requests[1], requests[2]],
+    [requests[0], requests[2], requests[1]],
+    [requests[1], requests[0], requests[2]],
+    [requests[1], requests[2], requests[0]],
+    [requests[2], requests[0], requests[1]],
+    [requests[2], requests[1], requests[0]],
+  ];
+
+  const evaluatePermutation = (perm: ExposureRequest[]) => {
+    let accum: ExposureEvent[] = [];
+    let deduplicatedCount = 0;
+    for (const req of perm) {
+      const res = recordExposure(req, accum);
+      accum = [...accum, ...res.accepted];
+      deduplicatedCount += res.deduplicated.length;
+    }
+    const acceptedIds = accum.map((e) => e.exposureId).sort();
+    const projections = accum.map((e) => projectExposureEvent(e));
+    return { acceptedIds, deduplicatedCount, projections, count: accum.length };
+  };
+
+  const basePermResult = evaluatePermutation(permutations[0]);
+  assert(basePermResult.count === 3, "Canonical set contains 3 accepted exposures");
+
+  let allPermsIdentical = true;
+  for (let i = 0; i < permutations.length; i++) {
+    const pRes = evaluatePermutation(permutations[i]);
+    if (
+      JSON.stringify(pRes.acceptedIds) !== JSON.stringify(basePermResult.acceptedIds) ||
+      pRes.deduplicatedCount !== basePermResult.deduplicatedCount
+    ) {
+      allPermsIdentical = false;
+      break;
+    }
+
+    let allFrozen = true;
+    for (const proj of pRes.projections) {
+      if (!Object.isFrozen(proj)) {
+        allFrozen = false;
+        break;
+      }
+    }
+    if (!allFrozen) {
+      allPermsIdentical = false;
+      break;
+    }
+  }
+
+  assert(allPermsIdentical, "Six permutations executed — accepted exposures, exposure IDs, projections & deduplication are identical");
+
+  const inv117 = INV_117_EXPOSURE_ORDER_INDEPENDENT.check({});
+  assert(inv117.passed === true, "INV_117 passes for exposure engine order independence");
 }
 
 // ─── ALGORITHMIC CERTIFICATION REPORT ─────────────────────────────────────

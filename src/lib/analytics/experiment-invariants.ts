@@ -142,6 +142,9 @@ export interface InvariantCheckContext {
   consoleView?: ExperimentConsoleView;
   runtimeRequest?: import("./runtime/runtime-types").RuntimeRequest;
   runtimeResult?: import("./runtime/runtime-types").RuntimeResult;
+  exposureRequest?: import("./exposure/exposure-types").ExposureRequest;
+  existingEvents?: import("./exposure/exposure-types").ExposureEvent[];
+  exposureResult?: import("./exposure/exposure-types").ExposureResult;
 }
 
 export interface InvariantCheckResult {
@@ -3918,6 +3921,16 @@ import {
   INV_110_VARIANT_INTEGRITY,
 } from "./runtime/runtime-invariants";
 
+import {
+  INV_111_EXPOSURE_DETERMINISTIC,
+  INV_112_EXPOSURE_READ_ONLY,
+  INV_113_EXPOSURE_IDEMPOTENT,
+  INV_114_EXPOSURE_DEDUPLICATION,
+  INV_115_EXPOSURE_ID_STABLE,
+  INV_116_EXPOSURE_TIME_INJECTION,
+  INV_117_EXPOSURE_ORDER_INDEPENDENT,
+} from "./exposure/exposure-invariants";
+
 export {
   INV_104_RUNTIME_DETERMINISTIC,
   INV_105_RUNTIME_READ_ONLY,
@@ -3926,6 +3939,13 @@ export {
   INV_108_SKIPPED_EXPERIMENTS_CORRECT,
   INV_109_VARIANT_ORDER_INDEPENDENT,
   INV_110_VARIANT_INTEGRITY,
+  INV_111_EXPOSURE_DETERMINISTIC,
+  INV_112_EXPOSURE_READ_ONLY,
+  INV_113_EXPOSURE_IDEMPOTENT,
+  INV_114_EXPOSURE_DEDUPLICATION,
+  INV_115_EXPOSURE_ID_STABLE,
+  INV_116_EXPOSURE_TIME_INJECTION,
+  INV_117_EXPOSURE_ORDER_INDEPENDENT,
 };
 
 export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
@@ -3952,10 +3972,17 @@ export const ALL_EXPERIMENT_INVARIANTS: readonly ExperimentInvariant[] = [
   INV_108_SKIPPED_EXPERIMENTS_CORRECT,
   INV_109_VARIANT_ORDER_INDEPENDENT,
   INV_110_VARIANT_INTEGRITY,
+  INV_111_EXPOSURE_DETERMINISTIC,
+  INV_112_EXPOSURE_READ_ONLY,
+  INV_113_EXPOSURE_IDEMPOTENT,
+  INV_114_EXPOSURE_DEDUPLICATION,
+  INV_115_EXPOSURE_ID_STABLE,
+  INV_116_EXPOSURE_TIME_INJECTION,
+  INV_117_EXPOSURE_ORDER_INDEPENDENT,
 ] as const;
 
 /**
- * Evaluates all 110 experiment invariants for a given experiment context.
+ * Evaluates all 117 experiment invariants for a given experiment context.
  */
 export function checkAllInvariants(ctx: InvariantCheckContext): InvariantCheckResult[] {
   return ALL_EXPERIMENT_INVARIANTS.map((inv) => inv.check(ctx));
