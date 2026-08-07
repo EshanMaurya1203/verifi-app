@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import { HelpCircle } from "lucide-react";
 import { VERIFICATION_TIER_CONFIG } from "@/lib/verification-config";

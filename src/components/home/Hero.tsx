@@ -33,7 +33,7 @@ export function Hero() {
         </HeroAnimationItem>
 
         {/* Trust Bullets */}
-        <HeroAnimationItem className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm font-medium text-neutral-300">
+        <HeroAnimationItem className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm font-medium text-neutral-200">
           <div className="flex items-center gap-2">
             <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
             <span>Revenue verified directly from payment providers</span>
@@ -62,7 +62,7 @@ export function Hero() {
         </HeroAnimationItem>
 
         {/* Minimal Trust Strip */}
-        <HeroAnimationItem className="mt-8 flex flex-wrap items-center justify-center gap-3 md:gap-5 text-[11px] font-medium text-neutral-500">
+        <HeroAnimationItem className="mt-8 flex flex-wrap items-center justify-center gap-3 md:gap-5 text-[11px] font-medium text-neutral-400">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-neutral-400" />
             Stripe & Razorpay supported

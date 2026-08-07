@@ -14,9 +14,9 @@ export function TrendingSection() {
       <div className="flex items-center justify-between mb-6 px-2">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-emerald-400" />
-          <h3 className="font-syne text-sm font-black text-white uppercase tracking-wider">
+          <h2 className="font-syne text-sm font-black text-white uppercase tracking-wider">
             Trending Growth
-          </h3>
+          </h2>
         </div>
       </div>
 
@@ -39,7 +39,7 @@ export function TrendingSection() {
             <div className="text-sm font-bold text-white tracking-wide truncate group-hover:text-emerald-400 transition-colors">
               {s.name}
             </div>
-            <div className="mt-1 text-[10px] font-bold text-neutral-500 uppercase tracking-wider truncate">
+            <div className="mt-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider truncate">
               {s.category}
             </div>
           </Link>

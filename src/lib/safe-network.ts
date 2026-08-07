@@ -1,7 +1,7 @@
 /**
  * Reusable Network and Database Reliability Helpers
  * Ensures zero uncaught promise rejections, zero failed request crashes,
- * and graceful data recovery structures.
+ * and graceful data recovery structures with secure GET-only deduplication.
  */
 
 export interface SafeNetworkResponse<T> {
@@ -17,12 +17,48 @@ interface SafeFetchOptions extends RequestInit {
   retryDelay?: number;
 }
 
+const inFlightGetRequests = new Map<string, Promise<SafeNetworkResponse<any>>>();
+const getResponseCache = new Map<string, { data: SafeNetworkResponse<any>; timestamp: number }>();
+const CACHE_TTL_MS = 5000;
+
 /**
- * Perform a fetch operation with timeout, status checking, automatic JSON/Text parsing,
- * and optional retries for transient network errors.
- * Wrapped in a global safety net to guarantee it never throws an uncaught exception.
+ * Normalizes input URLs deterministically.
+ * Supports relative/absolute URLs, strips fragments (#...), and sorts query parameters.
  */
-export async function safeFetch<T>(
+export function normalizeRequestUrl(url: string): string {
+  try {
+    const parsed = new URL(url, "http://localhost");
+    parsed.hash = "";
+    parsed.searchParams.sort();
+    return parsed.pathname + (parsed.search || "");
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Generates a deterministic, non-sensitive cache key for request deduplication and memoization.
+ * Excludes raw Authorization bearer tokens to prevent credential retention in memory.
+ */
+export function createRequestCacheKey(url: string, options?: RequestInit): string {
+  const method = (options?.method || "GET").toUpperCase();
+  const normalizedUrl = normalizeRequestUrl(url);
+
+  let authState = "auth:none";
+  if (options?.headers) {
+    const headers = new Headers(options.headers);
+    if (headers.has("authorization")) {
+      authState = "auth:present";
+    }
+  }
+
+  return `${method}:${normalizedUrl}|${authState}`;
+}
+
+/**
+ * Internal execution helper for fetch operation.
+ */
+async function executeFetch<T>(
   url: string,
   options: SafeFetchOptions = {}
 ): Promise<SafeNetworkResponse<T>> {
@@ -109,6 +145,51 @@ export async function safeFetch<T>(
     error: lastError,
     ok: false,
   };
+}
+
+/**
+ * Perform a fetch operation with timeout, status checking, automatic JSON/Text parsing,
+ * optional retries, and secure GET-only deduplication / 2xx response memoization.
+ * Wrapped in a global safety net to guarantee it never throws an uncaught exception.
+ */
+export async function safeFetch<T>(
+  url: string,
+  options: SafeFetchOptions = {}
+): Promise<SafeNetworkResponse<T>> {
+  const method = (options.method || "GET").toUpperCase();
+
+  // MUTATING METHODS ALWAYS BYPASS CACHING AND DEDUPLICATION
+  if (method !== "GET") {
+    return executeFetch<T>(url, options);
+  }
+
+  const cacheKey = createRequestCacheKey(url, options);
+
+  // Check 5s memoization cache for 2xx responses
+  const cached = getResponseCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data as SafeNetworkResponse<T>;
+  }
+
+  // Deduplicate in-flight GET requests
+  let pendingPromise = inFlightGetRequests.get(cacheKey);
+  if (!pendingPromise) {
+    pendingPromise = executeFetch<T>(url, options)
+      .then((result) => {
+        // ONLY MEMOIZE SUCCESSFUL 2XX RESPONSES
+        if (result.ok && result.data) {
+          getResponseCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        }
+        return result;
+      })
+      .finally(() => {
+        inFlightGetRequests.delete(cacheKey);
+      });
+
+    inFlightGetRequests.set(cacheKey, pendingPromise);
+  }
+
+  return pendingPromise as Promise<SafeNetworkResponse<T>>;
 }
 
 /**

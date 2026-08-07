@@ -560,7 +560,7 @@ const PUBLIC_STARTUP_FIELDS =
 
 export async function GET(req: Request) {
   const identifier = getClientIdentifier(req);
-  const { allowed } = await checkRateLimit(identifier, 120000, 5);
+  const { allowed } = await checkRateLimit(identifier, 60000, 15, { failOpen: true });
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
@@ -588,7 +588,14 @@ export async function GET(req: Request) {
       name: undefined,
     }));
 
-    return NextResponse.json({ success: true, data: publicData });
+    return NextResponse.json(
+      { success: true, data: publicData },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=10, stale-while-revalidate=59",
+        },
+      }
+    );
   } catch (error) {
     logger.error("startup submissions GET exception", {
       event: LogEvent.SUBMISSIONS_GET_EXCEPTION,

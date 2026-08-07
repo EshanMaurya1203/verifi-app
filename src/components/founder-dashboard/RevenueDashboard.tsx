@@ -1,11 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { RevenueDashboardViewModel } from "@/lib/dashboard/revenue-presenter";
 import { MRRWidget } from "./MRRWidget";
 import { ARRWidget } from "./ARRWidget";
 import { RevenueBreakdownWidget } from "./RevenueBreakdownWidget";
 import { RevenueHealthCard } from "./RevenueHealthCard";
-import { RevenueChart } from "@/components/startup/RevenueChart";
+
+const RevenueChart = dynamic(
+  () => import("@/components/startup/RevenueChart").then((mod) => mod.RevenueChart),
+  {
+    loading: () => (
+      <div className="h-[280px] rounded-3xl bg-neutral-900 animate-pulse" />
+    ),
+  }
+);
 
 interface RevenueDashboardProps {
   viewModel: RevenueDashboardViewModel;

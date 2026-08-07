@@ -72,16 +72,16 @@ export function LiveFeed() {
         <div className="border-b border-white/[0.05] px-6 py-5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-primary" />
-            <h3 className="font-syne text-sm font-black text-white uppercase tracking-tight">
+            <h2 className="font-syne text-sm font-black text-white uppercase tracking-tight">
               Live Feed
-            </h3>
+            </h2>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+            <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
               Real-time
             </span>
           </div>
@@ -107,7 +107,7 @@ export function LiveFeed() {
               <div className="mt-0.5">{getProviderBadge(activity.event)}</div>
 
               {/* Relative Timestamp */}
-              <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mt-1">
+              <span className="text-[9px] font-medium text-neutral-400 uppercase tracking-wider mt-1">
                 {formatDistanceToNow(new Date(activity.timestamp), {
                   addSuffix: true,
                 })}
@@ -115,14 +115,14 @@ export function LiveFeed() {
             </div>
           ))}
           {activities.length === 0 && (
-            <div className="px-4 py-8 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest">
+            <div className="px-4 py-8 text-center text-xs text-neutral-400 uppercase font-bold tracking-widest">
               Waiting for ecosystem events...
             </div>
           )}
         </div>
 
         <div className="px-6 py-4 border-t border-white/[0.05] bg-black/20">
-          <p className="text-[9px] font-medium text-neutral-500 leading-relaxed text-center">
+          <p className="text-[9px] font-medium text-neutral-400 leading-relaxed text-center">
             All events are cryptographically backed by live payment provider APIs.
           </p>
         </div>

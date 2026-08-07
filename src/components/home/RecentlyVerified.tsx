@@ -11,9 +11,9 @@ export function RecentlyVerified() {
     <section>
       <div className="flex items-center justify-between mb-6 px-2">
         <div>
-          <h3 className="font-syne text-sm font-black text-white uppercase tracking-wider">
+          <h2 className="font-syne text-sm font-black text-white uppercase tracking-wider">
             Recently Verified
-          </h3>
+          </h2>
         </div>
       </div>
 
@@ -42,7 +42,7 @@ export function RecentlyVerified() {
             </p>
           </div>
         ) : recentlyListedData.length === 0 ? (
-          <div className="col-span-2 px-6 py-10 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10 rounded-3xl">
+          <div className="col-span-2 px-6 py-10 text-center text-xs text-neutral-400 uppercase font-bold tracking-widest bg-black/10 rounded-3xl">
             No startups listed yet.
           </div>
         ) : (
@@ -60,7 +60,7 @@ export function RecentlyVerified() {
                   <div className="text-sm font-bold text-white tracking-wide group-hover:text-primary transition-colors">
                     {s.name}
                   </div>
-                  <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-0.5">
+                  <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-0.5">
                     {s.category}
                   </div>
                 </div>
@@ -71,7 +71,7 @@ export function RecentlyVerified() {
                   <div className="font-syne text-sm font-black text-white leading-none tracking-tight">
                     {s.mrr}
                   </div>
-                  <div className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest mt-1">
+                  <div className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">
                     MRR
                   </div>
                 </div>

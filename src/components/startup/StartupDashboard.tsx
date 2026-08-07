@@ -1,9 +1,18 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { ConnectionStatus } from "./ConnectionStatus";
-import { RevenueChart } from "./RevenueChart";
 import { Loader2, AlertCircle, Shield, TrendingUp, Zap } from "lucide-react";
+
+const RevenueChart = dynamic(
+  () => import("./RevenueChart").then((mod) => mod.RevenueChart),
+  {
+    loading: () => (
+      <div className="h-[280px] rounded-3xl bg-neutral-900 animate-pulse" />
+    ),
+  }
+);
 import { safeFetch } from "@/lib/safe-network";
 import { formatScore } from "@/lib/formatters";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";

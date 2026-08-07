@@ -12,10 +12,10 @@ export function LeaderboardPreview() {
       <div className="rounded-3xl border border-white/[0.06] bg-[#09090b]/40 backdrop-blur-md overflow-hidden shadow-2xl ring-1 ring-white/[0.02]">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/[0.05] px-6 md:px-8 py-5 md:py-6 gap-4">
           <div>
-            <h3 className="font-syne text-base md:text-lg font-black text-white uppercase tracking-tight">
+            <h2 className="font-syne text-base md:text-lg font-black text-white uppercase tracking-tight">
               Leaderboard Preview
-            </h3>
-            <p className="text-[9px] md:text-[10px] font-semibold text-neutral-500 uppercase tracking-[0.2em] mt-1">
+            </h2>
+            <p className="text-[9px] md:text-[10px] font-semibold text-neutral-400 uppercase tracking-[0.2em] mt-1">
               Top performing internet startups
             </p>
           </div>
@@ -50,13 +50,13 @@ export function LeaderboardPreview() {
               <p className="text-[10px] uppercase font-bold tracking-widest text-amber-500">
                 Sync Interrupted
               </p>
-              <p className="text-xs text-neutral-500 mt-1 max-w-xs leading-relaxed">
+              <p className="text-xs text-neutral-400 mt-1 max-w-xs leading-relaxed">
                 Could not establish sync with live ledger. Dynamic rankings
                 temporarily offline.
               </p>
             </div>
           ) : leaderboard.length === 0 ? (
-            <div className="px-8 py-14 text-center text-xs text-neutral-500 uppercase font-bold tracking-widest bg-black/10">
+            <div className="px-8 py-14 text-center text-xs text-neutral-400 uppercase font-bold tracking-widest bg-black/10">
               No startups verified yet. Be the first to join the leaderboard!
             </div>
           ) : (
@@ -67,14 +67,14 @@ export function LeaderboardPreview() {
                 className="flex flex-col sm:flex-row sm:items-center justify-between px-6 md:px-8 py-4 md:py-5 transition-colors hover:bg-white/[0.015] group gap-4 sm:gap-0"
               >
                 <div className="flex min-w-0 items-center gap-4 md:gap-5">
-                  <div className="w-6 font-syne text-sm font-bold text-neutral-600 text-center">
+                  <div className="w-6 font-syne text-sm font-bold text-neutral-400 text-center">
                     #{startup.rank}
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-white tracking-wide leading-none group-hover:text-primary transition-colors">
                       {startup.name}
                     </p>
-                    <p className="truncate text-xs text-neutral-500 font-medium mt-1.5">
+                    <p className="truncate text-xs text-neutral-400 font-medium mt-1.5">
                       by {startup.founder}
                     </p>
                   </div>
@@ -84,7 +84,7 @@ export function LeaderboardPreview() {
                     <span className="font-syne text-sm font-black text-white tracking-tight tabular-nums">
                       {startup.mrr}
                     </span>
-                    <span className="text-[9px] text-neutral-600 uppercase font-bold tracking-widest leading-none mt-1">
+                    <span className="text-[9px] text-neutral-400 uppercase font-bold tracking-widest leading-none mt-1">
                       MRR
                     </span>
                   </div>
