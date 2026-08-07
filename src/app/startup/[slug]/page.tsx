@@ -6,9 +6,9 @@ import { isAdmin } from "@/lib/isAdmin";
 import { ShieldCheck, ShieldAlert, Share2, Globe, CalendarDays, ExternalLink, Award, CheckCircle2, AlertTriangle, Link, ScanSearch, Clock, TrendingUp, History, Fingerprint } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { RevenueConsistencyCard } from "@/components/startup/RevenueConsistencyCard";
+import dynamic from "next/dynamic";
 import { VerificationMetadata } from "@/components/startup/VerificationMetadata";
 import { TrustBadge } from "@/components/startup/TrustBadge";
-import { RevenueChart } from "@/components/startup/RevenueChart";
 import { ShareVerificationButton } from "@/components/startup/ShareVerificationButton";
 import { BadgeEmbedder } from "@/components/startup/BadgeEmbedder";
 import { Metadata } from "next";
@@ -17,10 +17,34 @@ import {
   computeVerificationState,
 } from "@/lib/verification-state";
 import { VerificationTimeline } from "@/components/startup/VerificationTimeline";
-import { RevenueCompositionCard } from "@/components/startup/RevenueCompositionCard";
 import { getSiteUrl } from "@/lib/site-url";
 import { formatCurrency, formatGrowth } from "@/lib/formatters";
 import { USD_TO_INR } from "@/lib/revenue-aggregation";
+
+const RevenueChart = dynamic(
+  () =>
+    import("@/components/startup/RevenueChart").then(
+      (mod) => mod.RevenueChart
+    ),
+  {
+    loading: () => (
+      <div className="h-[280px] rounded-3xl bg-neutral-900 animate-pulse" />
+    ),
+  }
+);
+
+const RevenueCompositionCard = dynamic(
+  () =>
+    import("@/components/startup/RevenueCompositionCard").then(
+      (mod) => mod.RevenueCompositionCard
+    ),
+  {
+    loading: () => (
+      <div className="h-[360px] rounded-3xl bg-neutral-900 animate-pulse" />
+    ),
+  }
+);
+
 
 
 

@@ -113,10 +113,11 @@ export async function GET(request: Request) {
 
     // 4. Per-user rate limiting
     const rateLimitKey = `${RATE_LIMIT_KEY_PREFIX}:${user.id}`;
-    const { allowed } = checkRateLimit(
+    const { allowed } = await checkRateLimit(
       rateLimitKey,
       RATE_LIMIT_WINDOW_MS,
-      RATE_LIMIT_MAX_REQUESTS
+      RATE_LIMIT_MAX_REQUESTS,
+      { failOpen: true }
     );
 
     if (!allowed) {

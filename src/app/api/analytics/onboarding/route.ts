@@ -28,10 +28,11 @@ export async function POST(request: Request) {
 
     // 2. Reuse existing production rate limiter (20 events / min per user)
     const rateLimitKey = `analytics:${user.id}`;
-    const { allowed } = checkRateLimit(
+    const { allowed } = await checkRateLimit(
       rateLimitKey,
       ANALYTICS_WINDOW_MS,
-      ANALYTICS_MAX_REQUESTS
+      ANALYTICS_MAX_REQUESTS,
+      { failOpen: true }
     );
     if (!allowed) {
       // Analytics failures / rate limits must never block onboarding

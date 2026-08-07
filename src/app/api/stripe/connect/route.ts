@@ -12,7 +12,7 @@ import {
  */
 export async function GET(req: Request) {
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 120000, 10);
+  const { allowed } = await checkRateLimit(identifier, 120000, 10);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

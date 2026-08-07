@@ -40,7 +40,7 @@ export async function PUT(
 ) {
   try {
     const identifier = getClientIdentifier(request);
-    const { allowed } = checkRateLimit(identifier, 120000, 5);
+    const { allowed } = await checkRateLimit(identifier, 120000, 5, { failOpen: true });
 
     if (!allowed) {
       return NextResponse.json(

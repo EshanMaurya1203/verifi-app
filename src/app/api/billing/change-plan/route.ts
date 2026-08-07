@@ -20,7 +20,7 @@ const RAZORPAY_PLAN_MAP: Record<string, Record<string, string | undefined>> = {
  */
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 60000, 5);
+  const { allowed } = await checkRateLimit(identifier, 60000, 5);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

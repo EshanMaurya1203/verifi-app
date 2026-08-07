@@ -10,7 +10,7 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 120000, 50);
+  const { allowed } = await checkRateLimit(identifier, 120000, 50);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

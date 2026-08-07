@@ -21,7 +21,7 @@ import { encrypt, decrypt } from "@/lib/encryption";
 export async function POST(req: Request) {
   // Rate limiting
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 120000, 2);
+  const { allowed } = await checkRateLimit(identifier, 120000, 2);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

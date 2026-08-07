@@ -35,7 +35,7 @@ export async function GET(
   }
 
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 120000, 10);
+  const { allowed } = await checkRateLimit(identifier, 120000, 10, { failOpen: true });
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

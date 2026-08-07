@@ -91,7 +91,7 @@ export async function GET(request: Request) {
 
     // 4. Rate limiting
     const rateLimitKey = `${RATE_LIMIT_KEY_PREFIX}:${user.id}`;
-    const { allowed } = checkRateLimit(rateLimitKey, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS);
+    const { allowed } = await checkRateLimit(rateLimitKey, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS, { failOpen: true });
 
     if (!allowed) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });

@@ -9,7 +9,7 @@ import { verifyManualStripeApiKey } from "@/lib/stripe-sync";
  */
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  const { allowed } = await checkRateLimit(identifier, 120000, 5);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

@@ -10,7 +10,7 @@ export async function DELETE(
 ) {
   try {
     const identifier = getClientIdentifier(request);
-    const { allowed } = checkRateLimit(identifier, 60000, 5);
+    const { allowed } = await checkRateLimit(identifier, 60000, 5);
     if (!allowed) {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     }

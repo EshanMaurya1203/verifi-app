@@ -38,7 +38,7 @@ import {
  * Server-only helper to generate a unique, sequential routing slug.
  * Behavior: acme-ai, acme-ai-2, acme-ai-3, acme-ai-4
  */
-export async function generateUniqueSlug(startupName: string): Promise<string> {
+async function generateUniqueSlug(startupName: string): Promise<string> {
   const baseSlug = slugify(startupName) || "startup";
 
   // Check if baseSlug is available
@@ -141,7 +141,7 @@ async function findExistingActiveStartup(userId: string, startupName: string) {
 export async function POST(req: Request) {
   try {
     const identifier = getClientIdentifier(req);
-    const { allowed } = checkRateLimit(identifier, 120000, 5);
+    const { allowed } = await checkRateLimit(identifier, 120000, 5);
 
     if (!allowed) {
       return NextResponse.json(
@@ -560,7 +560,7 @@ const PUBLIC_STARTUP_FIELDS =
 
 export async function GET(req: Request) {
   const identifier = getClientIdentifier(req);
-  const { allowed } = checkRateLimit(identifier, 120000, 5);
+  const { allowed } = await checkRateLimit(identifier, 120000, 5);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
