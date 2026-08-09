@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
-import {
-  DEMO_USER_ID_MIN_UUID,
-  DEMO_USER_ID_MAX_UUID,
-  isStartupPubliclyEligible,
-} from "@/lib/visibility";
+import { isStartupPubliclyEligible } from "@/lib/visibility";
 
 // Rate limit policy for public read-only live-feed endpoint: 15 requests per 60 seconds window.
 // Fail-open is enabled so Redis outages do not block public read access to the live feed.
@@ -50,11 +46,9 @@ export async function GET(request: Request) {
       `)
       .eq("startup_submissions.is_public", true)
       .eq("startup_submissions.payment_connected", true)
-      .or(`user_id.is.null,user_id.lt.${DEMO_USER_ID_MIN_UUID},user_id.gt.${DEMO_USER_ID_MAX_UUID}`, { foreignTable: "startup_submissions" })
-      .or("verification_status.is.null,verification_status.neq.flagged", { foreignTable: "startup_submissions" })
       .in("event", ["stripe_sync_success", "razorpay_sync_success", "listing_created"])
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(50);
 
     if (error) {
       console.error("[LiveFeed API] Database error:", error);
@@ -76,6 +70,7 @@ export async function GET(request: Request) {
 
     const events = ((data as unknown as LiveFeedLog[]) || [])
       .filter((log) => isStartupPubliclyEligible(log.startup_submissions))
+      .slice(0, 20)
       .map((log) => ({
         id: log.id,
         event: log.event,
