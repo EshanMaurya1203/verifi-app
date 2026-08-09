@@ -28,6 +28,8 @@ interface StartupDataContextType {
   leaderboard: LeaderboardItem[];
   recentlyListedData: StartupCard[];
   trendingData: StartupCard[];
+  verifiedStartupCount: number;
+  verifiedRevenueTotal: number;
   loading: boolean;
   error: string | null;
 }
@@ -36,6 +38,8 @@ const StartupDataContext = createContext<StartupDataContextType>({
   leaderboard: [],
   recentlyListedData: [],
   trendingData: [],
+  verifiedStartupCount: 0,
+  verifiedRevenueTotal: 0,
   loading: true,
   error: null,
 });
@@ -48,6 +52,8 @@ export function StartupDataProvider({ children }: { children: React.ReactNode })
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
   const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>([]);
   const [trendingData, setTrendingData] = useState<StartupCard[]>([]);
+  const [verifiedStartupCount, setVerifiedStartupCount] = useState<number>(0);
+  const [verifiedRevenueTotal, setVerifiedRevenueTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,9 +63,21 @@ export function StartupDataProvider({ children }: { children: React.ReactNode })
         setLoading(true);
         setError(null);
 
-        // Fetch submissions securely for all modules - ONE request
-        const submissionsRes = await safeFetch<{ success: boolean; data: any[] }>("/api/startup-submissions");
+        // Fetch submissions securely for leaderboard and canonical trust metrics in parallel
+        const [submissionsRes, metricsRes] = await Promise.all([
+          safeFetch<{ success: boolean; data: any[] }>("/api/startup-submissions"),
+          safeFetch<{
+            success: boolean;
+            verifiedStartupCount: number;
+            verifiedRevenueTotal: number;
+          }>("/api/trust-metrics"),
+        ]);
         
+        if (metricsRes.ok && metricsRes.data?.success) {
+          setVerifiedStartupCount(metricsRes.data.verifiedStartupCount ?? 0);
+          setVerifiedRevenueTotal(metricsRes.data.verifiedRevenueTotal ?? 0);
+        }
+
         if (!submissionsRes.ok || !submissionsRes.data) {
           setError(submissionsRes.error?.message || "Failed to establish ledger protocol connection.");
           setLoading(false);
@@ -68,6 +86,7 @@ export function StartupDataProvider({ children }: { children: React.ReactNode })
 
         const { success, data: list } = submissionsRes.data;
         if (success && list) {
+
           // Top 5 startups for main leaderboard
           const top5 = list
             .slice()
@@ -131,7 +150,17 @@ export function StartupDataProvider({ children }: { children: React.ReactNode })
   }, []);
 
   return (
-    <StartupDataContext.Provider value={{ leaderboard, recentlyListedData, trendingData, loading, error }}>
+    <StartupDataContext.Provider
+      value={{
+        leaderboard,
+        recentlyListedData,
+        trendingData,
+        verifiedStartupCount,
+        verifiedRevenueTotal,
+        loading,
+        error,
+      }}
+    >
       {children}
     </StartupDataContext.Provider>
   );

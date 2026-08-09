@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Hero } from "@/components/home/Hero";
+import { TrustMetrics } from "@/components/home/TrustMetrics";
 import { StartupDataProvider } from "@/components/home/StartupDataProvider";
 import { LeaderboardPreview } from "@/components/home/LeaderboardPreview";
 import { TrendingSection } from "@/components/home/TrendingSection";
@@ -16,37 +17,40 @@ export default function HomePage() {
       <Navbar />
 
       <main className="mx-auto max-w-[1080px] px-6 pb-24">
-        {/* Hero Section */}
-        <Hero />
+        <StartupDataProvider>
+          {/* Hero Section */}
+          <Hero />
 
-        {/* Dense Two-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
-          {/* Main Column: Leaderboard, Trending & Recently Verified */}
-          <div className="lg:col-span-8 space-y-12">
-            <StartupDataProvider>
+          {/* Landing Page Trust Metrics - Directly Below Hero */}
+          <TrustMetrics />
+
+          {/* Dense Two-Column Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
+            {/* Main Column: Leaderboard, Trending & Recently Verified */}
+            <div className="lg:col-span-8 space-y-12">
               <LeaderboardPreview />
               <TrendingSection />
               <RecentlyVerified />
-            </StartupDataProvider>
+            </div>
+
+            {/* Sidebar Column: Activity Feed */}
+            <div className="lg:col-span-4">
+              <LiveFeed />
+            </div>
           </div>
 
-          {/* Sidebar Column: Activity Feed */}
-          <div className="lg:col-span-4">
-            <LiveFeed />
-          </div>
-        </div>
+          {/* Why Founders Verify */}
+          <WhyVerify />
 
-        {/* Why Founders Verify */}
-        <WhyVerify />
+          {/* Founder FAQ */}
+          <FAQ />
 
-        {/* Founder FAQ */}
-        <FAQ />
+          {/* Bottom CTA Card */}
+          <CTA />
 
-        {/* Bottom CTA Card */}
-        <CTA />
-
-        {/* Footer */}
-        <Footer />
+          {/* Footer */}
+          <Footer />
+        </StartupDataProvider>
       </main>
     </div>
   );
