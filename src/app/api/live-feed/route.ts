@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
+import {
+  DEMO_USER_ID_MIN_UUID,
+  DEMO_USER_ID_MAX_UUID,
+  isStartupPubliclyEligible,
+} from "@/lib/visibility";
 
 // Rate limit policy for public read-only live-feed endpoint: 15 requests per 60 seconds window.
 // Fail-open is enabled so Redis outages do not block public read access to the live feed.
@@ -45,7 +50,7 @@ export async function GET(request: Request) {
       `)
       .eq("startup_submissions.is_public", true)
       .eq("startup_submissions.payment_connected", true)
-      .or("user_id.is.null,user_id.not.like.00000000-0000-0000-0000-%", { foreignTable: "startup_submissions" })
+      .or(`user_id.is.null,user_id.lt.${DEMO_USER_ID_MIN_UUID},user_id.gt.${DEMO_USER_ID_MAX_UUID}`, { foreignTable: "startup_submissions" })
       .or("verification_status.is.null,verification_status.neq.flagged", { foreignTable: "startup_submissions" })
       .in("event", ["stripe_sync_success", "razorpay_sync_success", "listing_created"])
       .order("created_at", { ascending: false })
@@ -56,12 +61,27 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Failed to fetch live feed" }, { status: 500 });
     }
 
-    const events = (data || []).map((log: any) => ({
-      id: log.id,
-      event: log.event,
-      startupName: log.startup_submissions.startup_name,
-      timestamp: log.created_at,
-    }));
+    type LiveFeedLog = {
+      id: number | string;
+      event: string;
+      created_at: string;
+      startup_submissions: {
+        startup_name: string;
+        is_public?: boolean | null;
+        payment_connected?: boolean | null;
+        user_id?: string | null;
+        verification_status?: string | null;
+      };
+    };
+
+    const events = ((data as unknown as LiveFeedLog[]) || [])
+      .filter((log) => isStartupPubliclyEligible(log.startup_submissions))
+      .map((log) => ({
+        id: log.id,
+        event: log.event,
+        startupName: log.startup_submissions.startup_name,
+        timestamp: log.created_at,
+      }));
 
     return NextResponse.json(events);
   } catch (error) {
