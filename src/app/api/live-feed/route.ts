@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
-import { isStartupPubliclyEligible } from "@/lib/visibility";
+import { canStartupBePublic } from "@/lib/visibility";
+import { isDemoStartupUserId } from "@/lib/verification-data";
 
 // Rate limit policy for public read-only live-feed endpoint: 15 requests per 60 seconds window.
 // Fail-open is enabled so Redis outages do not block public read access to the live feed.
@@ -69,7 +70,15 @@ export async function GET(request: Request) {
     };
 
     const events = ((data as unknown as LiveFeedLog[]) || [])
-      .filter((log) => isStartupPubliclyEligible(log.startup_submissions))
+      .filter((log) => {
+        const sub = log.startup_submissions;
+        if (!sub) return false;
+        if (sub.is_public !== true) return false;
+        if (!canStartupBePublic(sub).eligible) return false;
+        if (isDemoStartupUserId(sub.user_id)) return false;
+        if (sub.verification_status === "flagged") return false;
+        return true;
+      })
       .slice(0, 20)
       .map((log) => ({
         id: log.id,
