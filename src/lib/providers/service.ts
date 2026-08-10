@@ -6,7 +6,7 @@
  */
 
 import { supabaseServer } from "@/lib/supabase-server";
-import { dispatchNotification, generateIdempotencyKey } from "@/notifications";
+import { dispatchNotification, generateIdempotencyKey, generateCanonicalVerificationIdempotencyKey } from "@/notifications";
 import { logger, LogEvent } from "@/lib/logger";
 
 export interface ProviderConnectionParams {
@@ -314,3 +314,106 @@ export async function handleProviderSyncFailed(params: ProviderSyncFailedParams)
     return false;
   }
 }
+
+export interface VerificationCompletedParams {
+  startupId: number;
+  verificationLogId: number | string;
+  verificationScore?: number;
+}
+
+/**
+ * Dispatches a canonical VERIFICATION_COMPLETED notification.
+ * 
+ * Characteristics:
+ * 1. Sent after authoritative server-side verification completes and verification_logs entry is persisted.
+ * 2. Idempotent via canonical verification_log ID (ntf_verification_completed_log_${verificationLogId}).
+ * 3. Primary transaction isolated — failure will never abort or invalidate the verification API/pipeline.
+ */
+export async function handleVerificationCompleted(params: VerificationCompletedParams): Promise<boolean> {
+  const { startupId, verificationLogId } = params;
+  const eventId = crypto.randomUUID();
+  const correlationId = crypto.randomUUID();
+
+  try {
+    const { data: startup } = await supabaseServer
+      .from("startup_submissions")
+      .select("slug, startup_name, trust_score, user_id")
+      .eq("id", startupId)
+      .maybeSingle();
+
+    if (!startup || !startup.user_id) {
+      logger.warn("[VerificationCompleted] Startup or user_id missing", { startupId });
+      return false;
+    }
+
+    const { data: user } = await supabaseServer
+      .from("users")
+      .select("email, full_name")
+      .eq("id", startup.user_id)
+      .maybeSingle();
+
+    if (!user || !user.email) {
+      logger.warn("[VerificationCompleted] User email missing", { userId: startup.user_id });
+      return false;
+    }
+
+    const idempotencyKey = generateCanonicalVerificationIdempotencyKey(
+      "VERIFICATION_COMPLETED",
+      verificationLogId
+    );
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.verifii.in";
+    const profileUrl = `${appUrl}/startup/${encodeURIComponent(startup.slug || String(startupId))}`;
+    const score = params.verificationScore ?? startup.trust_score ?? 100;
+
+    const dispatchResult = await dispatchNotification({
+      type: "VERIFICATION_COMPLETED",
+      metadata: {
+        eventId,
+        occurredAt: new Date(),
+        source: "verification.pipeline",
+        version: 1,
+        correlationId,
+        idempotencyKey,
+      },
+      payload: {
+        founderName: user.full_name || "Founder",
+        startupName: startup.startup_name || "Startup",
+        email: user.email,
+        verificationScore: score,
+        profileUrl,
+      },
+    });
+
+    if (dispatchResult.success) {
+      logger.info(`[VerificationCompleted] VERIFICATION_COMPLETED notification dispatched successfully for startup ${startupId}`, {
+        event: LogEvent.CHANNEL_DELIVERY_COMPLETED,
+        startupId,
+        verificationLogId,
+        correlationId,
+        eventId,
+      });
+    } else {
+      logger.error(`[VerificationCompleted] VERIFICATION_COMPLETED notification failed dispatch for startup ${startupId}`, {
+        event: LogEvent.CHANNEL_DELIVERY_FAILED,
+        startupId,
+        verificationLogId,
+        correlationId,
+        eventId,
+      });
+    }
+
+    return dispatchResult.success;
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error("[VerificationCompleted] Uncaught exception during VERIFICATION_COMPLETED dispatch", {
+      event: LogEvent.CHANNEL_DELIVERY_FAILED,
+      startupId,
+      error: errorMsg,
+      eventId,
+      correlationId,
+    });
+    return false;
+  }
+}
+

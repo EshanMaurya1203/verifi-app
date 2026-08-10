@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { supabaseServer } from "@/lib/supabase-server";
+import { handleVerificationCompleted } from "@/lib/providers/service";
 import { encrypt } from "@/lib/encryption";
 import { computeTrustScore } from "@/lib/scoring";
 import { revenueService } from "@/lib/providers/services/revenue-service";
@@ -217,15 +218,28 @@ export async function completeStripeVerification(
 
   await computeTrustScore(startupId);
 
-  await supabaseServer.from("verification_logs").insert({
-    startup_id: startupId,
-    event: "stripe_sync_success",
-    metadata: {
-      mrr: snapshotRevenue,
-      count: total_transactions,
-      connection_type: options?.connectionType ?? "api_key",
-    },
-  });
+  const { data: logRecord } = await supabaseServer
+    .from("verification_logs")
+    .insert({
+      startup_id: startupId,
+      event: "stripe_sync_success",
+      metadata: {
+        mrr: snapshotRevenue,
+        count: total_transactions,
+        connection_type: options?.connectionType ?? "api_key",
+      },
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (logRecord?.id) {
+    await handleVerificationCompleted({
+      startupId,
+      verificationLogId: logRecord.id,
+    }).catch((err) => {
+      console.error("[StripeSync] Best-effort verification completed email failed:", err);
+    });
+  }
 
   return {
     revenue: snapshotRevenue,

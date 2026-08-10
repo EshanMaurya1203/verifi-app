@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
 import Razorpay from "razorpay";
+import { dispatchNotification } from "@/notifications/dispatcher";
 
 const RAZORPAY_PLAN_MAP: Record<string, Record<string, string | undefined>> = {
   founder: {
@@ -39,6 +40,142 @@ function resolvePlanFromRazorpayPlanId(planId: string | undefined): {
 
 function secondsToIso(seconds: number | undefined): string | null {
   return seconds ? new Date(seconds * 1000).toISOString() : null;
+}
+
+async function handleBillingNotification({
+  userId,
+  event,
+  eventId,
+  subscription,
+  planCode,
+  billingCycle,
+  currentPeriodEnd,
+}: {
+  userId: string;
+  event: string;
+  eventId: string;
+  subscription: any;
+  planCode: string;
+  billingCycle: string;
+  currentPeriodEnd?: string | null;
+}) {
+  try {
+    const { data: userData } = await supabaseServer.auth.admin.getUserById(userId);
+    const userEmail = userData?.user?.email;
+    if (!userEmail) {
+      console.warn(`[Billing Webhook Notification] No email found for user ${userId}`);
+      return;
+    }
+
+    const founderName =
+      userData?.user?.user_metadata?.full_name ||
+      userData?.user?.user_metadata?.name ||
+      userEmail.split("@")[0];
+
+    const { data: startup } = await supabaseServer
+      .from("startup_submissions")
+      .select("startup_name")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const startupName = startup?.startup_name || "Your Startup";
+    const formattedPlan = `${planCode.toUpperCase()} (${billingCycle})`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.verifii.in";
+    const idempotencyKey = `ntf_billing_${event}_${subscription.id}_${eventId}`;
+
+    const paidCount = subscription.paid_count ?? 0;
+    const isInitialActivation = event === "subscription.activated" || (event === "subscription.charged" && paidCount <= 1);
+    const isRecurringRenewal = event === "subscription.charged" && paidCount > 1;
+
+    if (isInitialActivation) {
+      await dispatchNotification({
+        type: "SUBSCRIPTION_ACTIVATED",
+        metadata: {
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date(),
+          source: "WEBHOOK",
+          version: 1,
+          idempotencyKey,
+        },
+        idempotencyKey,
+        payload: {
+          email: userEmail,
+          founderName,
+          startupName,
+          planName: formattedPlan,
+          amountPaid: "Activated",
+          nextBillingDate: currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
+          dashboardUrl: `${baseUrl}/dashboard`,
+        },
+      });
+    } else if (isRecurringRenewal) {
+      await dispatchNotification({
+        type: "SUBSCRIPTION_RENEWED",
+        metadata: {
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date(),
+          source: "WEBHOOK",
+          version: 1,
+          idempotencyKey,
+        },
+        idempotencyKey,
+        payload: {
+          email: userEmail,
+          founderName,
+          startupName,
+          planName: formattedPlan,
+          amountPaid: "Successful",
+          nextBillingDate: currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
+          dashboardUrl: `${baseUrl}/dashboard`,
+        },
+      });
+    } else if (event === "subscription.halted") {
+      await dispatchNotification({
+        type: "PAYMENT_FAILED",
+        metadata: {
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date(),
+          source: "WEBHOOK",
+          version: 1,
+          idempotencyKey,
+        },
+        idempotencyKey,
+        payload: {
+          email: userEmail,
+          founderName,
+          startupName,
+          planName: formattedPlan,
+          amountDue: "Subscription Renewal Fee",
+          failureReason: "Recurring charge failed or was declined.",
+          updatePaymentUrl: `${baseUrl}/dashboard/settings/billing`,
+        },
+      });
+    } else if (event === "subscription.cancelled") {
+      await dispatchNotification({
+        type: "SUBSCRIPTION_CANCELLED",
+        metadata: {
+          eventId: crypto.randomUUID(),
+          occurredAt: new Date(),
+          source: "WEBHOOK",
+          version: 1,
+          idempotencyKey,
+        },
+        idempotencyKey,
+        payload: {
+          email: userEmail,
+          founderName,
+          startupName,
+          planName: formattedPlan,
+          effectiveEndDate: currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
+          reactivateUrl: `${baseUrl}/dashboard/settings/billing`,
+        },
+      });
+    }
+  } catch (err) {
+    console.error("[Billing Webhook Notification] Failed to dispatch notification:", err);
+  }
 }
 
 /**
@@ -279,6 +416,19 @@ export async function POST(req: Request) {
       }
     }
   }
+
+  // Best-effort notification side effect (non-blocking)
+  handleBillingNotification({
+    userId,
+    event,
+    eventId,
+    subscription,
+    planCode: resolvedPlan.plan_code,
+    billingCycle: resolvedPlan.billing_cycle,
+    currentPeriodEnd,
+  }).catch((err) => {
+    console.error("[Billing Webhook] Notification dispatch error:", err);
+  });
 
   return NextResponse.json({ received: true, status: localStatus });
 }

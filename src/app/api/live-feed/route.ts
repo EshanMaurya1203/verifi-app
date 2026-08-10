@@ -87,7 +87,11 @@ export async function GET(request: Request) {
         timestamp: log.created_at,
       }));
 
-    return NextResponse.json(events);
+    return NextResponse.json(events, {
+      headers: {
+        "Cache-Control": "public, s-maxage=10, stale-while-revalidate=59",
+      },
+    });
   } catch (error) {
     console.error("[LiveFeed API] Unexpected error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

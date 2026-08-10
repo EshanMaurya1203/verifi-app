@@ -10,14 +10,17 @@ import { WhyVerify } from "@/components/home/WhyVerify";
 import { FAQ } from "@/components/home/FAQ";
 import { CTA } from "@/components/home/CTA";
 import { Footer } from "@/components/home/Footer";
+import { getHomepageInitialData } from "@/lib/homepage-data";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const initialData = await getHomepageInitialData();
+
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       <Navbar />
 
       <main className="mx-auto max-w-[1080px] px-6 pb-24">
-        <StartupDataProvider>
+        <StartupDataProvider initialData={initialData}>
           {/* Hero Section */}
           <Hero />
 

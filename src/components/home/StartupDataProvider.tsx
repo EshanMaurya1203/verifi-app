@@ -48,16 +48,42 @@ export function useStartupData() {
   return useContext(StartupDataContext);
 }
 
-export function StartupDataProvider({ children }: { children: React.ReactNode }) {
-  const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
-  const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>([]);
-  const [trendingData, setTrendingData] = useState<StartupCard[]>([]);
-  const [verifiedStartupCount, setVerifiedStartupCount] = useState<number>(0);
-  const [verifiedRevenueTotal, setVerifiedRevenueTotal] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
+export interface HomepageInitialData {
+  leaderboard: LeaderboardItem[];
+  recentlyListedData: StartupCard[];
+  trendingData: StartupCard[];
+  verifiedStartupCount: number;
+  verifiedRevenueTotal: number;
+}
+
+export function StartupDataProvider({
+  children,
+  initialData,
+}: {
+  children: React.ReactNode;
+  initialData?: HomepageInitialData | null;
+}) {
+  const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>(
+    initialData?.leaderboard ?? []
+  );
+  const [recentlyListedData, setRecentlyListedData] = useState<StartupCard[]>(
+    initialData?.recentlyListedData ?? []
+  );
+  const [trendingData, setTrendingData] = useState<StartupCard[]>(
+    initialData?.trendingData ?? []
+  );
+  const [verifiedStartupCount, setVerifiedStartupCount] = useState<number>(
+    initialData?.verifiedStartupCount ?? 0
+  );
+  const [verifiedRevenueTotal, setVerifiedRevenueTotal] = useState<number>(
+    initialData?.verifiedRevenueTotal ?? 0
+  );
+  const [loading, setLoading] = useState<boolean>(!initialData);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialData) return;
+
     async function loadHomepageData() {
       try {
         setLoading(true);

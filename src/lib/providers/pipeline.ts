@@ -5,6 +5,7 @@ import { computeTrustScore } from "@/lib/scoring";
 import { fraudService } from "./services/fraud-service";
 import { revenueService } from "./services/revenue-service";
 import { normalizeProviderError, ProviderError } from "./errors";
+import { handleVerificationCompleted } from "./service";
 
 export interface VerificationPipelineContext {
   startupId: number;
@@ -300,14 +301,27 @@ export class VerificationPipeline {
       ?? this.context.revenueResult?.revenue
       ?? 0;
 
-    await supabaseServer.from("verification_logs").insert({
-      startup_id: this.context.startupId,
-      event: `${this.context.provider.id}_sync_success`,
-      metadata: {
-        mrr: snapshotRevenue,
-        count: this.context.transactions?.length ?? 0,
-      },
-    });
+    const { data: logRecord } = await supabaseServer
+      .from("verification_logs")
+      .insert({
+        startup_id: this.context.startupId,
+        event: `${this.context.provider.id}_sync_success`,
+        metadata: {
+          mrr: snapshotRevenue,
+          count: this.context.transactions?.length ?? 0,
+        },
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (logRecord?.id) {
+      await handleVerificationCompleted({
+        startupId: this.context.startupId,
+        verificationLogId: logRecord.id,
+      }).catch((err) => {
+        console.error("[Pipeline] Best-effort verification completed email failed:", err);
+      });
+    }
   }
 }
 

@@ -48,37 +48,116 @@ const RevenueCompositionCard = dynamic(
 
 
 
+import { cache } from "react";
+
+const getStartupProfileData = cache(async (slug: string) => {
+  const { data: startup, error, ok } = await safeSupabaseQuery<any>(
+    supabaseServer
+      .from("startup_submissions")
+      .select(`
+        id,
+        slug,
+        startup_name,
+        name,
+        biz_type,
+        mrr,
+        mrr_breakdown,
+        city,
+        website,
+        twitter,
+        linkedin,
+        founder_bio,
+        startup_logo,
+        founder_avatar,
+        notes,
+        user_id,
+        is_public,
+        penalty_count,
+        verification_type,
+        proof_url
+      `)
+      .eq("slug", slug)
+      .maybeSingle()
+  );
+
+  if (error || !ok || !startup) {
+    return null;
+  }
+
+  const startupId = startup.id;
+
+  const [revenueRes, fraudRes, providerRes, logsRes, snapshotRes] = await Promise.all([
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("revenue_transactions")
+        .select("amount, created_at, provider")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: true })
+        .limit(200)
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("fraud_signals")
+        .select("signal_type")
+        .eq("startup_id", startupId)
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("provider_connections")
+        .select("provider, status, last_synced_at, latest_revenue")
+        .eq("startup_id", startupId)
+        .eq("status", "connected")
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("verification_logs")
+        .select(`
+          id,
+          event,
+          metadata,
+          created_at
+        `)
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: false })
+        .limit(10)
+    ),
+    safeSupabaseQuery<any[]>(
+      supabaseServer
+        .from("revenue_snapshots")
+        .select("total_revenue, provider_breakdown, created_at")
+        .eq("startup_id", startupId)
+        .order("created_at", { ascending: true })
+        .limit(30)
+    )
+  ]);
+
+  return {
+    startup,
+    revenueRes,
+    fraudRes,
+    providerRes,
+    logsRes,
+    snapshotRes,
+  };
+});
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const resolvedParams = await params;
   const slug = decodeURIComponent(resolvedParams.slug);
   
   const user = await getAuthenticatedUser();
-  const { data: startup } = await supabaseServer
-    .from("startup_submissions")
-    .select("id, startup_name, mrr, verification_status, verification_type, proof_url, is_public, user_id")
-    .eq("slug", slug)
-    .maybeSingle();
+  const profileData = await getStartupProfileData(slug);
 
-  if (!startup || (!startup.is_public && startup.user_id !== user?.id)) {
+  if (!profileData || (!profileData.startup.is_public && profileData.startup.user_id !== user?.id)) {
     return { title: "Startup Not Found | Verifii" };
   }
 
-  const { data: providers } = await supabaseServer
-    .from("provider_connections")
-    .select("provider, status, last_synced_at, latest_revenue")
-    .eq("startup_id", startup.id)
-    .eq("status", "connected");
-
-  const { data: revenueRows } = await supabaseServer
-    .from("revenue_transactions")
-    .select("amount, created_at")
-    .eq("startup_id", startup.id)
-    .limit(200);
+  const { startup, revenueRes, providerRes } = profileData;
 
   const metaState = computeVerificationState(
     buildVerificationStateInput({
-      revenueTransactions: revenueRows || [],
-      providerConnections: providers || [],
+      revenueTransactions: revenueRes.data || [],
+      providerConnections: providerRes.data || [],
       fraudSignals: [],
       penaltyCount: 0,
       verificationType: startup.verification_type,
@@ -133,39 +212,10 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   const resolvedParams = await params;
   const slug = decodeURIComponent(resolvedParams.slug);
 
-  // 1. Resolve Startup
-  const { data: startup, error, ok } = await safeSupabaseQuery<any>(
-    supabaseServer
-      .from("startup_submissions")
-      .select(`
-        id,
-        slug,
-        startup_name,
-        name,
-        biz_type,
-        mrr,
-        mrr_breakdown,
-        city,
-        website,
-        twitter,
-        linkedin,
-        founder_bio,
-        startup_logo,
-        founder_avatar,
-        notes,
-        user_id,
-        is_public,
-        penalty_count,
-        verification_type,
-        proof_url
-      `)
-      .eq("slug", slug)
-      .maybeSingle()
-  );
-
+  const profileData = await getStartupProfileData(slug);
   const user = await getAuthenticatedUser();
 
-  if (error || !ok || !startup || (!startup.is_public && startup.user_id !== user?.id)) {
+  if (!profileData || (!profileData.startup.is_public && profileData.startup.user_id !== user?.id)) {
     return (
       <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
         <Navbar />
@@ -178,53 +228,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     );
   }
 
-  const startupId = startup.id;
-
-  // 2. Fetch all verification data (including snapshots for trend charts) safely
-  const [revenueRes, fraudRes, providerRes, logsRes, snapshotRes] = await Promise.all([
-    safeSupabaseQuery<any[]>(
-      supabaseServer
-        .from("revenue_transactions")
-        .select("amount, created_at, provider")
-        .eq("startup_id", startupId)
-        .order("created_at", { ascending: true })
-        .limit(200)
-    ),
-    safeSupabaseQuery<any[]>(
-      supabaseServer
-        .from("fraud_signals")
-        .select("signal_type")
-        .eq("startup_id", startupId)
-    ),
-    safeSupabaseQuery<any[]>(
-      supabaseServer
-        .from("provider_connections")
-        .select("provider, status, last_synced_at, latest_revenue")
-        .eq("startup_id", startupId)
-        .eq("status", "connected")
-    ),
-    safeSupabaseQuery<any[]>(
-      supabaseServer
-        .from("verification_logs")
-        .select(`
-          id,
-          event,
-          metadata,
-          created_at
-        `)
-        .eq("startup_id", startupId)
-        .order("created_at", { ascending: false })
-        .limit(10)
-    ),
-    safeSupabaseQuery<any[]>(
-      supabaseServer
-        .from("revenue_snapshots")
-        .select("total_revenue, provider_breakdown, created_at")
-        .eq("startup_id", startupId)
-        .order("created_at", { ascending: true })
-        .limit(30)
-    )
-  ]);
+  const { startup, revenueRes, fraudRes, providerRes, logsRes, snapshotRes } = profileData;
 
   const rawRevenue = revenueRes.data || [];
   const revenue = rawRevenue.map((event: any) => ({
@@ -357,9 +361,21 @@ export default async function PublicStartupProfile({ params }: { params: Promise
         "@type": "ListItem",
         "position": 2,
         "name": startup.startup_name,
-        "item": `${baseUrl}/startup/${encodedSlug}/`
+        "item": `${baseUrl}/startup/${encodedSlug}`
       }
     ]
+  };
+
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": startup.startup_name,
+    "url": `${baseUrl}/startup/${encodedSlug}`,
+    ...(startup.website || startup.twitter || startup.linkedin ? {
+      "sameAs": [startup.website, startup.twitter, startup.linkedin].filter(Boolean)
+    } : {}),
+    "description": startup.notes || `Verified financial profile for ${startup.startup_name} on Verifii.`,
+    ...(startup.city ? { "address": { "@type": "PostalAddress", "addressLocality": startup.city } } : {})
   };
 
   return (
@@ -368,6 +384,10 @@ export default async function PublicStartupProfile({ params }: { params: Promise
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
       />
 
       {isDemo && (

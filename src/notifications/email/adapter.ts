@@ -105,6 +105,91 @@ export const emailAdapter: DeliveryAdapter = {
         };
         break;
 
+      case "SUBSCRIPTION_ACTIVATED":
+        to = event.payload.email;
+        template = {
+          type: "subscription-activated",
+          props: {
+            founderName: event.payload.founderName,
+            startupName: event.payload.startupName,
+            planName: event.payload.planName,
+            amountPaid: event.payload.amountPaid,
+            nextBillingDate: event.payload.nextBillingDate,
+            dashboardUrl: event.payload.dashboardUrl,
+          },
+        };
+        break;
+
+      case "SUBSCRIPTION_RENEWED":
+        to = event.payload.email;
+        template = {
+          type: "subscription-renewed",
+          props: {
+            founderName: event.payload.founderName,
+            startupName: event.payload.startupName,
+            planName: event.payload.planName,
+            amountPaid: event.payload.amountPaid,
+            nextBillingDate: event.payload.nextBillingDate,
+            dashboardUrl: event.payload.dashboardUrl,
+          },
+        };
+        break;
+
+      case "TRIAL_EXPIRING":
+        to = event.payload.email;
+        template = {
+          type: "trial-expiring",
+          props: {
+            founderName: event.payload.founderName,
+            startupName: event.payload.startupName,
+            planName: event.payload.planName,
+            trialEndFormatted: event.payload.trialEndFormatted,
+            billingUrl: event.payload.billingUrl,
+          },
+        };
+        break;
+
+      case "PAYMENT_FAILED":
+        to = event.payload.email;
+        template = {
+          type: "payment-failed",
+          props: {
+            founderName: event.payload.founderName,
+            startupName: event.payload.startupName,
+            planName: event.payload.planName,
+            amountDue: event.payload.amountDue,
+            failureReason: event.payload.failureReason,
+            updatePaymentUrl: event.payload.updatePaymentUrl,
+          },
+        };
+        break;
+
+      case "SUBSCRIPTION_CANCELLED":
+        to = event.payload.email;
+        template = {
+          type: "subscription-cancelled",
+          props: {
+            founderName: event.payload.founderName,
+            startupName: event.payload.startupName,
+            planName: event.payload.planName,
+            effectiveEndDate: event.payload.effectiveEndDate,
+            reactivateUrl: event.payload.reactivateUrl,
+          },
+        };
+        break;
+
+      case "PRODUCTION_EMAIL_TEST":
+        to = event.payload.email;
+        template = {
+          type: "production-email-test",
+          props: {
+            adminName: event.payload.adminName,
+            environment: event.payload.environment,
+            timestampFormatted: event.payload.timestampFormatted,
+          },
+        };
+        break;
+
       default:
         return {
           success: false,

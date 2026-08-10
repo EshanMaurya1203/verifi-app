@@ -66,6 +66,55 @@ export interface VerificationFailedEmailProps {
   retryUrl: string;
 }
 
+export interface SubscriptionActivatedEmailProps {
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  amountPaid: string;
+  nextBillingDate?: string;
+  dashboardUrl: string;
+}
+
+export interface TrialExpiringEmailProps {
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  trialEndFormatted: string;
+  billingUrl: string;
+}
+
+export interface SubscriptionRenewedEmailProps {
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  amountPaid: string;
+  nextBillingDate?: string;
+  dashboardUrl: string;
+}
+
+export interface PaymentFailedEmailProps {
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  amountDue: string;
+  failureReason?: string;
+  updatePaymentUrl: string;
+}
+
+export interface SubscriptionCancelledEmailProps {
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  effectiveEndDate?: string;
+  reactivateUrl: string;
+}
+
+export interface ProductionEmailTestEmailProps {
+  adminName?: string;
+  environment?: string;
+  timestampFormatted?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Discriminated Union — extend here when adding templates
 // ---------------------------------------------------------------------------
@@ -76,7 +125,13 @@ export type EmailTemplate =
   | { type: "provider-sync-failed"; props: ProviderSyncFailedEmailProps }
   | { type: "account-deleted"; props: AccountDeletedEmailProps }
   | { type: "verification-completed"; props: VerificationCompletedEmailProps }
-  | { type: "verification-failed"; props: VerificationFailedEmailProps };
+  | { type: "verification-failed"; props: VerificationFailedEmailProps }
+  | { type: "subscription-activated"; props: SubscriptionActivatedEmailProps }
+  | { type: "subscription-renewed"; props: SubscriptionRenewedEmailProps }
+  | { type: "trial-expiring"; props: TrialExpiringEmailProps }
+  | { type: "payment-failed"; props: PaymentFailedEmailProps }
+  | { type: "subscription-cancelled"; props: SubscriptionCancelledEmailProps }
+  | { type: "production-email-test"; props: ProductionEmailTestEmailProps };
 
 /** Extract the string-literal template type. */
 export type EmailTemplateName = EmailTemplate["type"];

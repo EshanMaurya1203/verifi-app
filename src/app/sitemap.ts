@@ -1,18 +1,29 @@
 import { MetadataRoute } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
 import { getSiteUrl } from '@/lib/site-url'
+import { canStartupBePublic } from '@/lib/visibility'
+import { isDemoStartupUserId } from '@/lib/verification-data'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getSiteUrl()
 
-  // 1. Retrieve all startups that have completed dynamic revenue verification
+  // 1. Retrieve startups that are marked public
   const { data: startups } = await supabaseServer
     .from('startup_submissions')
-    .select('slug, last_verified_at')
+    .select('slug, last_verified_at, user_id, verification_status, payment_connected')
     .eq('is_public', true)
 
-  const startupUrls = (startups || []).map((s) => ({
-    url: `${baseUrl}/startup/${s.slug}/`,
+  // 2. Filter using canonical visibility rules (excludes unverified, flagged, demo, and private startups)
+  const eligibleStartups = (startups || []).filter((s) => {
+    if (!s.slug) return false
+    if (s.verification_status === 'flagged') return false
+    if (isDemoStartupUserId(s.user_id)) return false
+    if (!canStartupBePublic(s).eligible) return false
+    return true
+  })
+
+  const startupUrls = eligibleStartups.map((s) => ({
+    url: `${baseUrl}/startup/${encodeURIComponent(s.slug)}`,
     lastModified: s.last_verified_at ? new Date(s.last_verified_at) : new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.8,
@@ -20,19 +31,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     {
-      url: `${baseUrl}/`,
+      url: `${baseUrl}`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 1,
     },
     {
-      url: `${baseUrl}/leaderboard/`,
+      url: `${baseUrl}/leaderboard`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/submit/`,
+      url: `${baseUrl}/submit`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.7,
@@ -40,3 +51,4 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...startupUrls,
   ]
 }
+

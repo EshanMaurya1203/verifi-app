@@ -67,11 +67,69 @@ export interface AccountDeletedPayload {
   currentYear?: number;
 }
 
+export interface SubscriptionActivatedPayload {
+  email: string;
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  amountPaid: string;
+  nextBillingDate?: string;
+  dashboardUrl: string;
+}
+
+export interface TrialExpiringPayload {
+  email: string;
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  trialEndFormatted: string;
+  billingUrl: string;
+}
+
+export interface SubscriptionRenewedPayload {
+  email: string;
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  amountPaid: string;
+  nextBillingDate?: string;
+  dashboardUrl: string;
+}
+
+export interface PaymentFailedPayload {
+  email: string;
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  amountDue: string;
+  failureReason?: string;
+  updatePaymentUrl: string;
+}
+
+export interface SubscriptionCancelledPayload {
+  email: string;
+  founderName?: string;
+  startupName?: string;
+  planName: string;
+  effectiveEndDate?: string;
+  reactivateUrl: string;
+}
+
 export interface GenericNotificationPayload {
   email: string;
   title?: string;
   message?: string;
   [key: string]: unknown;
+}
+
+/**
+ * Standard notification sources for context and telemetry.
+ */
+export interface ProductionEmailTestPayload {
+  email: string;
+  adminName?: string;
+  environment: string;
+  timestampFormatted: string;
 }
 
 /**
@@ -121,15 +179,18 @@ export type NotificationEvent = BaseNotificationEvent & (
   | { type: "PROVIDER_SYNC_FAILED"; payload: ProviderSyncFailedPayload }
   | { type: "ACCOUNT_DELETED"; payload: AccountDeletedPayload }
   | { type: "REVENUE_SYNC_REMINDER"; payload: GenericNotificationPayload }
-  | { type: "TRIAL_EXPIRING"; payload: GenericNotificationPayload }
+  | { type: "TRIAL_EXPIRING"; payload: TrialExpiringPayload }
   | { type: "PLAN_EXPIRED"; payload: GenericNotificationPayload }
-  | { type: "PAYMENT_FAILED"; payload: GenericNotificationPayload }
-  | { type: "SUBSCRIPTION_RENEWED"; payload: GenericNotificationPayload }
+  | { type: "PAYMENT_FAILED"; payload: PaymentFailedPayload }
+  | { type: "SUBSCRIPTION_ACTIVATED"; payload: SubscriptionActivatedPayload }
+  | { type: "SUBSCRIPTION_RENEWED"; payload: SubscriptionRenewedPayload }
+  | { type: "SUBSCRIPTION_CANCELLED"; payload: SubscriptionCancelledPayload }
   | { type: "TRUST_SCORE_CHANGED"; payload: GenericNotificationPayload }
   | { type: "LEADERBOARD_CHANGED"; payload: GenericNotificationPayload }
   | { type: "SECURITY_ALERT"; payload: GenericNotificationPayload }
   | { type: "PRODUCT_UPDATE"; payload: GenericNotificationPayload }
   | { type: "FEATURE_ANNOUNCEMENT"; payload: GenericNotificationPayload }
+  | { type: "PRODUCTION_EMAIL_TEST"; payload: ProductionEmailTestPayload }
 );
 
 export type NotificationEventType = NotificationType;

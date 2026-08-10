@@ -50,6 +50,30 @@ import VerificationFailedEmail, {
   defaultSubject as verificationFailedSubject,
 } from "@/emails/VerificationFailed";
 
+import SubscriptionActivatedEmail, {
+  defaultSubject as subscriptionActivatedSubject,
+} from "@/emails/SubscriptionActivated";
+
+import SubscriptionRenewedEmail, {
+  defaultSubject as subscriptionRenewedSubject,
+} from "@/emails/SubscriptionRenewed";
+
+import TrialExpiringEmail, {
+  defaultSubject as trialExpiringSubject,
+} from "@/emails/TrialExpiring";
+
+import PaymentFailedEmail, {
+  defaultSubject as paymentFailedSubject,
+} from "@/emails/PaymentFailed";
+
+import SubscriptionCancelledEmail, {
+  defaultSubject as subscriptionCancelledSubject,
+} from "@/emails/SubscriptionCancelled";
+
+import ProductionEmailTestEmail, {
+  defaultSubject as productionEmailTestSubject,
+} from "@/emails/ProductionEmailTest";
+
 // ── Email Constants ────────────────────────────────────────────────────────
 
 const FROM_ADDRESS = emailBrandConfig.fromAddress;
@@ -109,6 +133,42 @@ function resolveTemplate(template: EmailTemplate): ResolvedTemplate {
       return {
         element: React.createElement(VerificationFailedEmail, template.props),
         subject: verificationFailedSubject,
+      };
+
+    case "subscription-activated":
+      return {
+        element: React.createElement(SubscriptionActivatedEmail, template.props),
+        subject: subscriptionActivatedSubject,
+      };
+
+    case "subscription-renewed":
+      return {
+        element: React.createElement(SubscriptionRenewedEmail, template.props),
+        subject: subscriptionRenewedSubject,
+      };
+
+    case "trial-expiring":
+      return {
+        element: React.createElement(TrialExpiringEmail, template.props),
+        subject: trialExpiringSubject,
+      };
+
+    case "payment-failed":
+      return {
+        element: React.createElement(PaymentFailedEmail, template.props),
+        subject: paymentFailedSubject,
+      };
+
+    case "subscription-cancelled":
+      return {
+        element: React.createElement(SubscriptionCancelledEmail, template.props),
+        subject: subscriptionCancelledSubject,
+      };
+
+    case "production-email-test":
+      return {
+        element: React.createElement(ProductionEmailTestEmail, template.props),
+        subject: productionEmailTestSubject,
       };
 
     default: {
