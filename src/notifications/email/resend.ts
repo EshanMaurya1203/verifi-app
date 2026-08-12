@@ -54,7 +54,7 @@ export class ResendProvider implements EmailProvider {
         text: payload.text,
         ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
         headers: payload.idempotencyKey
-          ? { "X-Entity-Ref-ID": payload.idempotencyKey }
+          ? { "Idempotency-Key": payload.idempotencyKey }
           : undefined,
       });
 
