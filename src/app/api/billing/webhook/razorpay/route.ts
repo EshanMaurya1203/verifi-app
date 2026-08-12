@@ -256,6 +256,27 @@ export async function POST(req: Request) {
     payload.event_id ||
     `${event}:${subscription.id}:${eventAt}:${subscription.status || ""}:${subscription.plan_id || ""}`;
 
+  // ─── STEP 1: ATOMIC IDEMPOTENCY CLAIM ────────────────────────────────────
+  const { error: claimError } = await supabaseServer
+    .from("processed_webhook_events")
+    .insert({
+      provider: "razorpay",
+      event_id: eventId,
+      event_type: event,
+    });
+
+  if (claimError) {
+    if (
+      claimError.code === "23505" ||
+      claimError.message?.toLowerCase().includes("duplicate") ||
+      claimError.details?.toLowerCase().includes("already exists")
+    ) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    console.error("[Billing Webhook] Failed to claim event:", claimError);
+    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  }
+
   const { data: existingSub, error: existingSubError } = await supabaseServer
     .from("subscriptions")
     .select("id, last_billing_event_at, last_billing_event_id")
@@ -265,10 +286,6 @@ export async function POST(req: Request) {
   if (existingSubError) {
     console.error("[Billing Webhook] Failed to read existing subscription:", existingSubError);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
-  }
-
-  if (existingSub?.last_billing_event_id && existingSub.last_billing_event_id === eventId) {
-    return NextResponse.json({ received: true, duplicate: true });
   }
 
   if (
@@ -332,85 +349,178 @@ export async function POST(req: Request) {
     trialEnd = secondsToIso(subscription.charge_at);
   }
 
-  // Write to subscriptions table (Source of Truth)
-  const { data: upsertedSub, error: upsertError } = await supabaseServer
-    .from("subscriptions")
-    .upsert(
-      {
-        user_id: userId,
-        plan_code: resolvedPlan.plan_code,
-        billing_cycle: resolvedPlan.billing_cycle,
-        status: localStatus,
-        razorpay_subscription_id: subscription.id,
-        razorpay_customer_id: subscription.customer_id,
-        razorpay_plan_id: subscription.plan_id,
-        replaces_razorpay_subscription_id: localStatus === "active" ? null : replacesSubId,
-        current_period_start: currentPeriodStart,
-        current_period_end: currentPeriodEnd,
-        last_billing_event_at: eventAt,
-        last_billing_event_id: eventId,
-        ...(trialStart ? { trial_start: trialStart } : {}),
-        ...(trialEnd ? { trial_end: trialEnd } : {}),
-      },
-      { onConflict: "razorpay_subscription_id" }
-    )
-    .select("id")
-    .single();
+  // ─── ATOMIC POSTGRES TRANSACTION VIA RPC ─────────────────────────────────
+  // First attempt single-transaction RPC processing
+  let shouldCancelReplacement = false;
+  let rpcSuccess = false;
 
-  if (upsertError) {
-    console.error("[Billing Webhook] Failed to upsert subscription:", upsertError);
-    return NextResponse.json({ error: "Database error" }, { status: 500 });
+  try {
+    const { data: rpcData, error: rpcErr } = await supabaseServer.rpc(
+      "process_razorpay_billing_webhook",
+      {
+        p_provider: "razorpay",
+        p_event_id: eventId,
+        p_event_type: event,
+        p_user_id: userId,
+        p_plan_code: resolvedPlan.plan_code,
+        p_billing_cycle: resolvedPlan.billing_cycle,
+        p_status: localStatus,
+        p_razorpay_subscription_id: subscription.id,
+        p_razorpay_customer_id: subscription.customer_id || null,
+        p_razorpay_plan_id: subscription.plan_id || null,
+        p_replaces_sub_id: replacesSubId || null,
+        p_current_period_start: currentPeriodStart,
+        p_current_period_end: currentPeriodEnd,
+        p_event_at: eventAt,
+        p_trial_start: trialStart || null,
+        p_trial_end: trialEnd || null,
+      }
+    );
+
+    if (!rpcErr && rpcData) {
+      rpcSuccess = true;
+      if (rpcData.duplicate) {
+        return NextResponse.json({ received: true, duplicate: true });
+      }
+      if (rpcData.stale) {
+        return NextResponse.json({ received: true, skipped: "stale_event" });
+      }
+      shouldCancelReplacement = Boolean(rpcData.should_cancel_replacement);
+    }
+  } catch {
+    rpcSuccess = false;
   }
 
-  // Write audit event
-  await supabaseServer.from("subscription_events").insert({
-    subscription_id: upsertedSub?.id,
-    user_id: userId,
-    event_type: event,
-    new_status: localStatus,
-    new_plan_code: resolvedPlan.plan_code,
-    metadata: {
-      payload,
-      razorpay_subscription_id: subscription.id,
-      razorpay_plan_id: subscription.plan_id,
-      billing_cycle: resolvedPlan.billing_cycle,
-    },
-    created_at: new Date().toISOString()
-  });
+  // Fallback if RPC is not deployed in database yet
+  if (!rpcSuccess) {
+    // ─── STEP 1: ATOMIC IDEMPOTENCY CLAIM ────────────────────────────────────
+    const { error: claimError } = await supabaseServer
+      .from("processed_webhook_events")
+      .insert({
+        provider: "razorpay",
+        event_id: eventId,
+        event_type: event,
+      });
 
-  if ((event === "subscription.activated" || event === "subscription.charged") && replacesSubId) {
-    const { data: oldSub } = await supabaseServer
+    if (claimError) {
+      if (
+        claimError.code === "23505" ||
+        claimError.message?.toLowerCase().includes("duplicate") ||
+        claimError.details?.toLowerCase().includes("already exists")
+      ) {
+        return NextResponse.json({ received: true, duplicate: true });
+      }
+      console.error("[Billing Webhook] Failed to claim event:", claimError);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    const { data: existingSub, error: existingSubError } = await supabaseServer
       .from("subscriptions")
-      .select("id, status")
-      .eq("razorpay_subscription_id", replacesSubId)
+      .select("id, last_billing_event_at, last_billing_event_id")
+      .eq("razorpay_subscription_id", subscription.id)
       .maybeSingle();
 
-    if (oldSub && ["active", "trialing", "grace_period", "past_due"].includes(oldSub.status)) {
-      if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-        console.error("[Billing Webhook] Razorpay keys missing, cannot cancel old subscription.");
-      } else {
-        try {
-          const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET
-          });
+    if (existingSubError) {
+      console.error("[Billing Webhook] Failed to read existing subscription:", existingSubError);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
 
-          await razorpay.subscriptions.cancel(replacesSubId, false);
+    if (
+      existingSub?.last_billing_event_at &&
+      new Date(eventAt).getTime() < new Date(existingSub.last_billing_event_at).getTime()
+    ) {
+      return NextResponse.json({ received: true, skipped: "stale_event" });
+    }
 
-          await supabaseServer
-            .from("subscriptions")
-            .update({ status: "cancelled" })
-            .eq("razorpay_subscription_id", replacesSubId);
+    // Write to subscriptions table (Source of Truth)
+    const { data: upsertedSub, error: upsertError } = await supabaseServer
+      .from("subscriptions")
+      .upsert(
+        {
+          user_id: userId,
+          plan_code: resolvedPlan.plan_code,
+          billing_cycle: resolvedPlan.billing_cycle,
+          status: localStatus,
+          razorpay_subscription_id: subscription.id,
+          razorpay_customer_id: subscription.customer_id,
+          razorpay_plan_id: subscription.plan_id,
+          replaces_razorpay_subscription_id: localStatus === "active" ? null : replacesSubId,
+          current_period_start: currentPeriodStart,
+          current_period_end: currentPeriodEnd,
+          last_billing_event_at: eventAt,
+          last_billing_event_id: eventId,
+          ...(trialStart ? { trial_start: trialStart } : {}),
+          ...(trialEnd ? { trial_end: trialEnd } : {}),
+        },
+        { onConflict: "razorpay_subscription_id" }
+      )
+      .select("id")
+      .single();
 
-          await supabaseServer.from("subscription_events").insert({
-            subscription_id: oldSub.id,
-            user_id: userId,
-            event_type: "subscription.replaced",
-            new_status: "cancelled",
-            metadata: { reason: "replaced_by_upi_plan_change", new_subscription_id: subscription.id },
-            created_at: new Date().toISOString()
-          });
-        } catch (err) {
+    if (upsertError) {
+      console.error("[Billing Webhook] Failed to upsert subscription:", upsertError);
+      return NextResponse.json({ error: "Database error" }, { status: 500 });
+    }
+
+    // Write audit event
+    await supabaseServer.from("subscription_events").insert({
+      subscription_id: upsertedSub?.id,
+      user_id: userId,
+      event_type: event,
+      new_status: localStatus,
+      new_plan_code: resolvedPlan.plan_code,
+      metadata: {
+        payload,
+        razorpay_subscription_id: subscription.id,
+        razorpay_plan_id: subscription.plan_id,
+        billing_cycle: resolvedPlan.billing_cycle,
+      },
+      created_at: new Date().toISOString()
+    });
+
+    if ((event === "subscription.activated" || event === "subscription.charged") && replacesSubId) {
+      const { data: oldSub } = await supabaseServer
+        .from("subscriptions")
+        .select("id, status")
+        .eq("razorpay_subscription_id", replacesSubId)
+        .maybeSingle();
+
+      if (oldSub && ["active", "trialing", "grace_period", "past_due"].includes(oldSub.status)) {
+        shouldCancelReplacement = true;
+        await supabaseServer
+          .from("subscriptions")
+          .update({ status: "cancelled" })
+          .eq("razorpay_subscription_id", replacesSubId);
+
+        await supabaseServer.from("subscription_events").insert({
+          subscription_id: oldSub.id,
+          user_id: userId,
+          event_type: "subscription.replaced",
+          new_status: "cancelled",
+          metadata: { reason: "replaced_by_upi_plan_change", new_subscription_id: subscription.id },
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  // ─── POST-COMMIT EXTERNAL RAZORPAY MUTATION ───────────────────────────────
+  if (shouldCancelReplacement && replacesSubId) {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      console.error("[Billing Webhook] Razorpay keys missing, cannot cancel old subscription.");
+    } else {
+      try {
+        const razorpay = new Razorpay({
+          key_id: process.env.RAZORPAY_KEY_ID,
+          key_secret: process.env.RAZORPAY_KEY_SECRET
+        });
+
+        await razorpay.subscriptions.cancel(replacesSubId, false);
+      } catch (err: any) {
+        const msg = err?.error?.description || err?.message || "";
+        if (msg.toLowerCase().includes("already cancelled")) {
+          console.log("[Billing Webhook] Subscription already cancelled on Razorpay:", replacesSubId);
+        } else {
           console.error("[Billing Webhook] Failed to cancel old subscription:", err);
         }
       }

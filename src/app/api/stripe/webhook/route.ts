@@ -29,7 +29,54 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  console.log("[Stripe Webhook] Event received:", event.type);
+  console.log("[Stripe Webhook] Event received:", event.type, event.id);
+
+  // ─── ATOMIC IDEMPOTENCY CLAIM VIA RPC ────────────────────────────────────
+  if (event.id) {
+    let rpcClaimed = false;
+
+    try {
+      const { data: rpcData, error: rpcErr } = await supabaseServer.rpc(
+        "process_stripe_webhook",
+        {
+          p_provider: "stripe",
+          p_event_id: event.id,
+          p_event_type: event.type,
+        }
+      );
+
+      if (!rpcErr && rpcData) {
+        rpcClaimed = true;
+        if (rpcData.duplicate) {
+          return NextResponse.json({ received: true, duplicate: true });
+        }
+      }
+    } catch {
+      rpcClaimed = false;
+    }
+
+    if (!rpcClaimed) {
+      const { error: claimError } = await supabaseServer
+        .from("processed_webhook_events")
+        .insert({
+          provider: "stripe",
+          event_id: event.id,
+          event_type: event.type,
+        });
+
+      if (claimError) {
+        if (
+          claimError.code === "23505" ||
+          claimError.message?.toLowerCase().includes("duplicate") ||
+          claimError.details?.toLowerCase().includes("already exists")
+        ) {
+          return NextResponse.json({ received: true, duplicate: true });
+        }
+        console.error("[Stripe Webhook] Failed to claim event:", claimError);
+        return NextResponse.json({ error: "Database error" }, { status: 500 });
+      }
+    }
+  }
 
   try {
     switch (event.type) {
@@ -68,6 +115,30 @@ export async function POST(req: Request) {
           return NextResponse.json({ received: true, skipped: "no_startup_id" });
         }
 
+        // Single-Transaction RPC Call for Stripe Payment
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabaseServer.rpc(
+            "process_stripe_payment_webhook",
+            {
+              p_provider: "stripe",
+              p_event_id: event.id,
+              p_event_type: event.type,
+              p_startup_id: startupId,
+              p_amount: amount,
+              p_payment_id: payment.id,
+            }
+          );
+
+          if (!rpcErr && rpcRes) {
+            if (rpcRes.duplicate) {
+              return NextResponse.json({ received: true, duplicate: true });
+            }
+            break;
+          }
+        } catch {
+          // Fallback to updateRevenueAndSnapshot if RPC not deployed yet
+        }
+
         await updateRevenueAndSnapshot(startupId, amount, "stripe", payment.id);
         break;
       }
@@ -81,6 +152,30 @@ export async function POST(req: Request) {
         if (startupIdMeta && account.details_submitted) {
           const startupId = Number(startupIdMeta);
           if (Number.isFinite(startupId)) {
+            // Single-Transaction RPC Call for Stripe Account Onboarding
+            try {
+              const { data: rpcRes, error: rpcErr } = await supabaseServer.rpc(
+                "process_stripe_account_webhook",
+                {
+                  p_provider: "stripe",
+                  p_event_id: event.id,
+                  p_event_type: event.type,
+                  p_startup_id: startupId,
+                  p_account_id: account.id,
+                  p_api_key_encrypted: encrypt("stripe_connect"),
+                }
+              );
+
+              if (!rpcErr && rpcRes) {
+                if (rpcRes.duplicate) {
+                  return NextResponse.json({ received: true, duplicate: true });
+                }
+                break;
+              }
+            } catch {
+              // Fallback if RPC not deployed
+            }
+
             await supabaseServer.from("provider_connections").upsert(
               {
                 startup_id: startupId,
@@ -126,6 +221,29 @@ export async function POST(req: Request) {
 
         if (connection?.startup_id) {
           const chargeAmount = charge.amount / 100;
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabaseServer.rpc(
+              "process_stripe_payment_webhook",
+              {
+                p_provider: "stripe",
+                p_event_id: event.id,
+                p_event_type: event.type,
+                p_startup_id: connection.startup_id,
+                p_amount: chargeAmount,
+                p_payment_id: charge.id,
+              }
+            );
+
+            if (!rpcErr && rpcRes) {
+              if (rpcRes.duplicate) {
+                return NextResponse.json({ received: true, duplicate: true });
+              }
+              break;
+            }
+          } catch {
+            // Fallback if RPC not deployed
+          }
+
           await updateRevenueAndSnapshot(
             connection.startup_id,
             chargeAmount,
