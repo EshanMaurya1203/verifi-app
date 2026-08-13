@@ -22,8 +22,29 @@ export async function updateRevenueAndSnapshot(
   startupId: number,
   amount: number,
   provider: string,
-  paymentId: string
+  paymentId: string,
+  providerAccountId?: string
 ) {
+  // ─── STEP 0: STRICT PROVIDER ACCOUNT OWNERSHIP INVARIANT CHECK ─────────────
+  if (!providerAccountId) {
+    console.warn(`[WebhookHandler] REJECTED: Missing providerAccountId for startup ${startupId}`);
+    return;
+  }
+
+  const { data: validConn } = await supabaseServer
+    .from("provider_connections")
+    .select("id")
+    .eq("startup_id", startupId)
+    .eq("provider", provider)
+    .eq("provider_account_id", providerAccountId)
+    .eq("status", "connected")
+    .maybeSingle();
+
+  if (!validConn) {
+    console.warn(`[WebhookHandler] REJECTED: Provider account ${providerAccountId} is not connected to startup ${startupId}`);
+    return;
+  }
+
   // ─── STEP 1: IDEMPOTENCY CHECK ────────────────────────────────────────────
   const { data: existingTx, error: existingError } = await supabaseServer
     .from("revenue_transactions")
@@ -46,8 +67,6 @@ export async function updateRevenueAndSnapshot(
     .select("*")
     .eq("id", startupId)
     .single();
-
-
 
   if (fetchError || !currentStartup) {
     console.error("❌ Fetch failed:", fetchError);

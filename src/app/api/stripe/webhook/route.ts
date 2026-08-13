@@ -90,29 +90,26 @@ export async function POST(req: Request) {
           return new Response("Ignored micro payment", { status: 200 });
         }
 
-        // Try metadata first, then fall back to provider_connections lookup
-        let startupId = payment.metadata?.startup_id
-          ? Number(payment.metadata.startup_id)
-          : null;
-
-        if (!startupId) {
-          // Fall back: find startup via connected account
-          const connectedAccountId = (event as Stripe.Event & { account?: string }).account;
-          if (connectedAccountId) {
-            const { data: connection } = await supabaseServer
-              .from("provider_connections")
-              .select("startup_id")
-              .eq("account_id", connectedAccountId)
-              .eq("provider", "stripe")
-              .single();
-
-            startupId = connection?.startup_id ?? null;
-          }
+        // Authoritative server-side resolution via provider_account_id ONLY
+        const connectedAccountId = (event as Stripe.Event & { account?: string }).account;
+        if (!connectedAccountId) {
+          console.warn("[Stripe Webhook] Missing event.account on payment_intent.succeeded");
+          return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
         }
 
+        const { data: connection } = await supabaseServer
+          .from("provider_connections")
+          .select("startup_id")
+          .eq("provider_account_id", connectedAccountId)
+          .eq("provider", "stripe")
+          .eq("status", "connected")
+          .maybeSingle();
+
+        const startupId = connection?.startup_id ? Number(connection.startup_id) : null;
+
         if (!startupId) {
-          console.warn("[Stripe Webhook] No startup_id found for payment:", payment.id);
-          return NextResponse.json({ received: true, skipped: "no_startup_id" });
+          console.warn("[Stripe Webhook] Unmapped provider_account_id:", connectedAccountId);
+          return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
         }
 
         // Single-Transaction RPC Call for Stripe Payment
@@ -126,6 +123,7 @@ export async function POST(req: Request) {
               p_startup_id: startupId,
               p_amount: amount,
               p_payment_id: payment.id,
+              p_account_id: connectedAccountId,
             }
           );
 
@@ -133,76 +131,87 @@ export async function POST(req: Request) {
             if (rpcRes.duplicate) {
               return NextResponse.json({ received: true, duplicate: true });
             }
+            if (rpcRes.error) {
+              return NextResponse.json({ received: true, skipped: rpcRes.error });
+            }
             break;
           }
         } catch {
           // Fallback to updateRevenueAndSnapshot if RPC not deployed yet
         }
 
-        await updateRevenueAndSnapshot(startupId, amount, "stripe", payment.id);
+        await updateRevenueAndSnapshot(startupId, amount, "stripe", payment.id, connectedAccountId);
         break;
       }
 
       // ─── Legacy: account onboarding ──────────────────────────
       case "account.updated": {
         const account = event.data.object as Stripe.Account;
-        const startupIdMeta =
-          account.metadata?.startupId ?? account.metadata?.startup_id;
+        const connectedAccountId = account.id;
 
-        if (startupIdMeta && account.details_submitted) {
-          const startupId = Number(startupIdMeta);
-          if (Number.isFinite(startupId)) {
-            // Single-Transaction RPC Call for Stripe Account Onboarding
-            try {
-              const { data: rpcRes, error: rpcErr } = await supabaseServer.rpc(
-                "process_stripe_account_webhook",
-                {
-                  p_provider: "stripe",
-                  p_event_id: event.id,
-                  p_event_type: event.type,
-                  p_startup_id: startupId,
-                  p_account_id: account.id,
-                  p_api_key_encrypted: encrypt("stripe_connect"),
-                }
-              );
+        if (!connectedAccountId) {
+          console.warn("[Stripe Webhook] Missing account.id on account.updated");
+          return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
+        }
 
-              if (!rpcErr && rpcRes) {
-                if (rpcRes.duplicate) {
-                  return NextResponse.json({ received: true, duplicate: true });
-                }
-                break;
-              }
-            } catch {
-              // Fallback if RPC not deployed
-            }
+        // Authoritative resolution via provider_connections ONLY
+        const { data: connection } = await supabaseServer
+          .from("provider_connections")
+          .select("startup_id")
+          .eq("provider_account_id", connectedAccountId)
+          .eq("provider", "stripe")
+          .eq("status", "connected")
+          .maybeSingle();
 
-            await supabaseServer.from("provider_connections").upsert(
+        const startupId = connection?.startup_id ? Number(connection.startup_id) : null;
+
+        if (!startupId) {
+          console.warn("[Stripe Webhook] Unmapped provider_account_id on account.updated:", connectedAccountId);
+          return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
+        }
+
+        if (account.details_submitted) {
+          // Single-Transaction RPC Call for Stripe Account Onboarding
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabaseServer.rpc(
+              "process_stripe_account_webhook",
               {
-                startup_id: startupId,
-                provider: "stripe",
-                account_id: account.id,
-                api_key_encrypted: encrypt("stripe_connect"),
-                status: "connected",
-                last_synced_at: new Date().toISOString(),
-              },
-              { onConflict: "startup_id,provider" }
+                p_provider: "stripe",
+                p_event_id: event.id,
+                p_event_type: event.type,
+                p_startup_id: startupId,
+                p_account_id: connectedAccountId,
+                p_api_key_encrypted: encrypt("stripe_connect"),
+              }
             );
 
-            // Always set connection fields; only promote status from pre-verified states
-            await supabaseServer
-              .from("startup_submissions")
-              .update({
-                stripe_account_id: account.id,
-                payment_connected: true,
-              })
-              .eq("id", startupId);
-
-            await supabaseServer
-              .from("startup_submissions")
-              .update({ verification_status: "stripe_connected" })
-              .eq("id", startupId)
-              .in("verification_status", ["pending", "syncing", "unverified"]);
+            if (!rpcErr && rpcRes) {
+              if (rpcRes.duplicate) {
+                return NextResponse.json({ received: true, duplicate: true });
+              }
+              if (rpcRes.error) {
+                return NextResponse.json({ received: true, skipped: rpcRes.error });
+              }
+              break;
+            }
+          } catch {
+            // Fallback if RPC not deployed
           }
+
+          // Always set connection fields; only promote status from pre-verified states
+          await supabaseServer
+            .from("startup_submissions")
+            .update({
+              stripe_account_id: connectedAccountId,
+              payment_connected: true,
+            })
+            .eq("id", startupId);
+
+          await supabaseServer
+            .from("startup_submissions")
+            .update({ verification_status: "stripe_connected" })
+            .eq("id", startupId)
+            .in("verification_status", ["pending", "syncing", "unverified"]);
         }
         break;
       }
@@ -211,15 +220,22 @@ export async function POST(req: Request) {
       case "charge.succeeded": {
         const charge = event.data.object as Stripe.Charge;
         const connectedAccountId = (event as Stripe.Event & { account?: string }).account;
+        if (!connectedAccountId) {
+          console.warn("[Stripe Webhook] Missing event.account on charge.succeeded");
+          return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
+        }
 
         const { data: connection } = await supabaseServer
           .from("provider_connections")
           .select("startup_id")
-          .eq("account_id", connectedAccountId)
+          .eq("provider_account_id", connectedAccountId)
           .eq("provider", "stripe")
-          .single();
+          .eq("status", "connected")
+          .maybeSingle();
 
-        if (connection?.startup_id) {
+        const startupId = connection?.startup_id ? Number(connection.startup_id) : null;
+
+        if (startupId) {
           const chargeAmount = charge.amount / 100;
           try {
             const { data: rpcRes, error: rpcErr } = await supabaseServer.rpc(
@@ -228,15 +244,19 @@ export async function POST(req: Request) {
                 p_provider: "stripe",
                 p_event_id: event.id,
                 p_event_type: event.type,
-                p_startup_id: connection.startup_id,
+                p_startup_id: startupId,
                 p_amount: chargeAmount,
                 p_payment_id: charge.id,
+                p_account_id: connectedAccountId,
               }
             );
 
             if (!rpcErr && rpcRes) {
               if (rpcRes.duplicate) {
                 return NextResponse.json({ received: true, duplicate: true });
+              }
+              if (rpcRes.error) {
+                return NextResponse.json({ received: true, skipped: rpcRes.error });
               }
               break;
             }
@@ -245,11 +265,14 @@ export async function POST(req: Request) {
           }
 
           await updateRevenueAndSnapshot(
-            connection.startup_id,
+            startupId,
             chargeAmount,
             "stripe",
-            charge.id
+            charge.id,
+            connectedAccountId
           );
+        } else {
+          return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
         }
         break;
       }

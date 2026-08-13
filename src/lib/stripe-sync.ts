@@ -69,6 +69,7 @@ export async function saveStripeConnection(params: {
       startup_id: params.startupId,
       provider: "stripe",
       account_id: params.accountId,
+      provider_account_id: isStripeConnectAccountId(params.accountId) ? params.accountId : null,
       api_key_encrypted: params.encryptedCredential,
       status: "connected",
       latest_revenue: params.latestRevenue ?? 0,

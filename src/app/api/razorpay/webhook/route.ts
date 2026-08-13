@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { supabaseServer } from "@/lib/supabase-server";
 import { updateRevenueAndSnapshot } from "@/lib/webhook-handler";
-import { resolveStartupIdFromRazorpayPaymentNotes } from "@/lib/razorpay-sync";
 import crypto from "crypto";
 
 /**
@@ -72,19 +71,36 @@ interface RazorpayWebhookPayload {
   }
 
   const event = payload.event;
+  const payloadAccountId = (payload as any).account_id;
+
   if (event === "payment.refunded") {
     const payment = payload.payload?.payment?.entity;
     if (!payment) {
       return new Response("No payment entity in refund", { status: 400 });
     }
-    const startupId = resolveStartupIdFromRazorpayPaymentNotes(payment.notes);
-    const amount = payment.amount / 100;
-    const paymentId = payment.id;
+
+    if (!payloadAccountId) {
+      console.warn("[Razorpay Webhook] Refund missing payload.account_id");
+      return new Response("Unmapped provider account", { status: 200 });
+    }
+
+    const { data: connection } = await supabaseServer
+      .from("provider_connections")
+      .select("startup_id")
+      .eq("provider_account_id", payloadAccountId)
+      .eq("provider", "razorpay")
+      .eq("status", "connected")
+      .maybeSingle();
+
+    const startupId = connection?.startup_id ? Number(connection.startup_id) : null;
 
     if (!startupId) {
-      console.warn("[Razorpay Webhook] Refund missing notes.startup_id:", paymentId);
-      return new Response("No startup_id", { status: 200 });
+      console.warn("[Razorpay Webhook] Refund unmapped or NULL provider_account_id:", payloadAccountId);
+      return new Response("Unmapped provider account", { status: 200 });
     }
+
+    const amount = payment.amount / 100;
+    const paymentId = payment.id;
 
     // 1. Prevent double refunds
     const { data: existingRefund } = await supabaseServer
@@ -171,17 +187,30 @@ interface RazorpayWebhookPayload {
       return new Response("Ignored micro payment", { status: 200 });
     }
 
-    const startupId = resolveStartupIdFromRazorpayPaymentNotes(payment.notes);
+    if (!payloadAccountId) {
+      console.warn("[Razorpay Webhook] Missing payload.account_id for payment:", payment.id);
+      return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
+    }
+
+    const { data: connection } = await supabaseServer
+      .from("provider_connections")
+      .select("startup_id")
+      .eq("provider_account_id", payloadAccountId)
+      .eq("provider", "razorpay")
+      .eq("status", "connected")
+      .maybeSingle();
+
+    const startupId = connection?.startup_id ? Number(connection.startup_id) : null;
 
     if (!startupId) {
       console.warn(
-        "[Razorpay Webhook] Missing notes.startup_id for payment:",
-        payment.id
+        "[Razorpay Webhook] Unmapped or NULL provider_account_id for Razorpay account:",
+        payloadAccountId
       );
-      return NextResponse.json({ received: true, skipped: "no_startup_id" });
+      return NextResponse.json({ received: true, skipped: "unmapped_provider_account" });
     }
 
-    await updateRevenueAndSnapshot(startupId, amount, "razorpay", payment.id);
+    await updateRevenueAndSnapshot(startupId, amount, "razorpay", payment.id, payloadAccountId);
 
     return NextResponse.json({ received: true });
   } catch (err: unknown) {
