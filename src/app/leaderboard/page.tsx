@@ -63,7 +63,14 @@ export default async function LeaderboardPage() {
     }
   }
 
-  // Fetch growth metrics via snapshots
+  const startupIds = (data || []).map((s) => Number(s.id)).filter(Number.isFinite);
+  const demoUserIds = new Map<number, string | null>();
+  const verificationByStartup = await computeVerificationStatesForStartups(
+    startupIds,
+    demoUserIds
+  );
+
+  // Fetch growth metrics via snapshots and attach verified revenue
   const dataWithMetrics = await Promise.all(
     (data || []).map(async (row) => {
       let metrics;
@@ -73,23 +80,30 @@ export default async function LeaderboardPage() {
         console.error("[Leaderboard] Metrics failed:", e);
         metrics = { mrr: 0, arr: 0, growthPercentage: 0 };
       }
-      return { ...row, growth: metrics?.growthPercentage || 0 };
+      const vState = verificationByStartup.get(Number(row.id));
+      const verifiedRev = vState?.hasVerificationEvidence
+        ? vState.providerBreakdown.reduce((sum, p) => sum + p.amount, 0) || Number(metrics?.mrr || 0)
+        : 0;
+      return {
+        ...row,
+        growth: metrics?.growthPercentage || 0,
+        verifiedRevenue: verifiedRev,
+        hasVerificationEvidence: vState?.hasVerificationEvidence || false,
+      };
     })
   );
 
-  // Sorting Logic: Revenue then Growth (No Trust Score)
+  // Sorting Logic: Verified Revenue first, then Verification Evidence, then Growth
   const sortedData = dataWithMetrics.sort((a, b) => {
-    const mrrA = Number(a.mrr) || 0;
-    const mrrB = Number(b.mrr) || 0;
-    if (mrrA !== mrrB) return mrrB - mrrA;
+    const revA = Number(a.verifiedRevenue) || 0;
+    const revB = Number(b.verifiedRevenue) || 0;
+    if (revA !== revB) return revB - revA;
+
+    if (a.hasVerificationEvidence !== b.hasVerificationEvidence) {
+      return a.hasVerificationEvidence ? -1 : 1;
+    }
     return (b.growth || 0) - (a.growth || 0);
   });
-
-  const startupIds = sortedData.map((s) => Number(s.id)).filter(Number.isFinite);
-  const verificationByStartup = await computeVerificationStatesForStartups(
-    startupIds,
-    new Map<number, string | null>()
-  );
 
   const startups = sortedData;
 

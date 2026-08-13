@@ -19,8 +19,6 @@ export interface OnboardingPayload {
   verification_type?: string | null;
   proof_object_id?: string | null;
   confidence_score?: number;
-  verified_revenue?: number | null;
-  verification_source?: string | null;
 }
 
 export interface ValidationErrorItem {
@@ -47,8 +45,8 @@ export interface ValidationResult {
     verification_type: string;
     proof_object_id: string | null;
     confidence_score: number;
-    verified_revenue: number | null;
-    verification_source: string | null;
+    verified_revenue: null;
+    verification_source: null;
   };
 }
 
@@ -407,8 +405,8 @@ export function validateOnboarding(rawPayload: unknown): ValidationResult {
       verification_type: verificationType,
       proof_object_id: payload.proof_object_id || null,
       confidence_score: typeof payload.confidence_score === "number" ? payload.confidence_score : 0,
-      verified_revenue: typeof payload.verified_revenue === "number" ? payload.verified_revenue : null,
-      verification_source: typeof payload.verification_source === "string" ? payload.verification_source : null,
+      verified_revenue: null,
+      verification_source: null,
     },
   };
 }

@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       `)
       .eq("startup_submissions.is_public", true)
       .eq("startup_submissions.payment_connected", true)
-      .in("event", ["stripe_sync_success", "razorpay_sync_success", "listing_created"])
+      .in("event", ["stripe_sync_success", "razorpay_sync_success"])
       .order("created_at", { ascending: false })
       .limit(50);
 

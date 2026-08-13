@@ -266,7 +266,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   const mrrBreakdown = (startup.mrr_breakdown as Record<string, number>) || {};
   let compositionBreakdown = [];
   
-  if (Object.keys(mrrBreakdown).length > 0) {
+  if (isVerified && Object.keys(mrrBreakdown).length > 0) {
     const totalMrrFromBreakdown = Object.values(mrrBreakdown).reduce((sum, val) => sum + Number(val), 0) || startup.mrr || 0;
     const providerTxCount: Record<string, number> = {};
     for (const txn of rawRevenue) {

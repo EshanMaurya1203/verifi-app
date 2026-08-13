@@ -159,27 +159,36 @@ export async function computeTrustScore(
 
   if (!startup) return { score: 0, status: "unverified", tier: "self_reported" };
 
-  // 1. Payment Gateway Connection (+30 base)
-  if (startup.payment_connected) {
+  // 1. Payment Gateway Connection (+30 base) - requires active provider_connections row
+  const { data: activeConnections } = await supabase
+    .from("provider_connections")
+    .select("id")
+    .eq("startup_id", startup_id)
+    .eq("status", "connected")
+    .limit(1);
+
+  const hasActiveProvider = activeConnections && activeConnections.length > 0;
+
+  if (hasActiveProvider) {
     breakdown.payment = 30;
     score += 30;
   }
 
-  // 2. Revenue Stability Check (Consistency-based scoring)
-  const { data: historicalSnapshots } = await supabase
-    .from("revenue_snapshots")
-    .select("total_revenue")
-    .eq("startup_id", startup_id)
-    .gt("total_revenue", 0)
-    .order("created_at", { ascending: false })
-    .limit(4); // Use the last 4 valid snapshots
+  // 2. Revenue Stability Check (Consistency-based scoring) - provider snapshots ONLY
+  let avgHistoricalRevenue = 0;
+  if (hasActiveProvider) {
+    const { data: historicalSnapshots } = await supabase
+      .from("revenue_snapshots")
+      .select("total_revenue")
+      .eq("startup_id", startup_id)
+      .gt("total_revenue", 0)
+      .order("created_at", { ascending: false })
+      .limit(4); // Use the last 4 valid snapshots
 
-  const latestMrr = Number(startup.mrr) || 0;
-  let avgHistoricalRevenue = latestMrr;
-
-  if (historicalSnapshots && historicalSnapshots.length > 0) {
-    const sum = historicalSnapshots.reduce((acc, s) => acc + Number(s.total_revenue), 0);
-    avgHistoricalRevenue = sum / historicalSnapshots.length;
+    if (historicalSnapshots && historicalSnapshots.length > 0) {
+      const sum = historicalSnapshots.reduce((acc, s) => acc + Number(s.total_revenue), 0);
+      avgHistoricalRevenue = sum / historicalSnapshots.length;
+    }
   }
 
   // Use historical average for verification level to prevent instant spikes
@@ -187,9 +196,9 @@ export async function computeTrustScore(
   let revenueBonus = 0;
   
   if (scoringMrr > 0) revenueBonus += 5;       // Tier 1: Generating Revenue
-  if (scoringMrr >= 1000) revenueBonus += 5;   // Tier 2: $1k+ MRR
-  if (scoringMrr >= 5000) revenueBonus += 5;   // Tier 3: $5k+ MRR
-  if (scoringMrr >= 10000) revenueBonus += 5;  // Tier 4: $10k+ MRR
+  if (scoringMrr >= 1000) revenueBonus += 5;   // Tier 2: $1k+ Volume
+  if (scoringMrr >= 5000) revenueBonus += 5;   // Tier 3: $5k+ Volume
+  if (scoringMrr >= 10000) revenueBonus += 5;  // Tier 4: $10k+ Volume
 
   breakdown.revenue = revenueBonus;
   score += revenueBonus;

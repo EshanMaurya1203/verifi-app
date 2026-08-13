@@ -243,19 +243,15 @@ export async function POST(req: Request) {
       canonical_proof_url = `${userId}/${fileMetadata.name}`;
     }
 
-    let verification_status = "syncing";
+    let verification_status = "pending";
 
-    if (data.verified_revenue) {
-      verification_status = "api_verified";
-    } else if (canonical_proof_url) {
+    if (canonical_proof_url) {
       verification_status = "proof_submitted";
     }
 
-    let verification_label = "Syncing";
+    let verification_label = "Pending";
 
-    if (data.verified_revenue) {
-      verification_label = "API Verified";
-    } else if (canonical_proof_url) {
+    if (canonical_proof_url) {
       verification_label = "Proof Verified";
     }
 
@@ -271,16 +267,12 @@ export async function POST(req: Request) {
 
     let trust_score = 0;
 
-    // Strong signals
-    if (data.verified_revenue) {
-      trust_score += 50;
-    }
-
+    // Proof upload signal
     if (canonical_proof_url) {
       trust_score += 20;
     }
 
-    // Weak signals
+    // Profile signals
     if (data.website) {
       trust_score += 5;
     }
@@ -309,24 +301,19 @@ export async function POST(req: Request) {
     const final_score = trust_score;
 
     const trust_breakdown = {
-      api_verified: !!data.verified_revenue,
+      api_verified: false,
       proof_uploaded: !!canonical_proof_url,
       has_website: !!data.website,
       has_socials: !!(data.twitter || data.linkedin),
       complete_profile: !!(data.startup_name && data.city),
     };
 
-    // Initialize mrr_breakdown
+    // Initialize mrr_breakdown as empty provider cache
     const mrr_breakdown: Record<string, number> = {};
-    if (data.verified_revenue && data.verification_source) {
-      mrr_breakdown[data.verification_source] = Number(data.verified_revenue);
-    }
 
     const trust_summary = [];
 
-    if (data.verified_revenue) {
-      trust_summary.push("Revenue verified via API");
-    } else if (canonical_proof_url) {
+    if (canonical_proof_url) {
       trust_summary.push("Revenue supported by proof");
     }
 
@@ -388,12 +375,12 @@ export async function POST(req: Request) {
             verification_type: validVerificationType,
             confidence: confidenceScore,
             verification_status,
-            verified_revenue: data.verified_revenue || null,
-            verification_source: data.verification_source || null,
-            last_verified_at: data.verified_revenue ? new Date().toISOString() : null,
+            verified_revenue: null,
+            verification_source: null,
+            last_verified_at: null,
             trust_score: final_score,
             mrr_breakdown: mrr_breakdown,
-            payment_connected: !!data.verified_revenue,
+            payment_connected: false,
             slug: slugCandidate,
           },
         ])
