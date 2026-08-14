@@ -62,3 +62,18 @@ export function decrypt(hash: string): string {
   const decrypted = Buffer.concat([decipher.update(Buffer.from(hash, "hex")), decipher.final()]);
   return decrypted.toString();
 }
+
+/**
+ * Compares two strings in constant time to protect against timing attacks.
+ * Safely handles strings of different lengths without throwing errors.
+ */
+export function timingSafeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(bufA, bufB);
+}

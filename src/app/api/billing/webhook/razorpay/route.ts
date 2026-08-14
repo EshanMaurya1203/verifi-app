@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
+import { timingSafeCompare } from "@/lib/encryption";
 import Razorpay from "razorpay";
 import { dispatchNotification } from "@/notifications/dispatcher";
 
@@ -202,7 +203,7 @@ export async function POST(req: Request) {
     .update(rawBody)
     .digest("hex");
 
-  if (signature !== expectedSignature) {
+  if (!timingSafeCompare(signature, expectedSignature)) {
     console.error("❌ Invalid Razorpay billing signature mismatch");
     return new Response("Invalid signature", { status: 400 });
   }
