@@ -5,6 +5,16 @@ import {
 } from "@/lib/verification-state";
 import { isDemoStartupUserId } from "@/lib/verification-data";
 
+/** Escape XML-special characters for safe interpolation into SVG/XML text nodes and attributes. */
+export function escapeXml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -77,9 +87,11 @@ export async function GET(
   }
 
   // Prevent overlap for long names: truncate rawName if > 15 chars, and dynamically adjust font size
+  // VRF-003: truncate raw string FIRST, then XML-escape the truncated result
   const rawName = startup.startup_name;
-  const startupName = rawName.length > 15 ? rawName.substring(0, 14) + "..." : rawName;
-  const nameFontSize = startupName.length > 12 ? "11" : "13";
+  const truncatedName = rawName.length > 15 ? rawName.substring(0, 14) + "..." : rawName;
+  const startupName = escapeXml(truncatedName);
+  const nameFontSize = truncatedName.length > 12 ? "11" : "13";
 
   // 4. Generate SVG
   const svg = `
@@ -105,6 +117,8 @@ export async function GET(
     headers: {
       "Content-Type": "image/svg+xml",
       "Cache-Control": "public, max-age=3600",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+      "Content-Disposition": "inline; filename=\"badge.svg\"",
     },
   });
 }
