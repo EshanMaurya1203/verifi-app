@@ -5,6 +5,7 @@ import { logger, LogEvent } from "@/lib/logger";
 import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 import { dispatchNotification } from "@/notifications/dispatcher";
 import { generateIdempotencyKey } from "@/notifications/idempotency";
+import { cancelAllUserSubscriptions } from "@/lib/billing/subscription-cancellation";
 
 export async function DELETE(request: Request) {
   try {
@@ -35,7 +36,25 @@ export async function DELETE(request: Request) {
 
     const startupName = startups?.[0]?.startup_name ?? undefined;
 
-    // ── Step 2: Delete Application Data ─────────────────────────────────
+    // ── Step 2: Cancel/Verify Provider Subscriptions (HARD BARRIER) ──────
+    // VRF-005 Invariant: Account deletion MUST NOT permanently delete the
+    // account if a provider-backed Razorpay subscription capable of future
+    // charging has not been successfully cancelled and verified terminal.
+    const cancelResult = await cancelAllUserSubscriptions(user.id, { immediate: true });
+
+    if (!cancelResult.success) {
+      logger.error("Account deletion aborted: failed to cancel provider subscriptions", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: cancelResult.error,
+      });
+      return NextResponse.json(
+        { error: "Failed to cancel active billing subscriptions. Account deletion aborted for billing safety." },
+        { status: 500 }
+      );
+    }
+
+    // ── Step 3: Delete Application Data ─────────────────────────────────
     // Verify Ownership implicitly by restricting deletion to rows owned by the user.
     // Cascading records (provider_connections, revenue, etc.) are removed by DB constraints.
     const { error: appDataError } = await supabaseServer
@@ -44,20 +63,28 @@ export async function DELETE(request: Request) {
       .eq("user_id", user.id);
 
     if (appDataError) {
-      logger.error("Failed to delete application data during account deletion", { event: LogEvent.ACCOUNT_DELETION_FAILED, userId: user.id, error: appDataError.message });
+      logger.error("Failed to delete application data during account deletion", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: appDataError.message,
+      });
       return NextResponse.json({ error: "Failed to cleanup application data" }, { status: 500 });
     }
 
-    // ── Step 3: Delete Supabase Auth User LAST ──────────────────────────
+    // ── Step 4: Delete Supabase Auth User LAST ──────────────────────────
     const { error: authError } = await supabaseServer.auth.admin.deleteUser(user.id);
     if (authError) {
-      logger.error("Failed to delete auth user", { event: LogEvent.ACCOUNT_DELETION_FAILED, userId: user.id, error: authError.message });
+      logger.error("Failed to delete auth user", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: authError.message,
+      });
       return NextResponse.json({ error: "Failed to delete account credentials" }, { status: 500 });
     }
 
     logger.info("Account deleted successfully", { event: LogEvent.ACCOUNT_DELETED, userId: user.id });
 
-    // ── Step 4: Dispatch ACCOUNT_DELETED Notification (Best-Effort) ─────
+    // ── Step 5: Dispatch ACCOUNT_DELETED Notification (Best-Effort) ─────
     // Dispatched ONLY after both app data and auth user are permanently
     // deleted. Uses pre-captured payload — no post-deletion auth queries.
     // ADR-023: notification failure must never affect the deletion response.
@@ -110,9 +137,9 @@ export async function DELETE(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    logger.error("Exception during account deletion", { event: LogEvent.ACCOUNT_DELETION_FAILED, error: err.message });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error("Exception during account deletion", { event: LogEvent.ACCOUNT_DELETION_FAILED, error: errorMsg });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
