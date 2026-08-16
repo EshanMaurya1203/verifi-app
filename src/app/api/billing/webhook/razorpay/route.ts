@@ -257,45 +257,6 @@ export async function POST(req: Request) {
     payload.event_id ||
     `${event}:${subscription.id}:${eventAt}:${subscription.status || ""}:${subscription.plan_id || ""}`;
 
-  // ─── STEP 1: ATOMIC IDEMPOTENCY CLAIM ────────────────────────────────────
-  const { error: claimError } = await supabaseServer
-    .from("processed_webhook_events")
-    .insert({
-      provider: "razorpay",
-      event_id: eventId,
-      event_type: event,
-    });
-
-  if (claimError) {
-    if (
-      claimError.code === "23505" ||
-      claimError.message?.toLowerCase().includes("duplicate") ||
-      claimError.details?.toLowerCase().includes("already exists")
-    ) {
-      return NextResponse.json({ received: true, duplicate: true });
-    }
-    console.error("[Billing Webhook] Failed to claim event:", claimError);
-    return NextResponse.json({ error: "Database error" }, { status: 500 });
-  }
-
-  const { data: existingSub, error: existingSubError } = await supabaseServer
-    .from("subscriptions")
-    .select("id, last_billing_event_at, last_billing_event_id")
-    .eq("razorpay_subscription_id", subscription.id)
-    .maybeSingle();
-
-  if (existingSubError) {
-    console.error("[Billing Webhook] Failed to read existing subscription:", existingSubError);
-    return NextResponse.json({ error: "Database error" }, { status: 500 });
-  }
-
-  if (
-    existingSub?.last_billing_event_at &&
-    new Date(eventAt).getTime() < new Date(existingSub.last_billing_event_at).getTime()
-  ) {
-    return NextResponse.json({ received: true, skipped: "stale_event" });
-  }
-
   // Determine local status mapping. 
   // Initialize to a safe, non-active default to prevent accidental early access.
   let localStatus = "trialing";

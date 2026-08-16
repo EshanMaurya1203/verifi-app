@@ -54,8 +54,70 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // ── Step 3: Delete Application Data ─────────────────────────────────
-    // Verify Ownership implicitly by restricting deletion to rows owned by the user.
+    // ── Step 3: Delete Local Subscriptions (Post-Provider Cancellation) ──
+    // Subscriptions must be deleted before anonymizing billing_audit_logs,
+    // because trg_audit_subscriptions generates an audit row on DELETE.
+    const { error: subDeleteError } = await supabaseServer
+      .from("subscriptions")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (subDeleteError) {
+      logger.error("Failed to delete local subscription records", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: subDeleteError.message,
+      });
+      return NextResponse.json({ error: "Failed to cleanup subscription data" }, { status: 500 });
+    }
+
+    // ── Step 4: Anonymize Billing Audit Logs (Preserve Financial History) ──
+    // Sets user_id to NULL to preserve financial audit trail without blocking Auth deletion.
+    const { error: auditError } = await supabaseServer
+      .from("billing_audit_logs")
+      .update({ user_id: null })
+      .eq("user_id", user.id);
+
+    if (auditError) {
+      logger.error("Failed to anonymize billing audit logs", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: auditError.message,
+      });
+      return NextResponse.json({ error: "Failed to anonymize billing audit records" }, { status: 500 });
+    }
+
+    // ── Step 5: Anonymize Subscription Events (Preserve Event History) ────
+    const { error: subEventsError } = await supabaseServer
+      .from("subscription_events")
+      .update({ user_id: null })
+      .eq("user_id", user.id);
+
+    if (subEventsError) {
+      logger.error("Failed to anonymize subscription events", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: subEventsError.message,
+      });
+      return NextResponse.json({ error: "Failed to anonymize subscription events" }, { status: 500 });
+    }
+
+    // ── Step 6: Delete Transient Onboarding Events ───────────────────────
+    const { error: onboardingError } = await supabaseServer
+      .from("onboarding_events")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (onboardingError) {
+      logger.error("Failed to cleanup onboarding events", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        error: onboardingError.message,
+      });
+      return NextResponse.json({ error: "Failed to cleanup onboarding data" }, { status: 500 });
+    }
+
+    // ── Step 7: Delete Application Data (Startup & Cascades) ─────────────
     // Cascading records (provider_connections, revenue, etc.) are removed by DB constraints.
     const { error: appDataError } = await supabaseServer
       .from("startup_submissions")
@@ -71,7 +133,55 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Failed to cleanup application data" }, { status: 500 });
     }
 
-    // ── Step 4: Delete Supabase Auth User LAST ──────────────────────────
+    // ── Step 8: Pre-Auth-Deletion Invariant Verification ─────────────────
+    // Confirm no blocking user references remain before invoking Auth API
+    const [subCheck, auditCheck, eventCheck, onbCheck, startupCheck] = await Promise.all([
+      supabaseServer.from("subscriptions").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabaseServer.from("billing_audit_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabaseServer.from("subscription_events").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabaseServer.from("onboarding_events").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabaseServer.from("startup_submissions").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    ]);
+
+    const remainingCounts = {
+      subscriptions: subCheck.count ?? 0,
+      billing_audit_logs: auditCheck.count ?? 0,
+      subscription_events: eventCheck.count ?? 0,
+      onboarding_events: onbCheck.count ?? 0,
+      startup_submissions: startupCheck.count ?? 0,
+    };
+
+    if (
+      subCheck.error ||
+      auditCheck.error ||
+      eventCheck.error ||
+      onbCheck.error ||
+      startupCheck.error ||
+      remainingCounts.subscriptions > 0 ||
+      remainingCounts.billing_audit_logs > 0 ||
+      remainingCounts.subscription_events > 0 ||
+      remainingCounts.onboarding_events > 0 ||
+      remainingCounts.startup_submissions > 0
+    ) {
+      logger.error("Pre-auth-deletion verification failed: residual references remain", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        counts: remainingCounts,
+        errors: {
+          sub: subCheck.error?.message,
+          audit: auditCheck.error?.message,
+          event: eventCheck.error?.message,
+          onb: onbCheck.error?.message,
+          startup: startupCheck.error?.message,
+        },
+      });
+      return NextResponse.json(
+        { error: "Account cleanup verification failed. Account deletion aborted for referential safety." },
+        { status: 500 }
+      );
+    }
+
+    // ── Step 9: Delete Supabase Auth User LAST ───────────────────────────
     const { error: authError } = await supabaseServer.auth.admin.deleteUser(user.id);
     if (authError) {
       logger.error("Failed to delete auth user", {
@@ -84,7 +194,7 @@ export async function DELETE(request: Request) {
 
     logger.info("Account deleted successfully", { event: LogEvent.ACCOUNT_DELETED, userId: user.id });
 
-    // ── Step 5: Dispatch ACCOUNT_DELETED Notification (Best-Effort) ─────
+    // ── Step 10: Dispatch ACCOUNT_DELETED Notification (Best-Effort) ────
     // Dispatched ONLY after both app data and auth user are permanently
     // deleted. Uses pre-captured payload — no post-deletion auth queries.
     // ADR-023: notification failure must never affect the deletion response.
