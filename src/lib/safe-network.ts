@@ -9,6 +9,7 @@ export interface SafeNetworkResponse<T> {
   error: Error | null;
   ok: boolean;
   status?: number;
+  count?: number | null;
 }
 
 interface SafeFetchOptions extends RequestInit {
@@ -200,7 +201,7 @@ export async function safeSupabaseQuery<T>(
   queryPromise: any
 ): Promise<SafeNetworkResponse<T>> {
   try {
-    const { data, error } = await queryPromise;
+    const { data, error, count } = await queryPromise;
 
     if (error) {
       const dbError = new Error(error.message || JSON.stringify(error));
@@ -211,6 +212,7 @@ export async function safeSupabaseQuery<T>(
         data: null,
         error: dbError,
         ok: false,
+        count: null,
       };
     }
 
@@ -218,6 +220,7 @@ export async function safeSupabaseQuery<T>(
       data,
       error: null,
       ok: true,
+      count: typeof count === "number" ? count : null,
     };
   } catch (error: any) {
     if (process.env.NODE_ENV === "development") {
@@ -227,6 +230,7 @@ export async function safeSupabaseQuery<T>(
       data: null,
       error: error instanceof Error ? error : new Error(String(error)),
       ok: false,
+      count: null,
     };
   }
 }

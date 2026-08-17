@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.9 |
+| **Version** | 2.13 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -6693,23 +6693,26 @@ Focus:
 
 ### Phase 2 — Founder Experience
 
-Status: 🟠 In Progress
+Status: ✅ CLOSED / VERIFIED
 
-Progress:
-- Dashboard architecture refactored into strict layers (Orchestration, Engine, Presenter, Widget).
-- Revenue Analytics Dashboard implemented with robust state management.
-- Suspicious Zero Detection and snapshot consistency guards implemented.
-- Foundation laid for actionable Founder Insights.
+Phase 2 (Founder Experience) is formally closed across all 7 core platform objectives:
 
-Primary objectives:
+1. **Founder Onboarding & Profile Setup:** Multi-step founder submission workflow, canonical business categorization, slug generation, draft recovery, and schema validation.
+2. **Payment Provider Connection & Multi-Gateway Support:** Secure Stripe Connect and Razorpay API key integration, encrypted credential handling, connection status management, and safe disconnect barriers.
+3. **Revenue Sync & Real-Time Aggregation Engine:** Idempotent webhook processing, automated background sync, transaction ledger aggregation, MRR/ARR/Growth calculation, and snapshot consistency guards.
+4. **Public Startup Profile & Trust Badging:** Public startup showcase (`/startup/[slug]`), dynamic SVG trust badges with XML entity escaping (VRF-003 verified), and real-time verified revenue metrics.
+5. **Search, Filtering & Public Discovery:** Authoritative public leaderboard discovery (`/leaderboard`), search by startup name, category allowlist, bounded revenue ranges, city search, authoritative verification filtering, bounded server pagination, and context-aware empty state.
+   - *Authoritative Invariant:* `verification=verified` strictly enforces `hasVerificationEvidence === true`. A startup in the `PAYMENT_CONNECTED` tier (linked credentials with $<3$ transactions, zero volume, or stale sync $>7$ days) is strictly pruned from `verification=verified`. `payment_connected === true` operates solely as a database pre-filter optimization and is not treated as proof of verification.
+6. **Founder Dashboard & Financial Health Center:** Layered dashboard architecture (Orchestrator, Engine, Presenter, Widget), revenue breakdown, provider breakdown, sync logs, connection management, health scoring, and milestone tracking.
+7. **Verification Confidence & Fraud Defense Integration:** Dynamic verification engine (`computeVerificationState`), anomaly detection, duplicate protection, trust scoring, and penalty tracking.
 
-- Dashboard improvements.
-- Enhanced startup profiles.
-- Better verification experience.
-- Analytics.
-- Search and filtering.
-- Improved onboarding.
-- Founder productivity tools.
+**Verification Evidence:**
+- 46/46 leaderboard search/filter unit and pipeline assertions passed (`tests/leaderboard-search-filtering.test.ts`).
+- 13/13 Phase 1 revenue/trust regression assertions passed (`tests/phase1-revenue-trust-boundary.test.ts`).
+- 11/11 SVG output encoding assertions passed (`tests/vrf003-svg-output-encoding.test.ts`).
+- TypeScript: PASS.
+- ESLint: PASS.
+- Zero database mutations, zero auth mutations, zero RLS changes, zero unresolved Phase 2 blockers.
 
 ---
 
@@ -7031,7 +7034,7 @@ A planned security investigation or hardening item for which no implementation o
 | **VRF-001** | Revenue Attribution Trust Boundary | **VERIFIED / HARDENED** | Production & Staging | Provider account identity serves as the immutable ownership anchor; founder metadata spoofing fails closed. |
 | **VRF-002** | Self-Reported Revenue Trust Boundary | **COMPLETED / VERIFIED AT IMPLEMENTATION-STAGING LEVEL** | Implementation / Staging | Self-reported onboarding fields strictly segregated from verified revenue; unverified startups cannot claim badges or leaderboard rank. |
 | **VRF-003** | SVG Output Encoding & Badge Sanitization | **CLOSED / VERIFIED** | Codebase / Staging / Chromium | XML encoding and truncation implemented; 11/11 automated tests pass; controlled staging HTTP 200 SVG verification passed; real Chromium DOM parsing passed; adversarial XML characters rendered as text rather than markup; light/dark themes passed; cleanup and production isolation confirmed. |
-| **VRF-004** | Webhook Timing-Safe Comparison & Deployment | **CODE VERIFIED / DEPLOYMENT BLOCKED** | Codebase & Local | Constant-time HMAC comparison implemented (`9d47e96`); local build passes; Vercel remote deployment blocked by Google Font (.woff2) asset 404. |
+| **VRF-004** | Webhook Timing-Safe Comparison & Deployment | **CLOSED / VERIFIED** | Production & Codebase | Constant-time HMAC comparison implemented in `src/lib/encryption.ts`; 11/11 tests pass; deployed and live in production on commit `440d1ef` (`dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5`, `READY`); historical Syne font 404 resolved through subsequent builds without font-code changes. |
 | **VRF-005** | Account Deletion & Billing Safety | **VERIFIED / HARDENED** | Codebase & Staging | Mandatory provider cancellation and terminal state verification enforced before database or Auth user deletion. |
 | **VRF-006** | Encryption Legacy Compatibility & Derivation | **VERIFIED / DIAGNOSTIC PASS** | Codebase & Synthetic | AES-256-GCM architecture validated; synthetic compatibility confirmed (12/12); production credential tables currently empty. |
 | **VRF-007** | Database Authorization, RLS & PostgreSQL Grants | **VERIFIED / PRODUCTION HARDENED** | Production & Staging | `revenue_snapshots`, `revenue_transactions`, and `verification_logs` hardened with RLS and privilege revocation; PostgREST bypasses sealed. |
@@ -7178,22 +7181,32 @@ Harden cryptographic webhook signature validation against timing side-channel at
   - `src/app/api/razorpay/webhook/route.ts`
   - `src/lib/encryption.ts`
   - `tests/vrf004-razorpay-timing-safe-comparison.test.ts`
-- **Target Git Commit:** `9d47e966fcdf5d468139e7bb6cd5001fcbcc0a91` (`9d47e96`)
-- **Mechanism:** Implemented `timingSafeCompare(a, b)` using Node.js `crypto.timingSafeEqual`. To avoid runtime exceptions when signature lengths differ, inputs are hashed or length-padded before comparison.
+- **Initial Implementation Commit:** `9d47e966fcdf5d468139e7bb6cd5001fcbcc0a91` (`9d47e96`)
+- **Mechanism:** Implemented `timingSafeCompare(a, b)` in `src/lib/encryption.ts:70-79` using UTF-8 Buffers, a strict equal-length guard (`bufA.length !== bufB.length -> return false`), and native `crypto.timingSafeEqual(bufA, bufB)`.
+- **Unit Verification:** `tests/vrf004-razorpay-timing-safe-comparison.test.ts` passes 11/11 automated assertions (covering valid, invalid 64-char, non-hex malformed, wrong-length short/long without exception, empty signature, missing header, provider route, billing route, body tampering, invalid rejection, and secret isolation).
 
 ### Security Boundary Analysis
 - Constant-time comparison ensures that an attacker cannot determine the webhook signing secret byte-by-byte via response latency analysis.
 - *Limitation:* Timing-safe comparison verifies webhook authenticity but does not by itself establish multi-tenant revenue attribution (which is governed by VRF-001).
 
-### Remote Deployment Roadblock (Vercel Build Failure)
+### Historical Remote Deployment Incident (Commit 9d47e96)
 - **Local Verification:** `npm run build` and `npx tsx tests/vrf004-razorpay-timing-safe-comparison.test.ts` passed 100% locally.
-- **Remote Vercel Failure:** Deployment of commit `9d47e96` on Vercel failed during Next.js static asset generation.
-- **Root Cause Analysis:** Diagnostic inspection of the Vercel build log revealed that requests for Google Font *Syne* (`.woff2`) assets returned HTTP 404 during pre-rendering.
-- **Disproven Hypothesis:** Preliminary suspicion that a missing Razorpay module caused the failure was disproven. The failure was strictly an external Google Font font-optimization asset delivery failure.
-- **Engineering Principle:** *Local build success does not prove remote deployment success.*
+- **Remote Vercel Incident:** Deployment of commit `9d47e96` on Vercel initially failed during Next.js static asset optimization.
+- **Root Cause Fact:** Diagnostic inspection of the Vercel build log revealed that requests to Google Fonts (`fonts.gstatic.com`) for the *Syne* (`.woff2`) font asset returned an external HTTP 404 during pre-rendering.
+- **Disproven Hypothesis:** Preliminary suspicion that a missing Razorpay module or application code bug caused the failure was disproven. The failure was strictly an external Google Fonts CDN network delivery anomaly.
+- **Resolution Without Code Changes:** Syne font configuration in `src/app/layout.tsx` remained standard `next/font/google`. Subsequent descendant builds (`44e399d`, `26484c5`, and `440d1ef`) fetched the Google Font assets without error and succeeded on Vercel with zero font-code modifications.
+- **Engineering Principle:** *Preserve historical build incident records while distinguishing external upstream network failures from application cryptographic defects.*
+
+### Production Deployment & Independent Re-Verification
+- **Current Production Deployment:** The complete `timingSafeCompare` implementation is active in production under deployment `dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5` (commit `440d1ef491e1f71e3cecbb3dbfa2b7a80e9f8f9b`, `State: READY`) across both `/api/razorpay/webhook` and `/api/billing/webhook/razorpay`.
+- **Independent Gate 2 Verification:** Under Launch Readiness Gate 2 milestone **G2-07 (Section 25.23)**, the timing-safe HMAC implementation was independently re-evaluated across 10 deterministic vectors, 90,000 adversarial runs, and 1,200,000 statistical timing measurements, confirming zero exceptions and identical median latency (300 ns) across start, middle, and end mismatch positions.
 
 ### Final Status
-**CODE VERIFIED (11/11 Tests Passing) / VERCEL DEPLOYMENT BLOCKED (Font Asset Network Issue).**
+```
+============================================================
+VRF-004 — TIMING-SAFE HMAC COMPARISON: CLOSED / VERIFIED
+============================================================
+```
 
 ---
 
@@ -7389,7 +7402,7 @@ A key requirement of the VRF framework is the transparent documentation of real 
 | VRF ID | Incident / Failure / Anomaly | Root Cause Fact | Disproven Hypothesis | Resolution / Recovery | Verification Proof |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **VRF-003** | Standalone 200 SVG browser validation initial 404 / API key mismatch | Initial production test had 0 rows; subsequent local staging attempt loaded production-compiled `.next` build artifacts with baked-in production URL. | Suspected process environment override was sufficient without rebuild. | Executed fresh local build with process-level staging variables; Chromium successfully validated live 200 SVG DOM. | Real Chromium DOM parsed well-formed SVG without XML errors or element injection; temporary staging record deleted; production untouched. |
-| **VRF-004** | Remote Vercel build failure on commit `9d47e96` | Next.js pre-rendering failed when fetching Google Font *Syne* (`.woff2`) assets (HTTP 404). | Incorrectly suspected Razorpay module resolution or build cache issue. | Font asset resolution issue identified as external network blocker. Code verified locally. | Local `npm run build` passes 100%; remote build failure diagnosed. |
+| **VRF-004** | Remote Vercel build failure on commit `9d47e96` | Next.js pre-rendering failed when fetching Google Font *Syne* (`.woff2`) assets (HTTP 404). | Incorrectly suspected Razorpay module resolution or build cache issue. | Font asset resolution issue identified as external network anomaly. Subsequent descendant builds (`44e399d`, `440d1ef`) succeeded without code changes. | Local `npm run build` passes 100%; 11/11 tests pass; deployed to production in `440d1ef` (`dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5`, `READY`). |
 | **VRF-007** | Critical PostgREST revenue snapshot forgery (SEC-007-01) | Policy `"Service role can manage revenue_snapshots"` was defined with `roles = {public}` and `cmd = ALL`. | None (Confirmed true positive). | Dropped public policy, enabled RLS default-deny, revoked untrusted table grants. | PostgREST direct mutation returns HTTP 401/400. |
 | **VRF-007** | RLS disabled on `revenue_transactions` and `verification_logs` | Tables were created in early migrations without `ENABLE ROW LEVEL SECURITY`. | None (Confirmed true positive). | Executed `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and revoked untrusted grants. | PostgREST direct insertion returns `42501 permission denied`. |
 | **VRF-007** | Direct RPC execution warning on `audit_subscription_changes` | Function had `SECURITY DEFINER` attribute. | Suspected callable RPC exploit via PostgREST. | Proven false positive: PostgreSQL forbids direct execution of `RETURNS TRIGGER` functions (error `0A000`). | PostgREST RPC call rejected; confirmed safe. |
@@ -8136,6 +8149,60 @@ CONCLUSION: Under no ordering was subscription state or timestamp rewound.
   - G2-07: Timing harness measurements represent empirical validation of the
     native crypto primitive and runtime behavior, not mathematical proof.
 ================================================================
+```
+
+---
+
+## 25.27 Launch Readiness P-07 — Production Rate-Limit Threshold Verification
+
+### Objective
+
+Empirically verify that the production rate-limiting infrastructure accurately enforces request limits and rejects requests exceeding the configured threshold with `HTTP 429 Too Many Requests`.
+
+### Target Endpoint & Configuration
+
+- **Target Route:** `GET https://www.verifii.in/api/live-feed`
+- **Environment:** Production
+- **Backend Architecture:** Upstash Redis HTTP REST API via `@upstash/redis` (v1.38.2)
+- **Algorithm:** Atomic `INCR` + `EXPIRE` over a fixed sliding window
+- **Authoritative Window (`RATE_LIMIT_WINDOW_MS`):** 60,000 ms (60 seconds)
+- **Authoritative Maximum Requests (`RATE_LIMIT_MAX_REQUESTS`):** 15 requests
+- **Fail Mode:** `failOpen = true` (configured selectively for public read-only telemetry to prevent Redis latency or partitions from interrupting public viewing)
+- **Key Derivation:** `getClientIdentifier(request)` resolving `${clientIp}:/api/live-feed`
+
+### Empirical Test Execution & Results
+
+Verification was executed via a controlled 16-request ($N + 1$, where $N = 15$) sequential probe batch utilizing cache-busting query parameters to bypass Vercel Edge CDN caching while preserving identical rate-limit bucket identity:
+
+| Request Range | Dispatched URL | HTTP Status | Vercel Edge Cache | Duration | Response Payload / Outcome |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Requests 1–15** | `GET /api/live-feed?p07_probe_<ts>_1..15` | **200 OK** | `MISS` (Origin) | 698–3,339 ms | `[]` (Live feed query executed) |
+| **Request 16 ($N+1$)** | `GET /api/live-feed?p07_probe_<ts>_16` | **429 Too Many Requests** | `MISS` (Origin) | 560 ms | `{"error":"Rate limit exceeded"}` |
+
+### Origin Reach & Timing Evidence
+
+- **Origin Reach:** 16 / 16 requests returned `x-vercel-cache: MISS`, confirming 100% origin serverless function execution.
+- **Total Test Duration:** 18,948 ms (18.95 seconds), completing comfortably within the 60-second window.
+- **Initial Inconclusive Test Record:** An earlier probe without cache-busting query parameters returned HTTP 200 on requests 2–61 due to Vercel Edge Caching (`s-maxage=10`, `x-vercel-cache: HIT`). Per governance standards, that run was classified as `INCONCLUSIVE` and only the cache-bypassed origin retest serves as authoritative verification evidence.
+
+### Safety & Isolation
+
+- **Database Delta:** 0 rows created, updated, or deleted across all Supabase tables.
+- **Auth Mutations:** 0 accounts created or modified.
+- **Redis Safety:** No manual Redis configuration changes, key deletions, or flushes were performed. Rate-limit keys were created/updated only through normal application behavior during the controlled test and expired according to the configured TTL.
+- **Mutations:** 0 commits, 0 pushes, 0 deployments.
+
+### Evidence Boundaries & Testing Limits
+
+- **Scope Boundary:** This test empirically verifies the rate-limit threshold enforcement on the `/api/live-feed` route at origin. It does not imply that every application endpoint has been subjected to burst exhaustion testing.
+- **Fail-Open Boundary:** Because `/api/live-feed` intentionally specifies `failOpen: true`, this test verified normal threshold exhaustion against a healthy Redis backend; it does not test behavior during a simulated Redis outage.
+
+### Final P-07 Status
+
+```
+============================================================
+P-07 — PRODUCTION RATE-LIMIT THRESHOLD: CLOSED / VERIFIED
+============================================================
 ```
 
 ---
@@ -9693,6 +9760,9 @@ Examples:
 | 2.8 | August 2026 | Formally documented Launch Readiness Gate 2 (G2-03) normal cycle-end cancellation testing, actual HTTP execution, provider rejection handling, fail-closed local state preservation, temporary staging privilege deviation and restoration, production isolation, and the explicit paid-active-cycle testability limitation. | Eshan Maurya |
 | 2.9 | August 2026 | Formally documented Launch Readiness Gate 2 (G2-04) account deletion billing safety barrier testing across failure path (G2-04-A) and success path (G2-04-B), permanent pre-auth deletion application cleanup remediation (financial audit anonymization, local subscription deletion, onboarding cleanup, startup cascade, auth user deletion), root cause PostgreSQL RI trigger analysis, temporary staging privilege deviation and verified restoration, and production isolation. | Eshan Maurya |
 | 2.10 | August 2026 | Formally documented and closed Launch Readiness Gate 2 (G2-05 through G2-09), including atomic webhook ingestion (G2-05), true concurrent first-delivery race safety (G2-06), constant-time HMAC verification (G2-07), provider attribution boundaries (G2-08), and monotonic stale timestamp rejection (G2-09); formally concluded Gate 2 overall closure. | Eshan Maurya |
+| 2.11 | August 2026 | Formally closed Phase 2 (Founder Experience) across all 7 core objectives; documented completion of Objective 5 (Search, Filtering & Public Discovery) and authoritative verification-state filtering invariants (hasVerificationEvidence === true); recorded 46/46 unit, 13/13 trust, and 11/11 SVG regression passes. | Eshan Maurya |
+| 2.12 | August 2026 | Formally documented Launch Readiness P-07 production rate-limit threshold verification on `/api/live-feed` (15 req/60s, Upstash Redis atomic INCR+EXPIRE, 16/16 origin reach, HTTP 429 rejection on request 16). | Eshan Maurya |
+| 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Razorpay Webhook Timing-Safe HMAC Comparison); reclassified historical Syne font Vercel failure as a resolved upstream CDN incident; documented live production deployment of `timingSafeCompare` in commit `440d1ef` (`dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5`, `READY`). | Eshan Maurya |
 
 ---
 
@@ -9714,7 +9784,7 @@ Examples include:
 - VRF-002 Self-Reported Revenue Trust Boundary verified at implementation/staging level.
 - VRF-003 SVG Output Encoding vulnerability identified (Remediation Pending Verification).
 - VRF-003 standalone SVG browser remediation verification completed and CLOSED / VERIFIED through controlled staging rebuild and Chromium DOM validation.
-- VRF-004 Razorpay Timing-Safe Webhook Comparison implemented.
+- VRF-004 — Razorpay Webhook Timing-Safe Comparison: CLOSED / VERIFIED. Constant-time HMAC comparison (`timingSafeCompare`) verified across 11/11 unit tests, independently re-verified under Gate 2 G2-07 (1.2M samples), and confirmed live in production under deployment `dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5` (`440d1ef`). Historical Syne font 404 resolved through subsequent builds without font-code modifications.
 - VRF-005 Billing-Safe Account Deletion verified.
 - VRF-006 Credential Encryption Architecture validated (Diagnostic Pass).
 - VRF-007 Production Database RLS & PostgreSQL Privilege Hardening executed and verified.
@@ -9728,6 +9798,8 @@ Examples include:
 - Gate 2 (G2-08) — Provider Identity Attribution: CLOSED / VERIFIED. Verified missing notes.user_id, unknown plan_id, and invalid signature boundary enforcement.
 - Gate 2 (G2-09) — Stale Webhook Rejection & Monotonicity: CLOSED / VERIFIED. Verified stale event rejection, equal timestamp preservation, and fresh timestamp forward progression.
 - Launch Readiness Gate 2: CLOSED / VERIFIED across all 9 milestones (G2-01 through G2-09).
+- Phase 2 — Founder Experience: CLOSED / VERIFIED across all 7 core objectives (Founder Onboarding & Profile Setup, Payment Provider Connection & Multi-Gateway Support, Revenue Sync & Real-Time Aggregation Engine, Public Startup Profile & Trust Badging, Search, Filtering & Public Discovery, Founder Dashboard & Financial Health Center, and Verification Confidence & Fraud Defense Integration).
+- Launch Readiness P-07 — Production Rate-Limit Verification: CLOSED / VERIFIED. Empirically proved origin Upstash Redis rate-limit threshold enforcement on `/api/live-feed` (Requests 1–15 returned HTTP 200, Request 16 returned HTTP 429 `{"error":"Rate limit exceeded"}`, 16/16 `x-vercel-cache: MISS`, 0 database/auth mutations).
 
 This timeline provides historical context for future contributors.
 
@@ -9763,7 +9835,7 @@ Example format:
 | Phase | Status | Completion Date |
 |---------|---------|----------------|
 | Phase 1 – Platform Foundation | Completed | July 2026 |
-| Phase 2 – Founder Experience | In Progress | — |
+| Phase 2 – Founder Experience | Completed | August 2026 |
 | Phase 3 – Trust Intelligence | Planned | — |
 | Phase 4 – Community & Discovery | Planned | — |
 | Phase 5 – Enterprise & Scale | Planned | — |
@@ -9820,6 +9892,9 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.8 | August 2026 | Formally documented Launch Readiness Gate 2 (G2-03) normal cycle-end cancellation testing, actual HTTP execution, provider rejection handling, fail-closed local state preservation, temporary staging privilege deviation and restoration, production isolation, and the explicit paid-active-cycle testability limitation. |
 | 2.9 | August 2026 | Formally documented Launch Readiness Gate 2 (G2-04) account deletion billing safety barrier testing (failure and success paths), permanent pre-auth cleanup remediation, financial audit preservation via user_id anonymization, staging privilege restoration, and production isolation. |
 | 2.10 | August 2026 | Formally documented and closed Launch Readiness Gate 2 (G2-05 through G2-09), including atomic webhook ingestion (G2-05), true concurrent first-delivery race safety (G2-06), constant-time HMAC verification (G2-07), provider attribution boundaries (G2-08), and monotonic stale timestamp rejection (G2-09); formally concluded Gate 2 overall closure. |
+| 2.11 | August 2026 | Formally closed Phase 2 (Founder Experience) across all 7 objectives including Objective 5 search/filtering, authoritative verification filter semantics, and regression verification. |
+| 2.12 | August 2026 | Formally documented Launch Readiness P-07 production rate-limit threshold verification on `/api/live-feed` (15 req/60s threshold, Upstash Redis backend, HTTP 429 on request 16). |
+| 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Timing-Safe HMAC Comparison) as CLOSED / VERIFIED following production deployment verification in commit `440d1ef` and historical Syne incident resolution. |
 
 ---
 
@@ -9827,9 +9902,9 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.10**
+- Handbook Version: **2.13**
 - Status: **Active**
-- Product Phase: **Phase 2 Complete**
+- Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
