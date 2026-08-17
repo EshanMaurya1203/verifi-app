@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.13 |
+| **Version** | 2.14 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -6693,7 +6693,7 @@ Focus:
 
 ### Phase 2 — Founder Experience
 
-Status: ✅ CLOSED / VERIFIED
+Status: ✅ CLOSED / VERIFIED / PRODUCTION SMOKE TEST PASSED
 
 Phase 2 (Founder Experience) is formally closed across all 7 core platform objectives:
 
@@ -6703,6 +6703,9 @@ Phase 2 (Founder Experience) is formally closed across all 7 core platform objec
 4. **Public Startup Profile & Trust Badging:** Public startup showcase (`/startup/[slug]`), dynamic SVG trust badges with XML entity escaping (VRF-003 verified), and real-time verified revenue metrics.
 5. **Search, Filtering & Public Discovery:** Authoritative public leaderboard discovery (`/leaderboard`), search by startup name, category allowlist, bounded revenue ranges, city search, authoritative verification filtering, bounded server pagination, and context-aware empty state.
    - *Authoritative Invariant:* `verification=verified` strictly enforces `hasVerificationEvidence === true`. A startup in the `PAYMENT_CONNECTED` tier (linked credentials with $<3$ transactions, zero volume, or stale sync $>7$ days) is strictly pruned from `verification=verified`. `payment_connected === true` operates solely as a database pre-filter optimization and is not treated as proof of verification.
+   - *Production Deployment & Smoke Test:* Deployed to production under commit `b4fcc81d81fcfc5a7e20586dceaee055f0ce2ec3` (`feat: complete Phase 2 founder discovery`). A 17-probe read-only production smoke test verified 100% HTTP 200 availability, UI rendering (`LeaderboardFilters`, `LeaderboardEmptyState`, `LeaderboardPagination`), query parameter binding, category allowlist validation, revenue range parsing, city filtering, empty-state switching, pagination bounds clamping (`page=101` $\to$ `100`), and wildcard injection sanitization.
+   - *Public Visibility Boundary:* 0 private startup records leaked across all 17 production probes (`is_public = true` strictly enforced).
+   - *Dataset Limitation Qualification:* Verification filter pipeline semantics were structurally verified against the deployed source and automated tests; positive dataset-dependent behavior remains unexercised in production because the current public catalog contains zero startups (1 private startup, 0 public startups, 0 provider connections, 0 transactions).
 6. **Founder Dashboard & Financial Health Center:** Layered dashboard architecture (Orchestrator, Engine, Presenter, Widget), revenue breakdown, provider breakdown, sync logs, connection management, health scoring, and milestone tracking.
 7. **Verification Confidence & Fraud Defense Integration:** Dynamic verification engine (`computeVerificationState`), anomaly detection, duplicate protection, trust scoring, and penalty tracking.
 
@@ -6710,6 +6713,7 @@ Phase 2 (Founder Experience) is formally closed across all 7 core platform objec
 - 46/46 leaderboard search/filter unit and pipeline assertions passed (`tests/leaderboard-search-filtering.test.ts`).
 - 13/13 Phase 1 revenue/trust regression assertions passed (`tests/phase1-revenue-trust-boundary.test.ts`).
 - 11/11 SVG output encoding assertions passed (`tests/vrf003-svg-output-encoding.test.ts`).
+- 17/17 read-only production smoke probes passed with HTTP 200 on commit `b4fcc81`.
 - TypeScript: PASS.
 - ESLint: PASS.
 - Zero database mutations, zero auth mutations, zero RLS changes, zero unresolved Phase 2 blockers.
@@ -8203,6 +8207,60 @@ Verification was executed via a controlled 16-request ($N + 1$, where $N = 15$) 
 ============================================================
 P-07 — PRODUCTION RATE-LIMIT THRESHOLD: CLOSED / VERIFIED
 ============================================================
+```
+
+---
+
+## 25.28 Phase 2 Objective 5 — Production Verification & Public Discovery Smoke Test
+
+### Objective
+
+Perform end-to-end production verification of Phase 2 Objective 5 (Search, Filtering & Public Discovery) following the deployment of commit `b4fcc81d81fcfc5a7e20586dceaee055f0ce2ec3` (`feat: complete Phase 2 founder discovery`).
+
+### Target & Deployment Identity
+
+- **Production URL:** `https://www.verifii.in/leaderboard`
+- **Deployment Commit:** `b4fcc81d81fcfc5a7e20586dceaee055f0ce2ec3` (`b4fcc81`)
+- **Hosting Environment:** Vercel Global Edge (`server: Vercel`, `x-powered-by: Next.js`)
+- **Mode:** Strict Read-Only Smoke Test (17 sequential HTTP GET requests)
+
+### Production Smoke Test Matrix & Results
+
+| Probe ID | Probed Path / Query | HTTP Status | Vercel Edge Cache | Response Size | Finding / Rendered Behavior | Classification |
+| :--- | :--- | :---: | :---: | :---: | :--- | :--- |
+| **TEST-01** | `/leaderboard` | **200 OK** | `MISS` (Origin) | 32,903 B | Base leaderboard rendered; methodology panel and filter controls active; `0 Companies` pool counter. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-02** | `/leaderboard?q=xyznonexistent` | **200 OK** | `MISS` (Origin) | 33,974 B | Search input populated; clear search button rendered; `Reset (1)` button active; `No Matching Startups` empty state rendered. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-02B**| `/leaderboard?search=xyznonexistent` | **200 OK** | `MISS` (Origin) | 32,987 B | Non-standard parameter ignored; safe baseline empty state rendered. | **PASS — STRUCTURALLY VERIFIED** |
+| **TEST-03** | `/leaderboard?category=SaaS%2FSoftware` | **200 OK** | `MISS` (Origin) | 33,566 B | Canonical category selected in dropdown; `Reset (1)` active; 0 5xx errors. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-04** | `/leaderboard?category=INVALID_CATEGORY_PROBE` | **200 OK** | `MISS` (Origin) | 33,017 B | Unlisted category safely dropped; fell back to `All Categories`. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-05** | `/leaderboard?revenue=under-1k` | **200 OK** | `MISS` (Origin) | 33,607 B | Range `< ₹1,000` selected in dropdown; `Reset (1)` active. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-05B**| `/leaderboard?revenue=0-1000` | **200 OK** | `MISS` (Origin) | 32,966 B | Unlisted key dropped; fell back to `All Revenue Ranges`. | **PASS — STRUCTURALLY VERIFIED** |
+| **TEST-06** | `/leaderboard?city=Lucknow` | **200 OK** | `MISS` (Origin) | 33,948 B | City input populated with `Lucknow`; `Reset (1)` active; empty state rendered. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-07** | `/leaderboard?verification=verified` | **200 OK** | `MISS` (Origin) | 33,551 B | `Payment Verified` selected; `Reset (1)` active; 0 private records leaked. | **PASS — STRUCTURALLY VERIFIED** |
+| **TEST-08** | `/leaderboard?verification=self_reported` | **200 OK** | `MISS` (Origin) | 33,571 B | `Self-Reported` selected; `Reset (1)` active; 0 private records leaked. | **PASS — STRUCTURALLY VERIFIED** |
+| **TEST-09** | `/leaderboard?verification=all` | **200 OK** | `MISS` (Origin) | 32,972 B | Baseline `All Statuses` selected; initial empty state rendered. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-10A**| `/leaderboard?page=1` | **200 OK** | `MISS` (Origin) | 32,942 B | Offset `0..19` query executed cleanly. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-10B**| `/leaderboard?page=100` | **200 OK** | `MISS` (Origin) | 33,101 B | Offset `1980..1999` query executed cleanly; bounded execution. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-10C**| `/leaderboard?page=101` | **200 OK** | `MISS` (Origin) | 33,101 B | Out-of-bounds page clamped to `MAX_PAGE_NUMBER = 100`. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-11** | `/leaderboard?q=xyznonexistent&category=SaaS%2FSoftware&verification=verified` | **200 OK** | `MISS` (Origin) | 34,183 B | Multi-filter composition active; `Reset (3)` rendered; `No Matching Startups` empty state rendered. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-12A**| `/leaderboard?q=%25%25%5F%5F` | **200 OK** | `MISS` (Origin) | 33,932 B | Wildcard characters `%` and `_` sanitized to spaces, preventing SQL wildcard injection. | **PASS — EMPIRICALLY VERIFIED** |
+| **TEST-12B**| `/leaderboard?q=A` $\times 150$ | **200 OK** | `MISS` (Origin) | 34,554 B | Overlong query truncated to `MAX_QUERY_LENGTH = 100` chars; 0 buffer or memory errors. | **PASS — EMPIRICALLY VERIFIED** |
+
+### Evidence Boundaries & Catalog Constraint
+
+- **Production Catalog State:** At the time of this smoke test, the production catalog contained 1 private startup (`is_public = false`), 0 public startups (`is_public = true`), 0 provider connections, and 0 transactions.
+- **Empirical vs Structural Distinction:**
+  - *Empirically Verified:* HTTP routing, 200 availability, UI component rendering (`LeaderboardFilters`, `LeaderboardEmptyState`, `LeaderboardPagination`), form binding, category allowlisting, range mapping, city filtering, empty-state switching, pagination clamping, input sanitization, and the root public visibility boundary.
+  - *Structurally Verified:* Verification filter pipeline semantics (`verification=verified` enforcing `hasVerificationEvidence === true` and `verification=self_reported` enforcing `!hasVerificationEvidence`).
+- **Authoritative Limitation Statement:** *Verification filter pipeline semantics were structurally verified against the deployed source and automated tests; positive dataset-dependent behavior remains unexercised in production because the current public catalog contains zero startups.*
+- **Public Visibility Invariant:** 0 private startup records appeared in any HTML response, JSON-LD block, or hydration payload across all 17 probes (`is_public = true` strictly enforced).
+
+### Final Objective 5 Status
+
+```
+================================================================================
+PHASE 2 OBJECTIVE 5 — SEARCH & DISCOVERY: CLOSED / VERIFIED / PRODUCTION PASS
+================================================================================
 ```
 
 ---
@@ -9763,6 +9821,7 @@ Examples:
 | 2.11 | August 2026 | Formally closed Phase 2 (Founder Experience) across all 7 core objectives; documented completion of Objective 5 (Search, Filtering & Public Discovery) and authoritative verification-state filtering invariants (hasVerificationEvidence === true); recorded 46/46 unit, 13/13 trust, and 11/11 SVG regression passes. | Eshan Maurya |
 | 2.12 | August 2026 | Formally documented Launch Readiness P-07 production rate-limit threshold verification on `/api/live-feed` (15 req/60s, Upstash Redis atomic INCR+EXPIRE, 16/16 origin reach, HTTP 429 rejection on request 16). | Eshan Maurya |
 | 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Razorpay Webhook Timing-Safe HMAC Comparison); reclassified historical Syne font Vercel failure as a resolved upstream CDN incident; documented live production deployment of `timingSafeCompare` in commit `440d1ef` (`dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5`, `READY`). | Eshan Maurya |
+| 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Search, Filtering & Public Discovery) live production smoke test verification (commit `b4fcc81`, 17/17 probes HTTP 200, UI/pagination/sanitization verified, authoritative verification filter semantics structurally verified with explicit zero-public-data catalog limitation). | Eshan Maurya |
 
 ---
 
@@ -9799,6 +9858,7 @@ Examples include:
 - Gate 2 (G2-09) — Stale Webhook Rejection & Monotonicity: CLOSED / VERIFIED. Verified stale event rejection, equal timestamp preservation, and fresh timestamp forward progression.
 - Launch Readiness Gate 2: CLOSED / VERIFIED across all 9 milestones (G2-01 through G2-09).
 - Phase 2 — Founder Experience: CLOSED / VERIFIED across all 7 core objectives (Founder Onboarding & Profile Setup, Payment Provider Connection & Multi-Gateway Support, Revenue Sync & Real-Time Aggregation Engine, Public Startup Profile & Trust Badging, Search, Filtering & Public Discovery, Founder Dashboard & Financial Health Center, and Verification Confidence & Fraud Defense Integration).
+- Phase 2 Objective 5 (Public Leaderboard Search & Discovery): CLOSED / VERIFIED / PRODUCTION SMOKE TEST PASSED. Verified live deployment of commit `b4fcc81` across 17 read-only HTTP probes (17/17 HTTP 200 OK, UI rendering, parameter binding, category allowlist, revenue range parsing, city filtering, context-aware empty state, pagination clamping, sanitization, and 0 private record leakage). Verification filter pipeline semantics structurally verified against deployed source with explicit documentation of zero-public-startups catalog limitation.
 - Launch Readiness P-07 — Production Rate-Limit Verification: CLOSED / VERIFIED. Empirically proved origin Upstash Redis rate-limit threshold enforcement on `/api/live-feed` (Requests 1–15 returned HTTP 200, Request 16 returned HTTP 429 `{"error":"Rate limit exceeded"}`, 16/16 `x-vercel-cache: MISS`, 0 database/auth mutations).
 
 This timeline provides historical context for future contributors.
@@ -9895,6 +9955,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.11 | August 2026 | Formally closed Phase 2 (Founder Experience) across all 7 objectives including Objective 5 search/filtering, authoritative verification filter semantics, and regression verification. |
 | 2.12 | August 2026 | Formally documented Launch Readiness P-07 production rate-limit threshold verification on `/api/live-feed` (15 req/60s threshold, Upstash Redis backend, HTTP 429 on request 16). |
 | 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Timing-Safe HMAC Comparison) as CLOSED / VERIFIED following production deployment verification in commit `440d1ef` and historical Syne incident resolution. |
+| 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Public Discovery & Search) live production verification on commit `b4fcc81` (17-probe smoke test, UI rendering, sanitization, 0 private leaks, and structural verification filter invariants). |
 
 ---
 
@@ -9902,7 +9963,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.13**
+- Handbook Version: **2.14**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
