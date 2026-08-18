@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import React, { useSyncExternalStore } from "react";
 import { Clock, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
@@ -9,12 +9,45 @@ interface TrialCountdownBannerProps {
   trialEnd?: string | null;
 }
 
-const emptySubscribe = () => () => {};
-const getNow = () => Date.now();
-const getSSRNow = () => null;
+let currentClockSnapshot: number | null = null;
+const clockListeners = new Set<() => void>();
+let clockIntervalId: ReturnType<typeof setInterval> | null = null;
+
+function subscribeClock(onStoreChange: () => void): () => void {
+  if (currentClockSnapshot === null) {
+    currentClockSnapshot = Date.now();
+  }
+  clockListeners.add(onStoreChange);
+
+  if (!clockIntervalId && typeof window !== "undefined") {
+    clockIntervalId = setInterval(() => {
+      currentClockSnapshot = Date.now();
+      clockListeners.forEach((listener) => listener());
+    }, 60000);
+  }
+
+  return () => {
+    clockListeners.delete(onStoreChange);
+    if (clockListeners.size === 0 && clockIntervalId) {
+      clearInterval(clockIntervalId);
+      clockIntervalId = null;
+    }
+  };
+}
+
+function getClockSnapshot(): number | null {
+  if (currentClockSnapshot === null && typeof window !== "undefined") {
+    currentClockSnapshot = Date.now();
+  }
+  return currentClockSnapshot;
+}
+
+function getSSRClockSnapshot(): null {
+  return null;
+}
 
 export function TrialCountdownBanner({ status, trialEnd }: TrialCountdownBannerProps) {
-  const now = useSyncExternalStore(emptySubscribe, getNow, getSSRNow);
+  const now = useSyncExternalStore(subscribeClock, getClockSnapshot, getSSRClockSnapshot);
 
   if (status !== "trialing" || !trialEnd) return null;
   if (now === null) return null;
@@ -29,7 +62,7 @@ export function TrialCountdownBanner({ status, trialEnd }: TrialCountdownBannerP
         <div className="flex items-center gap-2 text-amber-500 font-medium">
           <Clock className="h-4 w-4 shrink-0" />
           <span>
-            You have <strong>{daysLeft} days left</strong> in your Founder trial.
+            You have <strong>{daysLeft} days left</strong> in your Pro trial.
           </span>
         </div>
         <Link 

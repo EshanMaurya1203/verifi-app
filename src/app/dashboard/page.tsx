@@ -29,6 +29,7 @@ import { getStartupMetrics, getRevenueHistory } from "@/lib/revenue-aggregation"
 import { buildRevenueSnapshot } from "@/lib/dashboard/revenue-engine";
 import { presentRevenueDashboard } from "@/lib/dashboard/revenue-presenter";
 import { RevenueDashboard } from "@/components/founder-dashboard/RevenueDashboard";
+import { InvestorReportCard } from "@/components/reports/InvestorReportCard";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -151,6 +152,12 @@ export default async function DashboardPage() {
             <RevenueDashboard viewModel={revenueViewModel} />
           </div>
         )}
+        <div className="mt-8 mb-4">
+          <InvestorReportCard
+            startupId={primaryStartup.id}
+            startupName={primaryStartup.startup_name || ""}
+          />
+        </div>
         <StatusCards
           status={status}
           trustTier={primaryStartup.trust_tier || null}
