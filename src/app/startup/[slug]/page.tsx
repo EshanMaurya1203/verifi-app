@@ -716,10 +716,8 @@ export default async function PublicStartupProfile({ params }: { params: Promise
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-700">Verification Protocol</span>
         </div>
         <div className="flex flex-wrap gap-6 text-[10px] font-bold uppercase tracking-wider text-neutral-700">
-           <a href="#" className="hover:text-neutral-500 transition-colors">Methods</a>
            <a href="/privacy" className="hover:text-neutral-500 transition-colors">Privacy</a>
            <a href="/terms" className="hover:text-neutral-500 transition-colors">Terms</a>
-           <a href="#" className="hover:text-neutral-500 transition-colors">Identity</a>
         </div>
       </footer>
     </div>

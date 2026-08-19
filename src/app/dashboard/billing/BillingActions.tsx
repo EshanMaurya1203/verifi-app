@@ -7,19 +7,25 @@ import { useRouter } from "next/navigation";
 
 interface BillingActionsProps {
   currentPlanCode: string;
-  currentCycle: "monthly" | "annual";
+  currentCycle?: "monthly" | "annual";
   status: string;
   currentPeriodEnd?: string | null;
   pendingReplacement?: Record<string, unknown> | null;
 }
 
-export function BillingActions({ currentPlanCode, currentCycle, status, currentPeriodEnd, pendingReplacement }: BillingActionsProps) {
+export function BillingActions({
+  currentPlanCode,
+  currentCycle = "monthly",
+  status,
+  currentPeriodEnd,
+  pendingReplacement,
+}: BillingActionsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const router = useRouter();
 
   const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel? You will keep access until the end of your billing period.")) {
+    if (!confirm("Are you sure you want to cancel? You will keep Pro access until the end of your billing period.")) {
       return;
     }
     
@@ -33,7 +39,7 @@ export function BillingActions({ currentPlanCode, currentCycle, status, currentP
       if (!res.ok) {
         alert(data.error || "Failed to cancel subscription");
       } else {
-        alert("Subscription cancelled successfully. It will remain active until the end of the billing period.");
+        alert("Subscription cancelled successfully. Pro features will remain active until the end of the billing period.");
         router.refresh();
       }
     } catch (err) {
@@ -51,13 +57,13 @@ export function BillingActions({ currentPlanCode, currentCycle, status, currentP
       {isFree ? (
         <div>
           <p className="text-sm text-muted-foreground mb-4">
-            You are currently on the free Viewer plan. Upgrade to Founder or Pro to verify your revenue.
+            You are currently on the Free plan. Revenue verification and public badges are permanently free. Upgrade to Pro for multi-gateway composite analytics and CSV export.
           </p>
           <button
             onClick={() => setIsModalOpen(true)}
             className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:bg-[#a8e630] transition-colors"
           >
-            Upgrade Plan
+            Upgrade to Pro (₹999/mo)
           </button>
         </div>
       ) : (
@@ -66,7 +72,7 @@ export function BillingActions({ currentPlanCode, currentCycle, status, currentP
             onClick={() => setIsModalOpen(true)}
             className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:bg-[#a8e630] transition-colors"
           >
-            {status === "cancelled" ? "Resume / Change Plan" : "Change Plan"}
+            {status === "cancelled" ? "Re-subscribe to Pro" : "View Plan Details"}
           </button>
           
           {status !== "cancelled" && status !== "expired" && (

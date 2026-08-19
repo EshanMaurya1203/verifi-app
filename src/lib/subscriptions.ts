@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabase-server";
 
-export type PlanCode = "viewer" | "founder" | "pro";
+export type PlanCode = "viewer" | "pro";
 
 export type SubscriptionStatus =
   | "active"

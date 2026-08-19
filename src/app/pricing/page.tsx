@@ -5,8 +5,8 @@ import { getUserPlan } from "@/lib/subscriptions";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Pricing",
-  description: "Simple, transparent pricing for Verifii. Get verified and build trust.",
+  title: "Pricing | Verifii",
+  description: "Revenue verification is permanently free. Upgrade to Pro for multi-gateway analytics and developer tools.",
   alternates: {
     canonical: "https://www.verifii.in/pricing/",
   }
@@ -18,12 +18,10 @@ export default async function PricingPage() {
   const user = await getAuthenticatedUser();
   
   let currentPlanCode = "viewer";
-  let currentCycle: "monthly" | "annual" = "monthly";
 
   if (user) {
     const plan = await getUserPlan(user.id);
     currentPlanCode = plan.plan_code;
-    currentCycle = plan.billing_cycle;
   }
 
   return (
@@ -36,16 +34,13 @@ export default async function PricingPage() {
             Simple, transparent <span className="text-primary">pricing</span>
           </h1>
           <p className="text-muted-foreground text-lg sm:text-xl max-w-2xl mx-auto">
-            Choose the right plan to verify your startup revenue and build trust with investors, partners, and customers.
+            Revenue verification is permanently free. Upgrade to Pro for advanced multi-gateway analytics, CSV export, and developer tools.
           </p>
         </div>
 
         <PricingTable 
           currentPlanCode={currentPlanCode} 
-          currentCycle={currentCycle} 
         />
-        
-        {/* FAQ or Trust Section could go here */}
       </main>
     </div>
   );

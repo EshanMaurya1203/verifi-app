@@ -4,19 +4,9 @@ import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import Razorpay from "razorpay";
 import { getUserPlan } from "@/lib/subscriptions";
 
-const RAZORPAY_PLAN_MAP: Record<string, Record<string, string | undefined>> = {
-  founder: {
-    monthly: process.env.RAZORPAY_PLAN_FOUNDER_MONTHLY,
-    annual: process.env.RAZORPAY_PLAN_FOUNDER_ANNUAL,
-  },
-  pro: {
-    monthly: process.env.RAZORPAY_PLAN_PRO_MONTHLY,
-    annual: process.env.RAZORPAY_PLAN_PRO_ANNUAL,
-  }
-};
-
 /**
  * Creates a Razorpay Subscription checkout session for SaaS billing.
+ * Commercial Model: Pro monthly (₹999/mo). Free verification requires no checkout.
  */
 export async function POST(req: Request) {
   const identifier = getClientIdentifier(req);
@@ -39,24 +29,28 @@ export async function POST(req: Request) {
 
   const { plan_code, billing_cycle } = body;
 
-  if (!plan_code || !billing_cycle || !RAZORPAY_PLAN_MAP[plan_code]) {
-    return NextResponse.json({ error: "Invalid plan or billing cycle" }, { status: 400 });
+  // Strict 2-tier check: Only Pro monthly is available for paid subscription checkout
+  if (plan_code !== "pro" || billing_cycle !== "monthly") {
+    return NextResponse.json(
+      { error: "Invalid plan or billing cycle. Only Pro monthly is available." },
+      { status: 400 }
+    );
   }
 
-  const planId = RAZORPAY_PLAN_MAP[plan_code][billing_cycle];
+  const planId = process.env.RAZORPAY_PLAN_PRO_MONTHLY;
   if (!planId) {
-    console.error(`[Billing Checkout] Missing Razorpay plan ID configuration for ${plan_code} ${billing_cycle}`);
+    console.error("[Billing Checkout] Missing RAZORPAY_PLAN_PRO_MONTHLY configuration");
     return NextResponse.json({ error: "Server configuration error: Missing plan ID" }, { status: 500 });
   }
 
   // Check if user already has an active subscription to avoid duplicates
   const currentPlan = await getUserPlan(user.id);
   if (currentPlan && currentPlan.status !== "expired" && currentPlan.plan_code !== "viewer") {
-    // Prevent subscribing if they already have an active sub (they should use change-plan)
     return NextResponse.json({ 
-      error: "Active subscription exists. Please use change plan or cancel first." 
+      error: "Active subscription exists. Please cancel existing subscription first." 
     }, { status: 400 });
   }
+
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     return NextResponse.json(
       { error: "Razorpay billing keys are not configured" },
@@ -74,17 +68,16 @@ export async function POST(req: Request) {
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
       customer_notify: 1,
-      total_count: billing_cycle === 'annual' ? 10 : 120, // 10 years or 10 years of months
+      total_count: 120, // 10 years of monthly billing
       notes: {
         user_id: user.id,
-        plan_code: plan_code,
-        billing_cycle: billing_cycle
+        plan_code: "pro",
+        billing_cycle: "monthly"
       }
     });
 
     return NextResponse.json({
       subscription_id: subscription.id,
-      // For hosted integration, we might return short_url
       short_url: subscription.short_url,
     });
   } catch (error: any) {

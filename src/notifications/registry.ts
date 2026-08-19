@@ -158,6 +158,20 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationMeta
     defaultChannels: ["EMAIL"],
     emailTemplateRef: "production-email-test",
   },
+  FEEDBACK_SUBMITTED: {
+    type: "FEEDBACK_SUBMITTED",
+    category: "PRODUCT",
+    priority: "HIGH",
+    defaultChannels: ["EMAIL"],
+    emailTemplateRef: "feedback-submitted-admin",
+  },
+  FEEDBACK_REPLIED: {
+    type: "FEEDBACK_REPLIED",
+    category: "PRODUCT",
+    priority: "HIGH",
+    defaultChannels: ["EMAIL"],
+    emailTemplateRef: "feedback-replied",
+  },
 };
 
 /**

@@ -75,7 +75,15 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       const startupName = startup?.startup_name || "Your Startup";
-      const formattedPlan = (sub.plan_code || "founder").toUpperCase();
+
+      // Require a valid supported plan code (pro); skip malformed or legacy trial records
+      if (!sub.plan_code || sub.plan_code !== "pro") {
+        console.warn(`[Cron Trial Reminders] Skipping subscription ${sub.id} with unsupported plan_code: ${sub.plan_code}`);
+        skipped++;
+        continue;
+      }
+
+      const formattedPlan = "PRO";
       const trialEndFormatted = trialEndDate.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
@@ -100,7 +108,7 @@ export async function GET(req: Request) {
           startupName,
           planName: formattedPlan,
           trialEndFormatted,
-          billingUrl: `${baseUrl}/dashboard/settings/billing`,
+          billingUrl: `${baseUrl}/dashboard/billing`,
         },
       });
 

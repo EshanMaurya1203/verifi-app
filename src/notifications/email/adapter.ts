@@ -190,6 +190,34 @@ export const emailAdapter: DeliveryAdapter = {
         };
         break;
 
+      case "FEEDBACK_SUBMITTED":
+        // Admin recipient for new feedback submissions
+        to = process.env.ADMIN_FEEDBACK_EMAIL || "eshanmaurya12@gmail.com";
+        template = {
+          type: "feedback-submitted-admin",
+          props: {
+            userEmail: event.payload.userEmail,
+            category: event.payload.category,
+            message: event.payload.message,
+            submittedAtFormatted: event.payload.submittedAtFormatted,
+            adminInboxUrl: event.payload.adminInboxUrl,
+          },
+        };
+        break;
+
+      case "FEEDBACK_REPLIED":
+        to = event.payload.userEmail;
+        template = {
+          type: "feedback-replied",
+          props: {
+            category: event.payload.category,
+            messageSnippet: event.payload.messageSnippet,
+            replyBody: event.payload.replyBody,
+            feedbackUrl: event.payload.feedbackUrl,
+          },
+        };
+        break;
+
       default:
         return {
           success: false,

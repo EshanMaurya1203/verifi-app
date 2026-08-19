@@ -6,18 +6,13 @@ import Razorpay from "razorpay";
 import { dispatchNotification } from "@/notifications/dispatcher";
 
 const RAZORPAY_PLAN_MAP: Record<string, Record<string, string | undefined>> = {
-  founder: {
-    monthly: process.env.RAZORPAY_PLAN_FOUNDER_MONTHLY,
-    annual: process.env.RAZORPAY_PLAN_FOUNDER_ANNUAL,
-  },
   pro: {
     monthly: process.env.RAZORPAY_PLAN_PRO_MONTHLY,
-    annual: process.env.RAZORPAY_PLAN_PRO_ANNUAL,
   },
 };
 
-type PlanCode = "founder" | "pro";
-type BillingCycle = "monthly" | "annual";
+type PlanCode = "pro";
+type BillingCycle = "monthly";
 
 function resolvePlanFromRazorpayPlanId(planId: string | undefined): {
   plan_code: PlanCode;
@@ -25,15 +20,12 @@ function resolvePlanFromRazorpayPlanId(planId: string | undefined): {
 } | null {
   if (!planId) return null;
 
-  for (const [planCode, cycles] of Object.entries(RAZORPAY_PLAN_MAP)) {
-    for (const [billingCycle, razorpayPlanId] of Object.entries(cycles)) {
-      if (razorpayPlanId && razorpayPlanId === planId) {
-        return {
-          plan_code: planCode as PlanCode,
-          billing_cycle: billingCycle as BillingCycle,
-        };
-      }
-    }
+  const proPlanId = process.env.RAZORPAY_PLAN_PRO_MONTHLY;
+  if (proPlanId && planId === proPlanId) {
+    return {
+      plan_code: "pro",
+      billing_cycle: "monthly",
+    };
   }
 
   return null;
@@ -150,7 +142,7 @@ async function handleBillingNotification({
           planName: formattedPlan,
           amountDue: "Subscription Renewal Fee",
           failureReason: "Recurring charge failed or was declined.",
-          updatePaymentUrl: `${baseUrl}/dashboard/settings/billing`,
+          updatePaymentUrl: `${baseUrl}/dashboard/billing`,
         },
       });
     } else if (event === "subscription.cancelled") {
@@ -170,7 +162,7 @@ async function handleBillingNotification({
           startupName,
           planName: formattedPlan,
           effectiveEndDate: currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : undefined,
-          reactivateUrl: `${baseUrl}/dashboard/settings/billing`,
+          reactivateUrl: `${baseUrl}/dashboard/billing`,
         },
       });
     }

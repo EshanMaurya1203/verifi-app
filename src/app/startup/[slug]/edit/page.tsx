@@ -12,7 +12,7 @@ export default async function EditStartupProfile({ params }: { params: Promise<{
 
   if (!authenticated) {
     const nextUrl = `/startup/${encodeURIComponent(slug)}/edit`;
-    redirect(`/submit?next=${encodeURIComponent(nextUrl)}`);
+    redirect(`/login?next=${encodeURIComponent(nextUrl)}`);
   }
 
   if (!startup) {

@@ -168,6 +168,27 @@ export interface BaseNotificationEvent {
   correlationId?: string;
 }
 
+export interface FeedbackSubmittedPayload {
+  feedbackId: string;
+  userEmail: string;
+  category: string;
+  message: string;
+  submittedAtFormatted: string;
+  adminInboxUrl: string;
+  currentYear?: number;
+}
+
+export interface FeedbackRepliedPayload {
+  feedbackId: string;
+  userEmail: string;
+  category: string;
+  messageSnippet: string;
+  replyBody: string;
+  repliedAtFormatted: string;
+  feedbackUrl: string;
+  currentYear?: number;
+}
+
 /**
  * Discriminated union of all possible business events that can trigger notifications.
  */
@@ -191,6 +212,8 @@ export type NotificationEvent = BaseNotificationEvent & (
   | { type: "PRODUCT_UPDATE"; payload: GenericNotificationPayload }
   | { type: "FEATURE_ANNOUNCEMENT"; payload: GenericNotificationPayload }
   | { type: "PRODUCTION_EMAIL_TEST"; payload: ProductionEmailTestPayload }
+  | { type: "FEEDBACK_SUBMITTED"; payload: FeedbackSubmittedPayload }
+  | { type: "FEEDBACK_REPLIED"; payload: FeedbackRepliedPayload }
 );
 
 export type NotificationEventType = NotificationType;

@@ -21,7 +21,7 @@ export function SubscriptionStatusIndicator({
 }: SubscriptionStatusIndicatorProps) {
   const now = useSyncExternalStore(emptySubscribe, getNow, getSSRNow);
 
-  if (planCode === "viewer") {
+  if (planCode === "viewer" || (planCode !== "pro")) {
     return (
       <Link href="/pricing" className="hidden sm:flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
         Free Plan
@@ -58,9 +58,5 @@ export function SubscriptionStatusIndicator({
     );
   }
 
-  return (
-    <Link href="/dashboard/billing" className="flex items-center gap-1.5 rounded-md bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-xs font-bold text-blue-400 transition-colors hover:bg-blue-500/20">
-      <span className="hidden sm:inline">Founder</span>
-    </Link>
-  );
+  return null;
 }

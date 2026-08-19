@@ -74,6 +74,14 @@ import ProductionEmailTestEmail, {
   defaultSubject as productionEmailTestSubject,
 } from "@/emails/ProductionEmailTest";
 
+import FeedbackSubmittedAdminEmail, {
+  defaultSubject as feedbackSubmittedAdminSubject,
+} from "@/emails/FeedbackSubmittedAdmin";
+
+import FeedbackRepliedEmail, {
+  defaultSubject as feedbackRepliedSubject,
+} from "@/emails/FeedbackReplied";
+
 // ── Email Constants ────────────────────────────────────────────────────────
 
 const FROM_ADDRESS = emailBrandConfig.fromAddress;
@@ -169,6 +177,18 @@ function resolveTemplate(template: EmailTemplate): ResolvedTemplate {
       return {
         element: React.createElement(ProductionEmailTestEmail, template.props),
         subject: productionEmailTestSubject,
+      };
+
+    case "feedback-submitted-admin":
+      return {
+        element: React.createElement(FeedbackSubmittedAdminEmail, template.props),
+        subject: feedbackSubmittedAdminSubject,
+      };
+
+    case "feedback-replied":
+      return {
+        element: React.createElement(FeedbackRepliedEmail, template.props),
+        subject: feedbackRepliedSubject,
       };
 
     default: {

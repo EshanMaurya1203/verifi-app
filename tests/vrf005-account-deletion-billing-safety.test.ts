@@ -278,7 +278,7 @@ function resetState() {
   process.env.RAZORPAY_KEY_ID = "rzp_test_dummy_key_id";
   process.env.RAZORPAY_KEY_SECRET = "rzp_test_dummy_secret";
   process.env.RAZORPAY_BILLING_WEBHOOK_SECRET = "test_billing_webhook_secret_123456";
-  process.env.RAZORPAY_PLAN_FOUNDER_MONTHLY = "plan_founder_monthly";
+  process.env.RAZORPAY_PLAN_PRO_MONTHLY = "plan_pro_monthly";
   activeSubscriptions = [];
   selectError = null;
   updateError = null;
@@ -323,7 +323,7 @@ async function run() {
         id: "sub_db_1",
         user_id: "usr_1",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_active_100",
       },
     ];
@@ -345,7 +345,7 @@ async function run() {
         id: "sub_db_active",
         user_id: "usr_2",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_active_200",
       },
       {
@@ -396,7 +396,7 @@ async function run() {
         id: "sub_db_4",
         user_id: "usr_4",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_fail_400",
       },
     ];
@@ -415,7 +415,7 @@ async function run() {
         id: "sub_db_act",
         user_id: "usr_5",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_act_500",
       },
       {
@@ -449,7 +449,7 @@ async function run() {
         id: "sub_db_6",
         user_id: "usr_6",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_already_600",
       },
     ];
@@ -493,7 +493,7 @@ async function run() {
         id: "sub_db_9",
         user_id: "usr_9",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_bk_900",
       },
     ];
@@ -531,7 +531,7 @@ async function run() {
         id: "sub_db_11",
         user_id: "usr_11",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_norm_1100",
       },
     ];
@@ -551,7 +551,7 @@ async function run() {
         id: "sub_db_12",
         user_id: "usr_12",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_key_1200",
       },
     ];
@@ -570,7 +570,7 @@ async function run() {
         id: "sub_db_13",
         user_id: "usr_test_vrf005_123",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_fail_1300",
       },
     ];
@@ -594,7 +594,7 @@ async function run() {
         id: "sub_db_14",
         user_id: "usr_test_vrf005_123",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_succ_1400",
       },
     ];
@@ -617,7 +617,7 @@ async function run() {
         id: "sub_db_concurrent_15",
         user_id: "usr_test_vrf005_123",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_concurrent_1500",
       },
     ];
@@ -662,7 +662,7 @@ async function run() {
         subscription: {
           entity: {
             id: "sub_rzp_race_1600",
-            plan_id: "plan_founder_monthly",
+            plan_id: "plan_pro_monthly",
             customer_id: "cust_race_1600",
             status: "cancelled",
             current_start: 1723600000,
@@ -671,7 +671,7 @@ async function run() {
             start_at: 1723600000,
             notes: {
               user_id: "usr_test_vrf005_123", // Deleted user
-              plan_code: "founder",
+              plan_code: "pro",
               billing_cycle: "monthly",
             },
           },
@@ -719,7 +719,7 @@ async function run() {
         subscription: {
           entity: {
             id: "sub_rzp_race_1700",
-            plan_id: "plan_founder_monthly",
+            plan_id: "plan_pro_monthly",
             customer_id: "cust_race_1700",
             status: "active",
             current_start: 1723600000,
@@ -728,7 +728,7 @@ async function run() {
             start_at: 1723600000,
             notes: {
               user_id: "usr_test_vrf005_123", // Deleted user
-              plan_code: "founder",
+              plan_code: "pro",
               billing_cycle: "monthly",
             },
           },
@@ -775,7 +775,7 @@ async function run() {
         id: "sub_db_fail_order_18",
         user_id: "usr_test_vrf005_123",
         status: "active",
-        plan_code: "founder",
+        plan_code: "pro",
         razorpay_subscription_id: "sub_rzp_unverified_1800",
       },
     ];

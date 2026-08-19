@@ -20,7 +20,7 @@ export default async function ConfirmDeletePage({
 }) {
   const user = await getAuthenticatedUser();
   if (!user) {
-    redirect("/submit");
+    redirect("/login?next=/dashboard/settings");
   }
 
   const resolvedParams = await searchParams;

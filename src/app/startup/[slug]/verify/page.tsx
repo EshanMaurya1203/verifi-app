@@ -18,7 +18,7 @@ export default async function VerifyPage({
 
   if (!authenticated) {
     const nextUrl = `/startup/${encodeURIComponent(slug)}/verify`;
-    redirect(`/submit?next=${encodeURIComponent(nextUrl)}`);
+    redirect(`/login?next=${encodeURIComponent(nextUrl)}`);
   }
 
   if (!startup) {

@@ -39,15 +39,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized startup ownership check failed" }, { status: 403 });
     }
 
-    const { getUserPlan } = await import("@/lib/subscriptions");
-    const plan = await getUserPlan(user!.id);
-    if (plan.plan_code === "viewer") {
-      return NextResponse.json(
-        { error: "Subscription required for manual sync" },
-        { status: 403 }
-      );
-    }
-
     const result = await getAggregatedRevenue(startup_id);
 
     if (result.providers.length === 0) {

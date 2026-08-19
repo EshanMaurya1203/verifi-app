@@ -70,7 +70,7 @@ export default async function DashboardPage() {
   const user = await getAuthenticatedUser();
 
   if (!user) {
-    redirect("/submit");
+    redirect("/login?next=/dashboard");
   }
 
   // Fetch startups owned by authenticated user

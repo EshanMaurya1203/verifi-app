@@ -14,3 +14,5 @@ export { default as SubscriptionRenewedEmail } from "./SubscriptionRenewed";
 export { default as TrialExpiringEmail } from "./TrialExpiring";
 export { default as PaymentFailedEmail } from "./PaymentFailed";
 export { default as SubscriptionCancelledEmail } from "./SubscriptionCancelled";
+export { default as FeedbackSubmittedAdminEmail } from "./FeedbackSubmittedAdmin";
+export { default as FeedbackRepliedEmail } from "./FeedbackReplied";

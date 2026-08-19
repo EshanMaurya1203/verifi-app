@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Menu, LogOut, LayoutDashboard, Settings, Rocket, CreditCard } from "lucide-react";
+import { Menu, LogOut, LayoutDashboard, Settings, Rocket, CreditCard, MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { SubscriptionStatusIndicator } from "@/components/billing/SubscriptionStatusIndicator";
 import { getClientOAuthRedirect } from "@/lib/oauth-redirect";
@@ -205,7 +205,7 @@ export function Navbar() {
                     My Startups
                   </Link>
                   <Link
-                    href="/dashboard"
+                    href="/dashboard/settings"
                     onClick={() => setIsDropdownOpen(false)}
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
@@ -219,6 +219,14 @@ export function Navbar() {
                   >
                     <CreditCard className="h-4 w-4" />
                     Billing
+                  </Link>
+                  <Link
+                    href="/feedback"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Give Feedback
                   </Link>
                   <div className="h-px w-full bg-border my-1" />
                   <button
@@ -298,7 +306,7 @@ export function Navbar() {
                   My Startups
                 </Link>
                 <Link
-                  href="/dashboard"
+                  href="/dashboard/settings"
                   onClick={() => setIsMobileOpen(false)}
                   className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
@@ -312,6 +320,14 @@ export function Navbar() {
                 >
                   <CreditCard className="h-4 w-4" />
                   Billing
+                </Link>
+                <Link
+                  href="/feedback"
+                  onClick={() => setIsMobileOpen(false)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Give Feedback
                 </Link>
                 <button
                   onClick={handleSignOut}

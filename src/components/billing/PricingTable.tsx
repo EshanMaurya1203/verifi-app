@@ -6,10 +6,8 @@ import { useRouter } from "next/navigation";
 
 interface PricingTableProps {
   currentPlanCode?: string;
-  currentCycle?: "monthly" | "annual";
   status?: string;
   currentPeriodEnd?: string | null;
-  pendingReplacement?: any;
   onCheckoutStart?: () => void;
   onCheckoutComplete?: () => void;
   isModal?: boolean;
@@ -17,17 +15,12 @@ interface PricingTableProps {
 
 export function PricingTable({
   currentPlanCode = "viewer",
-  currentCycle = "monthly",
   status,
-  currentPeriodEnd,
-  pendingReplacement,
+  currentPeriodEnd: _currentPeriodEnd,
   onCheckoutStart,
   onCheckoutComplete,
   isModal = false,
 }: PricingTableProps) {
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(
-    pendingReplacement?.billing_cycle ?? currentCycle ?? "monthly"
-  );
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const router = useRouter();
@@ -40,24 +33,26 @@ export function PricingTable({
       return;
     }
 
+    if (planCode !== "pro") return;
+
     setLoadingPlan(planCode);
     onCheckoutStart?.();
 
     try {
-      // Determine if it's an upgrade/downgrade vs a new checkout
-      const isChange = currentPlanCode !== "viewer";
-      const endpoint = isChange ? "/api/billing/change-plan" : "/api/billing/checkout";
-
-      const res = await fetch(endpoint, {
+      const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_code: planCode, billing_cycle: billingCycle }),
+        body: JSON.stringify({ plan_code: "pro", billing_cycle: "monthly" }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Failed to process request");
+        if (res.status === 401) {
+          router.push("/login?next=/pricing");
+          return;
+        }
+        alert(data.error || "Failed to initialize checkout");
         setLoadingPlan(null);
         return;
       }
@@ -67,12 +62,7 @@ export function PricingTable({
         return;
       }
 
-      if (isChange) {
-        onCheckoutComplete?.();
-        router.refresh();
-      } else {
-        router.refresh();
-      }
+      router.refresh();
     } catch (err) {
       console.error(err);
       alert("An unexpected error occurred.");
@@ -87,7 +77,7 @@ export function PricingTable({
     setLoadingPlan("cancel");
     try {
       const res = await fetch("/api/billing/cancel", {
-        method: "POST"
+        method: "POST",
       });
       const data = await res.json();
 
@@ -106,116 +96,65 @@ export function PricingTable({
     }
   };
 
-  const hasPendingReplacement = !!pendingReplacement;
-  const pendingPlanName = pendingReplacement?.plan_code === "pro" ? "Pro" : "Verified Founder";
-
   const plans = [
     {
       code: "viewer",
-      name: "Viewer",
-      description: "Basic access to public verified profiles.",
-      price: { monthly: 0, annual: 0 },
-      features: ["View public startup profiles", "Search verified database", "Community access"],
-      buttonText: hasPendingReplacement
-        ? "Unavailable"
-        : currentPlanCode === "viewer"
+      name: "Free",
+      description: "Permanently free revenue verification and public profile.",
+      price: 0,
+      features: [
+        "Permanent Free Revenue Verification",
+        "Connect Stripe & Razorpay",
+        "Public Verified Profile",
+        "Tamper-Proof SVG Verified Badge",
+        "Live Revenue Sync & Trust Metrics",
+        "Search Public Directory",
+      ],
+      buttonText:
+        currentPlanCode === "viewer"
           ? "Current Plan"
           : status === "cancelled"
             ? "Downgraded to Free"
             : "Downgrade to Free",
-      disabled: hasPendingReplacement || currentPlanCode === "viewer" || status === "cancelled",
-    },
-    {
-      code: "founder",
-      name: "Verified Founder",
-      description: "Get verified and showcase your revenue publicly.",
-      price: { monthly: 599, annual: 5748 }, // 5748 / 12 = 479/mo (20% off)
-      features: [
-        "Everything in Viewer",
-        "Public Verified Profile",
-        "Connect 1 Payment Provider",
-        "Tamper-proof Revenue Badges",
-        "14-Day Free Trial",
-      ],
-      buttonText: hasPendingReplacement
-        ? (currentPlanCode === "founder"
-          ? `Switching to ${pendingPlanName}`
-          : pendingReplacement?.plan_code === "founder"
-            ? "Scheduled to Activate"
-            : "Unavailable")
-        : currentPlanCode === "founder" && currentCycle === billingCycle
-          ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
-          : "Start 14-Day Trial",
-      disabled: hasPendingReplacement
-        ? true
-        : currentPlanCode === "founder" && currentCycle === billingCycle && status !== "cancelled",
+      disabled: currentPlanCode === "viewer" || status === "cancelled",
     },
     {
       code: "pro",
       name: "Pro",
-      description: "Advanced analytics and multiple integrations for scale.",
-      price: { monthly: 1799, annual: 17268 }, // 17268 / 12 = 1439/mo (20% off)
+      description: "Advanced analytics, multiple gateways, and developer tools.",
+      price: 999,
       features: [
-        "Everything in Founder",
-        "Connect Multiple Providers",
-        "API Access (Coming Soon)",
-        "Priority Support",
-        "Custom Branding",
+        "Everything in Free (Permanently Free)",
+        "Multi-Gateway Composite Analytics",
+        "CSV Ledger Export",
+        "REST API Access (Coming Soon)",
+        "Advanced Verification Filters",
+        "Priority Founder Support",
       ],
-      buttonText: hasPendingReplacement
-        ? (currentPlanCode === "pro"
-          ? `Switching to ${pendingPlanName}`
-          : pendingReplacement?.plan_code === "pro"
-            ? "Scheduled to Activate"
-            : "Unavailable")
-        : currentPlanCode === "pro" && currentCycle === billingCycle
-          ? (status === "cancelled" ? "Resume Subscription" : "Current Plan")
+      buttonText:
+        currentPlanCode === "pro"
+          ? status === "cancelled"
+            ? "Cancelled (Active until period end)"
+            : "Current Plan"
           : "Upgrade to Pro",
-      disabled: hasPendingReplacement
-        ? true
-        : currentPlanCode === "pro" && currentCycle === billingCycle && status !== "cancelled",
+      disabled: currentPlanCode === "pro" && status !== "cancelled",
     },
   ];
 
   return (
-    <div className="w-full max-w-6xl mx-auto font-sans">
-      {hasPendingReplacement && (
-        <div className="mb-8 rounded-xl border border-primary/20 bg-primary/10 p-4 text-center text-sm font-medium text-primary">
-          You have a scheduled plan change to {pendingPlanName} ({pendingReplacement.billing_cycle === "annual" ? "Annual" : "Monthly"}) that will activate at the end of your current billing period.
-        </div>
-      )}
-
-      {/* Toggle */}
-      <div className={`flex justify-center mb-12 ${hasPendingReplacement ? "opacity-50" : ""}`}>
-        <div className={`inline-flex items-center rounded-full border border-border bg-card p-1 ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}>
-          <button
-            onClick={() => setBillingCycle("monthly")}
-            disabled={hasPendingReplacement}
-            className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${billingCycle === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setBillingCycle("annual")}
-            disabled={hasPendingReplacement}
-            className={`rounded-full px-6 py-2 text-sm font-bold transition-colors ${billingCycle === "annual" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              } ${hasPendingReplacement ? "cursor-not-allowed" : ""}`}
-          >
-            Annual <span className="ml-1 text-xs text-green-500">-20%</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Cards */}
-      <div className="grid gap-6 md:grid-cols-3">
+    <div className="w-full max-w-4xl mx-auto font-sans">
+      {/* 2-Tier Grid */}
+      <div className="grid gap-8 md:grid-cols-2">
         {plans.map((plan) => {
           const isPro = plan.code === "pro";
           return (
             <div
               key={plan.code}
-              className={`relative flex flex-col rounded-3xl border p-8 shadow-sm transition-all ${isPro ? "border-primary bg-primary/5" : "border-border bg-card"
-                }`}
+              className={`relative flex flex-col rounded-3xl border p-8 shadow-sm transition-all ${
+                isPro
+                  ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                  : "border-border bg-card"
+              }`}
             >
               {isPro && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground uppercase tracking-wide">
@@ -224,25 +163,20 @@ export function PricingTable({
               )}
               <div className="mb-6">
                 <h3 className="font-syne text-2xl font-bold">{plan.name}</h3>
-                <p className="mt-2 text-sm text-muted-foreground min-h-[40px]">{plan.description}</p>
+                <p className="mt-2 text-sm text-muted-foreground min-h-[40px]">
+                  {plan.description}
+                </p>
               </div>
 
               <div className="mb-6">
                 <div className="flex items-baseline gap-1">
                   <span className="font-syne text-4xl font-extrabold">
-                    {plan.price[billingCycle] === 0 ? "Free" : `₹${plan.price[billingCycle]}`}
+                    {plan.price === 0 ? "₹0" : `₹${plan.price}`}
                   </span>
-                  {plan.price[billingCycle] > 0 && (
-                    <span className="text-sm font-medium text-muted-foreground">
-                      /{billingCycle === "annual" ? "yr" : "mo"}
-                    </span>
-                  )}
+                  <span className="text-sm font-medium text-muted-foreground">
+                    /month
+                  </span>
                 </div>
-                {billingCycle === "annual" && plan.price.annual > 0 && (
-                  <p className="mt-1 text-xs text-primary font-medium">
-                    Billed annually
-                  </p>
-                )}
               </div>
 
               <ul className="mb-8 flex-1 space-y-4">
@@ -254,31 +188,23 @@ export function PricingTable({
                 ))}
               </ul>
 
-              {(() => {
-                const isPendingTarget = hasPendingReplacement && pendingReplacement.plan_code === plan.code;
-                return (
-                  <button
-                    onClick={() => handleCheckout(plan.code)}
-                    disabled={plan.disabled || loadingPlan !== null || isPendingTarget}
-                    className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition-all flex justify-center items-center ${isPendingTarget
-                        ? "bg-primary/10 text-primary border border-primary/20 cursor-not-allowed"
-                        : plan.disabled
-                          ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
-                          : isPro
-                            ? "bg-primary text-primary-foreground hover:bg-[#a8e630]"
-                            : "bg-card border border-border hover:border-primary text-foreground"
-                      }`}
-                  >
-                    {loadingPlan === plan.code ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : isPendingTarget ? (
-                      "Scheduled to Activate"
-                    ) : (
-                      plan.buttonText
-                    )}
-                  </button>
-                );
-              })()}
+              <button
+                onClick={() => handleCheckout(plan.code)}
+                disabled={plan.disabled || loadingPlan !== null}
+                className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition-all flex justify-center items-center ${
+                  plan.disabled
+                    ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
+                    : isPro
+                      ? "bg-primary text-primary-foreground hover:bg-[#a8e630]"
+                      : "bg-card border border-border hover:border-primary text-foreground"
+                }`}
+              >
+                {loadingPlan === plan.code ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  plan.buttonText
+                )}
+              </button>
             </div>
           );
         })}
@@ -289,8 +215,8 @@ export function PricingTable({
           <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl text-center">
             <h3 className="font-syne text-2xl font-bold mb-2">Cancel Subscription?</h3>
             <p className="text-muted-foreground mb-6 text-sm">
-              Your subscription will remain active until the current billing period ends.
-              After expiry your account will automatically move to the Free plan.
+              Your Pro subscription will remain active until the current billing period ends.
+              After expiry your account will automatically move to the permanent Free plan.
             </p>
             <div className="flex gap-3 justify-center">
               <button

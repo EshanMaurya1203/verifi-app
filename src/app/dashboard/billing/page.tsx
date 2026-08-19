@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth-server";
 import { getUserPlan } from "@/lib/subscriptions";
-import { supabaseServer } from "@/lib/supabase-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { TrialCountdownBanner } from "@/components/billing/TrialCountdownBanner";
 import { GracePeriodWarning } from "@/components/billing/GracePeriodWarning";
-import { CreditCard, Calendar, ShieldCheck, Crown } from "lucide-react";
-import Link from "next/link";
+import { CreditCard, Calendar, Crown, Shield } from "lucide-react";
 import { BillingActions } from "./BillingActions";
 
 export const metadata = {
@@ -18,24 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function BillingDashboardPage() {
   const user = await getAuthenticatedUser();
   if (!user) {
-    redirect("/submit");
+    redirect("/login?next=/dashboard/billing");
   }
 
   const plan = await getUserPlan(user.id);
 
-  const { data: pendingReplacement } = await supabaseServer
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("status", "trialing")
-    .not("replaces_razorpay_subscription_id", "is", null)
-    .neq("id", plan.id) // Ensure we don't treat the current subscription as a replacement of itself
-    .limit(1)
-    .maybeSingle();
-
   const isFree = plan.plan_code === "viewer";
   const isPro = plan.plan_code === "pro";
-  const isFounder = plan.plan_code === "founder";
   
   const periodEnd = plan.current_period_end 
     ? new Date(plan.current_period_end).toLocaleDateString()
@@ -55,12 +42,6 @@ export default async function BillingDashboardPage() {
     plan.status === "past_due" ? "Past Due" :
     "Inactive";
 
-  const pendingPlanName = pendingReplacement?.plan_code === "pro" ? "Pro" : "Verified Founder";
-  const pendingCycleName = pendingReplacement?.billing_cycle === "annual" ? "annual" : "monthly";
-  const pendingActivationDate = pendingReplacement?.trial_end
-    ? new Date(pendingReplacement.trial_end).toLocaleDateString()
-    : periodEnd;
-
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col">
       <Navbar />
@@ -68,19 +49,6 @@ export default async function BillingDashboardPage() {
       {/* Global Billing Banners */}
       <TrialCountdownBanner status={plan.status} trialEnd={plan.trial_end} />
       <GracePeriodWarning status={plan.status} />
-      
-      {pendingReplacement && (
-        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2.5">
-          <div className="mx-auto max-w-6xl flex items-center justify-between gap-3 text-sm">
-            <div className="flex items-center gap-2 text-primary font-medium">
-              <Calendar className="h-4 w-4 shrink-0" />
-              <span>
-                You have a scheduled plan change to <strong>{pendingPlanName} ({pendingCycleName})</strong> starting on <strong>{pendingActivationDate}</strong>.
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
 
       <main className="mx-auto w-full max-w-4xl px-4 pt-12 pb-24 flex-1">
         <div className="mb-8">
@@ -98,9 +66,8 @@ export default async function BillingDashboardPage() {
                 <div>
                   <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Current Plan</p>
                   <h2 className="font-syne text-2xl font-bold mt-1 flex items-center gap-2">
-                    {isPro ? <Crown className="h-6 w-6 text-primary" /> : null}
-                    {isFounder ? <ShieldCheck className="h-6 w-6 text-blue-400" /> : null}
-                    {isFree ? "Free Viewer" : isPro ? "Pro" : "Verified Founder"}
+                    {isPro ? <Crown className="h-6 w-6 text-primary" /> : <Shield className="h-6 w-6 text-muted-foreground" />}
+                    {isFree ? "Free Plan" : isPro ? "Pro Plan" : "Free Plan"}
                   </h2>
                 </div>
                 <div className={`px-3 py-1 text-xs font-bold rounded-full border ${
@@ -141,7 +108,6 @@ export default async function BillingDashboardPage() {
                 currentCycle={plan.billing_cycle}
                 status={plan.status}
                 currentPeriodEnd={plan.current_period_end}
-                pendingReplacement={pendingReplacement}
               />
             </div>
           </div>
@@ -151,7 +117,7 @@ export default async function BillingDashboardPage() {
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6">
               <h3 className="font-syne text-lg font-bold mb-2">Need help?</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                If you have questions about your billing, refunds, or changing plans, our support team is ready to help.
+                If you have questions about your billing, subscriptions, or invoices, our team is here to assist.
               </p>
               <a href="mailto:support@verifii.in" className="text-sm font-bold text-primary hover:underline">
                 Contact Support

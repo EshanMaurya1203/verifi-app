@@ -115,6 +115,21 @@ export interface ProductionEmailTestEmailProps {
   timestampFormatted?: string;
 }
 
+export interface FeedbackSubmittedAdminEmailProps {
+  userEmail: string;
+  category: string;
+  message: string;
+  submittedAtFormatted: string;
+  adminInboxUrl: string;
+}
+
+export interface FeedbackRepliedEmailProps {
+  category: string;
+  messageSnippet: string;
+  replyBody: string;
+  feedbackUrl: string;
+}
+
 // ---------------------------------------------------------------------------
 // Discriminated Union — extend here when adding templates
 // ---------------------------------------------------------------------------
@@ -131,7 +146,9 @@ export type EmailTemplate =
   | { type: "trial-expiring"; props: TrialExpiringEmailProps }
   | { type: "payment-failed"; props: PaymentFailedEmailProps }
   | { type: "subscription-cancelled"; props: SubscriptionCancelledEmailProps }
-  | { type: "production-email-test"; props: ProductionEmailTestEmailProps };
+  | { type: "production-email-test"; props: ProductionEmailTestEmailProps }
+  | { type: "feedback-submitted-admin"; props: FeedbackSubmittedAdminEmailProps }
+  | { type: "feedback-replied"; props: FeedbackRepliedEmailProps };
 
 /** Extract the string-literal template type. */
 export type EmailTemplateName = EmailTemplate["type"];

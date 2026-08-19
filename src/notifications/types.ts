@@ -29,7 +29,9 @@ export type NotificationType =
   | "FEATURE_ANNOUNCEMENT"
   | "VERIFICATION_COMPLETED"
   | "VERIFICATION_FAILED"
-  | "PRODUCTION_EMAIL_TEST";
+  | "PRODUCTION_EMAIL_TEST"
+  | "FEEDBACK_SUBMITTED"
+  | "FEEDBACK_REPLIED";
 
 /**
  * Standard notification categories.

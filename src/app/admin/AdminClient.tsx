@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { Navbar } from "@/components/layout/Navbar";
 import { safeFetch } from "@/lib/safe-network";
+import { ShieldCheck, MessageSquare, BarChart3, ListFilter } from "lucide-react";
 
 export function AdminClient() {
   const [data, setData] = useState<any[]>([]);
@@ -56,9 +57,44 @@ export function AdminClient() {
 
       <main className="pt-24 pb-12 px-6">
         <div className="mx-auto max-w-[1000px]">
-          <h1 className="font-syne text-[40px] font-extrabold tracking-[-1.5px] mb-8">
-            Verification Integration Control
-          </h1>
+          {/* Admin Navigation Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 border-b border-white/10 pb-6">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary mb-2">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">
+                  Admin Console
+                </span>
+              </div>
+              <h1 className="font-syne text-[32px] sm:text-[40px] font-extrabold tracking-[-1.5px]">
+                Verification Control
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href="/admin"
+                className="px-4 py-2 rounded-xl bg-primary text-black text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-sm shadow-primary/20"
+              >
+                <ListFilter className="w-3.5 h-3.5" />
+                Verifications
+              </Link>
+              <Link
+                href="/admin/feedback"
+                className="px-4 py-2 rounded-xl bg-neutral-900 border border-white/10 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Feedback
+              </Link>
+              <Link
+                href="/admin/analytics/onboarding"
+                className="px-4 py-2 rounded-xl bg-neutral-900 border border-white/10 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                Analytics
+              </Link>
+            </div>
+          </div>
 
           {loading ? (
             <div className="flex h-32 items-center justify-center rounded-2xl border border-border bg-card">
