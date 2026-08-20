@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.17 |
+| **Version** | 2.18 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8516,6 +8516,81 @@ TEST 01 — MASTER ENVIRONMENT, SECRETS & CONFIGURATION AUDIT: CLOSED / VERIFIED
 
 ---
 
+## 25.33 TEST 02 — Authentication & Session Lifecycle Security
+
+### Scope
+
+1. **Google OAuth Login:** Verification of PKCE OAuth initiation, consent flow parameters, authorization code exchange, and safe redirect routing.
+2. **OAuth Callback:** Verification of `/auth/callback` code validation, exchange error handling, provider cancellation resilience, and open-redirect neutralization.
+3. **Logout:** Verification of `supabase.auth.signOut()` revocation, cookie cleanup, and immediate post-logout protected access termination.
+4. **Session Persistence:** Verification of SSR cookie synchronization across browser reloads and client navigation without unexpected auth drops.
+5. **Session Refresh:** Verification of transparent background token refresh via `@supabase/ssr` within Next.js middleware before JWT expiration.
+6. **Expired / Revoked Sessions:** Verification of active zombie-session cookie deletion (`Max-Age=0`) upon encountering unrecoverable auth errors.
+7. **Direct Protected-Route Access:** Verification of server-side route guards on pages (`/dashboard`, `/admin`) and API routes (`/api/feedback`, `/api/billing/*`, `/api/account/delete`, `/api/startup/[id]/*`).
+8. **Safe Authentication Redirects:** Verification that the `next` destination parameter strictly constrains navigation to valid internal paths (`/path`) and prevents external open-redirect exploits.
+9. **Re-authentication Proof Security:** Verification of short-lived HMAC-signed re-authentication proof tokens (`vrf_reauth_proof`) for high-risk operations (e.g., account deletion).
+
+### Verified Architecture
+
+- **Supabase SSR / Browser Client Isolation:** Browser code uses `@supabase/ssr` `createBrowserClient` to coordinate session state, while server runtimes use `createServerClient` bound to Next.js cookie stores.
+- **Server Authentication Authority (`getAuthenticatedUser`):** Validates incoming sessions by inspecting optional `Authorization: Bearer` headers (for API clients) or reading `HttpOnly` SSR cookies (`sb-*-auth-token`) via `supabase.auth.getUser()`. Never trusts client-supplied user IDs or unverified JWT claims.
+- **Middleware Session Synchronization (`updateSession`):** Intercepts all non-static requests, refreshes expiring access tokens, propagates updated cookies, and actively purges cookies upon encountering unrecoverable token errors.
+- **OAuth PKCE Exchange:** Implemented in `src/app/auth/callback/route.ts` via `supabase.auth.exchangeCodeForSession(code)`. Open-redirect vectors are eliminated via strict destination normalization (`safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/submit"`).
+- **Server-Side Ownership Enforcement (`verifyStartupOwnership`):** Compares `startup.user_id === user.id` on serverless database queries, preventing IDOR across founder resources. Sandbox/demo startups (`00000000-0000-0000-0000-*`) are locked as read-only.
+- **Admin Authorization (`isAdmin`):** Whitelists admin email identifiers on server runtimes (`eshanmaurya12@gmail.com`) for all `/admin` and `/api/admin/*` surfaces.
+- **Re-Authentication Proof Engine (`src/lib/reauth-proof.ts`):** Enforces 120-second TTL HMAC-SHA256 proof cookies verified using `crypto.timingSafeEqual` with `ENCRYPTION_SECRET`.
+- **Zombie-Session Cookie Cleanup:** Middleware detects unrecoverable errors (`isUnrecoverableAuthError`) and explicitly overwrites `sb-*` cookies with `maxAge: 0, expires: 1970-01-01`.
+
+### Threat Matrix (T-001 — T-010)
+
+| Threat ID | Threat / Invariant | Expected Invariant | Evidence & Verification | Status | Severity |
+| :--- | :--- | :--- | :--- | :---: | :---: |
+| **T-001** | Unauthenticated access to dashboard pages | Requests must redirect to `/login?next=...` | Direct GET requests to `/dashboard`, `/dashboard/billing`, and `/dashboard/settings` return HTTP 307 redirecting to `/login`. | **PASS** | **NONE** |
+| **T-002** | Unauthenticated or non-admin access to admin console | Direct requests must redirect to `/` or return 403 | Direct GET to `/admin` returns HTTP 307 redirect to `/`; API calls return HTTP 403 `{"error":"Forbidden. Admin access required."}`. | **PASS** | **NONE** |
+| **T-003** | Unauthenticated invocation of protected APIs | Direct API calls without valid session must return HTTP 401 | Probing `/api/feedback`, `/api/billing/*`, `/api/reports/*`, and `/api/account/delete` returns HTTP 401. | **PASS** | **NONE** |
+| **T-004** | IDOR / Cross-tenant startup tampering | Access to startup mutations must be constrained to owner | `verifyStartupOwnership()` checks `startup.user_id === user.id` on server; non-owners receive HTTP 403. | **PASS** | **NONE** |
+| **T-005** | Open redirect via OAuth callback `next` parameter | External URLs must be rejected; default to internal safe path | `safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/submit"` neutralizes `https://evil.com` and `//evil.com`. | **PASS** | **NONE** |
+| **T-006** | Open redirect via Login / Signup `next` parameter | External URLs must be sanitized before OAuth initiation | `LoginClient.tsx` and `SignupClient.tsx` sanitize `rawNext` to internal paths starting with `/`. | **PASS** | **NONE** |
+| **T-007** | Stale / revoked / expired session retention | Unrecoverable auth errors must wipe auth cookies | Middleware detects unrecoverable errors and explicitly deletes all `sb-*` cookies (`Max-Age=0, Expires=1970-01-01`). | **PASS** | **NONE** |
+| **T-008** | Forged / tampered reauth proof token | Destructive actions require cryptographic proof | `verifyReauthIntent` & `signReauthProof` use HMAC SHA-256 with `crypto.timingSafeEqual` and strict 120s TTL. | **PASS** | **NONE** |
+| **T-009** | Missing / malformed OAuth authorization code | Callback must fail gracefully without session establishment | Invoking `/auth/callback` with invalid/missing code returns HTTP 307 redirect to `/submit?error=...`. | **PASS** | **NONE** |
+| **T-010** | Client-side-only authentication bypass | Auth checks must be enforced strictly server-side | All authentication guards reside in Next.js Server Components and Route Handlers; zero client-only guards. | **PASS** | **NONE** |
+
+### Evidence Classification
+
+#### LIVE-VERIFIED
+1. **Invalid/Forged Cookie Invalidation & Purge:** Direct HTTP probe to `https://www.verifii.in/dashboard` with forged/invalid cookies triggers active cookie deletion (`Set-Cookie: Max-Age=0; Expires=Thu, 01 Jan 1970`) and HTTP 307 redirect to `/login?next=/dashboard`.
+2. **Invalid Bearer Token Rejection:** Direct HTTP probe to `https://www.verifii.in/api/feedback` with an invalid JWT returns HTTP 401 `{"error":"Unauthorized"}`.
+3. **Protected Page Route Guards:** Direct unauthenticated requests to `/dashboard`, `/dashboard/billing`, `/dashboard/settings`, and `/admin` return HTTP 307 redirects to `/login?next=...` or `/`.
+4. **Protected API Endpoint Guards:** Direct unauthenticated requests to `/api/feedback`, `/api/account/delete`, `/api/billing/cancel`, `/api/billing/checkout`, `/api/admin/feedback`, `/api/admin/analytics/onboarding`, `/api/reports/create-order`, `/api/startup/[id]/overview`, and `/api/startup/[id]/delete` return HTTP 401/403.
+5. **Open Redirect Immunity:** Malicious external redirect targets (`https://evil.com`, `//evil.com`) via `next` query parameters are neutralized and prevented from executing external redirects.
+6. **OAuth Callback Failure Resilience:** Invoking `/auth/callback` with missing codes, invalid codes, or provider errors redirects safely to internal `/submit?error=...` without session creation.
+
+#### CODE-VERIFIED
+1. **Google OAuth PKCE Exchange Architecture:** Statically verified across `LoginClient.tsx`, `SignupClient.tsx`, `oauth-redirect.ts`, and `auth/callback/route.ts` (`exchangeCodeForSession`).
+2. **SSR Session Persistence Architecture:** Statically verified across `@supabase/ssr` `createServerClient`, `middleware.ts` (`updateSession`), and `auth-server.ts` (`getAuthenticatedUser`).
+3. **Session Refresh Architecture:** Statically verified via `middleware.ts` token refresh handling against `@supabase/ssr` token rotation contracts.
+4. **Re-Authentication HMAC Proof Engine:** Statically verified across `src/lib/reauth-proof.ts` (`verifyReauthIntent`, `signReauthProof`, `crypto.timingSafeEqual`, 120s TTL).
+
+#### NOT-VERIFIED
+1. **Interactive Google 3rd-Party Consent / MFA Completion:** Manual interaction with Google's proprietary external login/2FA dialog cannot be headlessly automated in a non-interactive environment without violating service terms or requiring human credentials.
+2. **Accelerated Production Token Expiry / Refresh Boundary:** Supabase production access token TTL (3600 seconds) was not artificially altered to force early expiration; natural token refresh behavior remains verified via code contracts.
+
+### Final Verdict
+
+```
+================================================================================
+TEST 02 — AUTHENTICATION & SESSION LIFECYCLE: PASS WITH LIMITATION
+(NO SECURITY DEFECT FOUND, BUT SPECIFIC LIFECYCLE EVIDENCE REMAINS UNVERIFIED)
+================================================================================
+```
+
+### Security Finding
+
+No authentication bypass, IDOR, open redirect, zombie-session, missing server-side authorization, or invalid-session acceptance defect was identified. The remaining limitations are evidence/environment constraints, not identified application security defects.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10076,6 +10151,7 @@ Examples:
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated test verification, spoofing-resistance evidence, webhook fail-open hardening, and production closure (commits 106d632 and 5935d27). | Eshan Maurya |
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified 0 secret leakage in client bundles, 6/6 automated configuration tests, production build and runtime parity, and D-001 through D-010 consistency invariants. | Eshan Maurya |
 | 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). | Eshan Maurya |
+| 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. | Eshan Maurya |
 
 ---
 
@@ -10118,6 +10194,7 @@ Examples include:
 - TEST 01-D — Build / Runtime Configuration Consistency: CLOSED / VERIFIED. Audited build/runtime configuration boundaries across Local, Build, Vercel, Serverless, and Browser contexts; verified zero secret leakage in client bundles, strict NEXT_PUBLIC isolation, 6/6 automated configuration tests pass, and live production runtime stability.
 - TEST 01-E — Secret Exposure Through Bundles / API / Errors: CLOSED / VERIFIED. Confirmed zero real secrets exposed across browser bundles, source maps, HTML, RSC, API responses, error responses, headers, and logs (E-001 to E-015 PASS); hardened analytics constants into pure client-safe module (commit d360141).
 - TEST 01 Master Audit Closure: CLOSED / VERIFIED across all sub-audits (01-A, 01-B, 01-C, 01-D, 01-E). Formally established that TEST 01-F does not exist.
+- TEST 02 — Authentication & Session Lifecycle Security: PASS WITH LIMITATION. Verified Supabase SSR session architecture, server-side route guards, live invalid cookie deletion, API bearer token rejection, safe internal redirect normalization, and re-authentication HMAC proofs; formally recorded headless Google 3rd-party consent and production token TTL constraints.
 
 This timeline provides historical context for future contributors.
 
@@ -10217,6 +10294,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated tests, spoofing-resistance evidence, webhook fail-open hardening, and production closure. |
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified client bundle secret boundaries, 6/6 automated tests, and live production configuration parity. |
 | 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). |
+| 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. |
 
 ---
 
@@ -10224,7 +10302,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.17**
+- Handbook Version: **2.18**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
