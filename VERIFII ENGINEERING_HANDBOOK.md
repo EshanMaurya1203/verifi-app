@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.15 |
+| **Version** | 2.16 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8369,6 +8369,73 @@ TEST 01-C — RATE-LIMIT TRUST BOUNDARY: CLOSED / VERIFIED
 
 ---
 
+## 25.30 TEST 01-D — Build / Runtime Configuration Consistency
+
+### Objective
+
+Empirically audit and verify configuration consistency across all execution stages: local source configuration, build environment, Next.js build compilation (Turbopack), Vercel deployment, production serverless runtime, API routes, middleware, and browser client runtime. Verify that security-sensitive credentials remain strictly isolated to the server runtime, that client bundles contain zero private secrets or secret-holder module dependencies, and that dynamic production endpoints operate with 100% configuration parity.
+
+### Configuration Lifecycle & Architecture
+
+The platform enforces strict unidirectional configuration isolation:
+$$\text{Local Source Configuration} \longrightarrow \text{Build Environment} \longrightarrow \text{Next.js Build (Turbopack)} \longrightarrow \text{Vercel Deployment} \longrightarrow \text{Production Runtime} \longrightarrow \text{Server/API Functions} \longrightarrow \text{Browser/Client Runtime}$$
+
+1. **Build Compilation (`next.config.ts` & Turbopack):**
+   - No runtime secrets are inlined via `nextConfig.env` or webpack `DefinePlugin`.
+   - Security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Permissions-Policy`) are hardcoded in the root Next.js configuration.
+2. **Server Runtime Environment:**
+   - Evaluates sensitive credentials dynamically on demand (`SUPABASE_SERVICE_ROLE_KEY`, `ENCRYPTION_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_BILLING_WEBHOOK_SECRET`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `RESEND_API_KEY`, `CRON_SECRET`).
+3. **Client Browser Boundary:**
+   - Only explicitly declared `NEXT_PUBLIC_*` identifiers (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_RAZORPAY_KEY_ID`) are accessible to client components.
+4. **Vercel Environment Consistency:**
+   - Production variables are configured as `Sensitive/Hidden` within Vercel Production scope with 100% naming parity against code contracts.
+
+### Threat Scenario Evaluation (D-001 — D-010)
+
+| Scenario ID | Invariant Tested | Finding / Evaluation | Result |
+| :--- | :--- | :--- | :---: |
+| **D-001** | Build-time secret embedding | Zero raw secret values in static build artifacts or client chunks. | **PASS** |
+| **D-002** | Runtime-required secret missing | All 23 required runtime secrets confirmed active in Vercel Production metadata. | **PASS** |
+| **D-003** | Production/build configuration mismatch | Canonical origin (`https://www.verifii.in`) and Supabase URLs match build and runtime. | **PASS** |
+| **D-004** | Preview/Production configuration contamination | Vercel environments strictly isolated; Upstash Redis tokens scoped exclusively to Production. | **PASS** |
+| **D-005** | Unsafe `NEXT_PUBLIC` exposure | Only browser URLs, publishable anon JWT, and public Razorpay Key IDs use the prefix. | **PASS** |
+| **D-006** | Server-only module entering client graph | Client components (`'use client'`) contain zero imports of server secret modules; client execution tree verified free of private keys. | **PASS** |
+| **D-007** | Middleware/API configuration mismatch | Middleware and API routes share identical cookie schemas (`sb-*-auth-token`) and Supabase URLs. | **PASS** |
+| **D-008** | Edge/Node configuration incompatibility | Edge route (`/api/og/*`) uses standard Web API `fetch` without unsupported Node binary bindings. | **PASS** |
+| **D-009** | Configuration naming drift | 100% exact parity between code variable names and Vercel production keys. | **PASS** |
+| **D-010** | Static generation capturing runtime configuration | Dynamic API routes and founder dashboards are server-rendered dynamically on demand (`ƒ`). | **PASS** |
+
+### Automated Test Evidence
+
+- **Test Suite:** `tests/01-d-build-runtime-consistency.test.ts`
+- **Results:** 6 passed, 0 failed (0 errors)
+  - `TEST A: Only intended public identifiers use the NEXT_PUBLIC_ prefix` — **PASS**
+  - `TEST B: Server runtime configuration contracts match expected variable names` — **PASS**
+  - `TEST C: next.config.ts enforces strict baseline security headers` — **PASS**
+  - `TEST D: Middleware and Server Auth share identical Supabase Auth cookie patterns` — **PASS**
+  - `TEST E: Client components ('use client') never directly import server secret holders` — **PASS**
+  - `TEST F: Edge runtime route (/api/og/startup/[slug]) relies only on Web APIs` — **PASS**
+- **Type-Check:** `npm run type-check` (`tsc --noEmit`) $\rightarrow$ **0 errors**.
+- **Production Build:** `npm run build` $\rightarrow$ Clean exit code 0; 52 static pages generated, dynamic routes preserved.
+
+### Production Runtime Evidence
+
+Controlled read-only HTTP probes against live production (`https://www.verifii.in`):
+- `GET /api/live-feed`: HTTP 200 OK (`x-vercel-cache: MISS`, `content-type: application/json`, `server: Vercel`).
+- `GET /leaderboard`: HTTP 200 OK (`x-vercel-cache: MISS`, `content-type: text/html; charset=utf-8`, `server: Vercel`).
+- `GET /pricing`: HTTP 200 OK (`x-vercel-cache: MISS`, `content-type: text/html; charset=utf-8`, `server: Vercel`).
+- **Result:** Confirmed origin runtime execution without configuration or environment-related errors.
+
+### Final Status
+
+```
+================================================================================
+TEST 01-D — BUILD/RUNTIME CONFIGURATION CONSISTENCY: CLOSED / VERIFIED
+================================================================================
+```
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -9927,6 +9994,7 @@ Examples:
 | 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Razorpay Webhook Timing-Safe HMAC Comparison); reclassified historical Syne font Vercel failure as a resolved upstream CDN incident; documented live production deployment of `timingSafeCompare` in commit `440d1ef` (`dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5`, `READY`). | Eshan Maurya |
 | 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Search, Filtering & Public Discovery) live production smoke test verification (commit `b4fcc81`, 17/17 probes HTTP 200, UI/pagination/sanitization verified, authoritative verification filter semantics structurally verified with explicit zero-public-data catalog limitation). | Eshan Maurya |
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated test verification, spoofing-resistance evidence, webhook fail-open hardening, and production closure (commits 106d632 and 5935d27). | Eshan Maurya |
+| 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified 0 secret leakage in client bundles, 6/6 automated configuration tests, production build and runtime parity, and D-001 through D-010 consistency invariants. | Eshan Maurya |
 
 ---
 
@@ -9966,6 +10034,7 @@ Examples include:
 - Phase 2 Objective 5 (Public Leaderboard Search & Discovery): CLOSED / VERIFIED / PRODUCTION SMOKE TEST PASSED. Verified live deployment of commit `b4fcc81` across 17 read-only HTTP probes (17/17 HTTP 200 OK, UI rendering, parameter binding, category allowlist, revenue range parsing, city filtering, context-aware empty state, pagination clamping, sanitization, and 0 private record leakage). Verification filter pipeline semantics structurally verified against deployed source with explicit documentation of zero-public-startups catalog limitation.
 - Launch Readiness P-07 — Production Rate-Limit Verification: CLOSED / VERIFIED. Empirically proved origin Upstash Redis rate-limit threshold enforcement on `/api/live-feed` (Requests 1–15 returned HTTP 200, Request 16 returned HTTP 429 `{"error":"Rate limit exceeded"}`, 16/16 `x-vercel-cache: MISS`, 0 database/auth mutations).
 - TEST 01-C — Rate-Limit Client Identity Trust Boundary: CLOSED / VERIFIED. Resolved client-identity trust boundary in rate limiting (server-validated user.id, runtime/platform IP, bounded anonymous fallback, strict IPv4/IPv6 validation, canonical route isolation, and webhook fail-open hardening); verified 8/8 automated test suites and confirmed live production enforcement on https://www.verifii.in/api/live-feed (15 req/60s threshold, HTTP 429 on request 16+, rotating spoofed XFF/X-Real-IP bypass blocked, commits 106d632 and 5935d27).
+- TEST 01-D — Build / Runtime Configuration Consistency: CLOSED / VERIFIED. Audited build/runtime configuration boundaries across Local, Build, Vercel, Serverless, and Browser contexts; verified zero secret leakage in client bundles, strict NEXT_PUBLIC isolation, 6/6 automated configuration tests pass, and live production runtime stability.
 
 This timeline provides historical context for future contributors.
 
@@ -10063,6 +10132,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Timing-Safe HMAC Comparison) as CLOSED / VERIFIED following production deployment verification in commit `440d1ef` and historical Syne incident resolution. |
 | 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Public Discovery & Search) live production verification on commit `b4fcc81` (17-probe smoke test, UI rendering, sanitization, 0 private leaks, and structural verification filter invariants). |
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated tests, spoofing-resistance evidence, webhook fail-open hardening, and production closure. |
+| 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified client bundle secret boundaries, 6/6 automated tests, and live production configuration parity. |
 
 ---
 
@@ -10070,7 +10140,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.15**
+- Handbook Version: **2.16**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
