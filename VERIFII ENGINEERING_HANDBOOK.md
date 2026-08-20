@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.16 |
+| **Version** | 2.17 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8436,6 +8436,86 @@ TEST 01-D — BUILD/RUNTIME CONFIGURATION CONSISTENCY: CLOSED / VERIFIED
 
 ---
 
+## 25.31 TEST 01-E — Secret Exposure Through Bundles, API, Errors & Diagnostics
+
+### Objective
+
+Perform a comprehensive forensic security audit to ensure that no server-side secrets, provider credentials, database service roles, encryption keys, webhook secrets, or private environment variables are exposed through client JavaScript bundles, source maps, server-rendered HTML, React Server Component (RSC) flight payloads, API responses, error responses, HTTP headers, static assets, diagnostic routes, or application logging.
+
+### Audit Surface & Threat Matrix (E-001 — E-015)
+
+| Threat ID | Exposure Vector / Invariant | Status | Severity | Forensic Evidence & Verification |
+| :--- | :--- | :---: | :---: | :--- |
+| **E-001** | Browser JavaScript bundle exposure | **PASS** | **NONE** | Full recursive scan of `.next/static/chunks/` confirmed zero private keys, tokens, or encryption secrets embedded in client bundles. |
+| **E-002** | Source map exposure | **PASS** | **NONE** | `productionBrowserSourceMaps` disabled in `next.config.ts`; 0 client `.map` files exist in build output; live probes return HTTP 403. |
+| **E-003** | Server-rendered HTML exposure | **PASS** | **NONE** | Live probes across 6 core production pages (`/`, `/pricing`, `/leaderboard`, `/submit`, `/privacy`, `/terms`) confirmed zero private credentials in SSR HTML. |
+| **E-004** | RSC / Flight payload exposure | **PASS** | **NONE** | Next.js flight payloads (`self.__next_f.push`) contain strictly whitelisted public component props and metrics. |
+| **E-005** | Public API response exposure | **PASS** | **NONE** | Live probes against `/api/live-feed`, `/api/trust-metrics`, and public badge/OG endpoints return clean, sanitized data payloads. |
+| **E-006** | API error / stack trace exposure | **PASS** | **NONE** | Probing invalid parameters, nonexistent routes, and unauthorized calls returned sanitized JSON error objects without stack traces or database errors. |
+| **E-007** | Response-header exposure | **PASS** | **NONE** | Security headers enforced (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Permissions-Policy`); zero internal infrastructure headers. |
+| **E-008** | Static asset / configuration exposure | **PASS** | **NONE** | `/public` directory contains only public icons, manifest, and branding assets; zero private config files. |
+| **E-009** | Debug / test endpoint exposure | **PASS** | **NONE** | `/dev/emails` returns HTTP 404 in production; all `/api/admin/*` routes enforce strict server-side `isAdmin` session validation (HTTP 401/403). |
+| **E-010** | Logging / diagnostic exposure | **PASS** | **NONE** | Repository scan of `console.*` and `logger.*` confirmed zero logging of raw secrets, bearer tokens, or webhook secret keys. |
+| **E-011** | Client-side serialized state exposure | **PASS** | **NONE** | React state is restricted to public profile fields, aggregated metrics, and sanitized UI parameters. |
+| **E-012** | Provider / API response leakage | **PASS** | **NONE** | Stripe and Razorpay API interactions execute exclusively on serverless runtimes; raw authorization headers are never forwarded to clients. |
+| **E-013** | Authentication / token leakage | **PASS** | **NONE** | SSR session cookies with `HttpOnly` flags protect session state; `SUPABASE_SERVICE_ROLE_KEY` is never passed to client auth flows. |
+| **E-014** | Internal infrastructure disclosure | **PASS** | **NONE** | PostgreSQL hostnames and Upstash Redis endpoints are fully encapsulated behind serverless API abstractions. |
+| **E-015** | Environment-variable serialization | **PASS** | **NONE** | Only explicitly declared `NEXT_PUBLIC_*` identifiers are accessible to client-side code. |
+
+### Architectural Hardening: Client/Server Analytics Constant Isolation
+
+- **Observation:** `src/app/submit/page.tsx` (`"use client"`) previously imported `ONBOARDING_ANALYTICS_EVENTS` directly from `src/lib/analytics/events.ts`, a module that also exports server-side database fetching functions (`fetchOnboardingEvents`).
+- **Remediation:** Extracted pure client-safe event definitions into [`src/lib/analytics/event-constants.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/lib/analytics/event-constants.ts) and updated `src/lib/analytics/events.ts` to re-export them. Updated `src/app/submit/page.tsx` to import from `@/lib/analytics/event-constants`.
+- **Commit:** `d360141` (`security: isolate client-safe analytics constants`).
+- **Result:** Completely decoupled the client component bundle from server analytics data access functions while preserving 100% analytics event naming, database schemas, and typing contracts.
+
+### Final Status
+
+```
+================================================================================
+TEST 01-E — SECRET EXPOSURE THROUGH BUNDLES/API/ERRORS: CLOSED / VERIFIED
+================================================================================
+```
+
+---
+
+## 25.32 TEST 01 — Master Environment, Secrets & Configuration Audit Closure
+
+### Master Objective & Scope
+
+TEST 01 encompasses the complete, multi-phase verification of Verifii's credential isolation, environment variable architecture, Git exposure boundaries, production rate-limit trust boundaries, build/runtime configuration parity, and browser/API secret exposure prevention.
+
+### Consolidated Sub-Audit Results
+
+| Sub-Test ID | Audit Focus | Key Verifications & Remediations | Closure Commit / Ref | Status |
+| :--- | :--- | :--- | :---: | :---: |
+| **TEST 01-A** | Environment Variable Inventory & Exposure | Cataloged all 23 production environment variables; validated server-only vs `NEXT_PUBLIC` boundaries. | Historical Baseline | **CLOSED / VERIFIED** |
+| **TEST 01-B** | Environment Files / Git Exposure | Verified `.gitignore` prevents tracking of `.env*` files; zero live credentials committed in git repository. | Historical Baseline | **CLOSED / VERIFIED** |
+| **TEST 01-C** | Production Secret Presence & Rate-Limit Trust Boundary | Confirmed Upstash Redis production configuration; implemented 4-tier client identity trust hierarchy in `src/lib/rate-limit.ts` (`106d632`); removed debug route (`5935d27`); verified 8/8 automated test suites and live production 15 req/60s rate limiting on `/api/live-feed` with spoofing resistance. | `47eb488` (Handbook v2.15) | **CLOSED / VERIFIED** |
+| **TEST 01-D** | Build / Runtime Configuration Consistency | Verified 100% naming parity between code contracts and Vercel Production; evaluated D-001 to D-010 invariants; verified clean production build (52/52 pages) and 6/6 automated test suites (`tests/01-d-build-runtime-consistency.test.ts`). | `7d3a6dd` (Handbook v2.16) | **CLOSED / VERIFIED** |
+| **TEST 01-E** | Secret Exposure Through Bundles / API / Errors | Confirmed zero real secrets exposed in client bundles, source maps, HTML, RSC, API responses, or error payloads (E-001 to E-015 PASS); hardened analytics constants into pure client module (`d360141`). | `d360141` | **CLOSED / VERIFIED** |
+
+### Explicit Non-Existence Statement
+
+> **TEST 01-F does not exist.** The TEST 01 security audit framework concludes with TEST 01-E. No additional TEST 01 sub-audits exist or will be created.
+
+### Master Security Conclusion
+
+1. **Zero Secret Exposure:** No production credentials, database master keys (`SUPABASE_SERVICE_ROLE_KEY`), encryption secrets (`ENCRYPTION_SECRET`), payment gateway keys (`STRIPE_SECRET_KEY`, `RAZORPAY_KEY_SECRET`), or rate-limiting tokens (`UPSTASH_REDIS_REST_TOKEN`) are exposed to client runtimes, browser bundles, public source maps, HTML payloads, or API error responses.
+2. **Strict Identity Trust Boundaries:** Client identity in rate limiting is anchored to cryptographically verified server-side sessions, runtime socket IPs, or platform-verified headers (`x-vercel-forwarded-for`), rendering spoofed `X-Forwarded-For` or `X-Real-IP` injection attacks ineffective.
+3. **Unidirectional Configuration Flow:** Build-time static compilation is strictly decoupled from dynamic runtime serverless credentials, maintaining complete configuration consistency across local, preview, and production environments.
+4. **Remaining Operational Considerations:** Standard operational lifecycle management applies (e.g., periodic scheduled key rotation via cloud provider consoles and ongoing webhook signature health monitoring). Zero unresolved application security defects remain within the TEST 01 domain.
+
+### Final Master Status
+
+```
+================================================================================
+TEST 01 — MASTER ENVIRONMENT, SECRETS & CONFIGURATION AUDIT: CLOSED / VERIFIED
+================================================================================
+```
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -9995,6 +10075,7 @@ Examples:
 | 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Search, Filtering & Public Discovery) live production smoke test verification (commit `b4fcc81`, 17/17 probes HTTP 200, UI/pagination/sanitization verified, authoritative verification filter semantics structurally verified with explicit zero-public-data catalog limitation). | Eshan Maurya |
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated test verification, spoofing-resistance evidence, webhook fail-open hardening, and production closure (commits 106d632 and 5935d27). | Eshan Maurya |
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified 0 secret leakage in client bundles, 6/6 automated configuration tests, production build and runtime parity, and D-001 through D-010 consistency invariants. | Eshan Maurya |
+| 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). | Eshan Maurya |
 
 ---
 
@@ -10035,6 +10116,8 @@ Examples include:
 - Launch Readiness P-07 — Production Rate-Limit Verification: CLOSED / VERIFIED. Empirically proved origin Upstash Redis rate-limit threshold enforcement on `/api/live-feed` (Requests 1–15 returned HTTP 200, Request 16 returned HTTP 429 `{"error":"Rate limit exceeded"}`, 16/16 `x-vercel-cache: MISS`, 0 database/auth mutations).
 - TEST 01-C — Rate-Limit Client Identity Trust Boundary: CLOSED / VERIFIED. Resolved client-identity trust boundary in rate limiting (server-validated user.id, runtime/platform IP, bounded anonymous fallback, strict IPv4/IPv6 validation, canonical route isolation, and webhook fail-open hardening); verified 8/8 automated test suites and confirmed live production enforcement on https://www.verifii.in/api/live-feed (15 req/60s threshold, HTTP 429 on request 16+, rotating spoofed XFF/X-Real-IP bypass blocked, commits 106d632 and 5935d27).
 - TEST 01-D — Build / Runtime Configuration Consistency: CLOSED / VERIFIED. Audited build/runtime configuration boundaries across Local, Build, Vercel, Serverless, and Browser contexts; verified zero secret leakage in client bundles, strict NEXT_PUBLIC isolation, 6/6 automated configuration tests pass, and live production runtime stability.
+- TEST 01-E — Secret Exposure Through Bundles / API / Errors: CLOSED / VERIFIED. Confirmed zero real secrets exposed across browser bundles, source maps, HTML, RSC, API responses, error responses, headers, and logs (E-001 to E-015 PASS); hardened analytics constants into pure client-safe module (commit d360141).
+- TEST 01 Master Audit Closure: CLOSED / VERIFIED across all sub-audits (01-A, 01-B, 01-C, 01-D, 01-E). Formally established that TEST 01-F does not exist.
 
 This timeline provides historical context for future contributors.
 
@@ -10133,6 +10216,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Public Discovery & Search) live production verification on commit `b4fcc81` (17-probe smoke test, UI rendering, sanitization, 0 private leaks, and structural verification filter invariants). |
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated tests, spoofing-resistance evidence, webhook fail-open hardening, and production closure. |
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified client bundle secret boundaries, 6/6 automated tests, and live production configuration parity. |
+| 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). |
 
 ---
 
@@ -10140,7 +10224,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.16**
+- Handbook Version: **2.17**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
