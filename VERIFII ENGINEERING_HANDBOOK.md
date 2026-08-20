@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.18 |
+| **Version** | 2.19 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8591,6 +8591,138 @@ No authentication bypass, IDOR, open redirect, zombie-session, missing server-si
 
 ---
 
+## 25.34 TEST 03 — Re-Authentication Trust Boundary
+
+### Status
+
+```
+================================================================================
+TEST 03 — RE-AUTHENTICATION TRUST BOUNDARY: CLOSED / VERIFIED
+================================================================================
+```
+
+### Security Objective
+
+Ensure irreversible account and startup deletion cannot execute from an ordinary, stolen, or stale authenticated session and strictly require a fresh, cryptographically verified, user-bound, action-bound, time-bound, single-use re-authentication proof at the destructive API boundary.
+
+### Final Authoritative Trust Boundary
+
+```
+Authenticated Session (Browser Cookie / Bearer Token)
+        ↓
+Destructive API Route (DELETE /api/account/delete or DELETE /api/startup/[id]/delete)
+        ↓
+getAuthenticatedUser() / verifyStartupOwnership() [HTTP 401 / 403 on failure]
+        ↓
+Proof Extraction (getReauthProofToken from Cookie: vrf_reauth_proof)
+        ↓
+HMAC-SHA256 Cryptographic Verification (crypto.timingSafeEqual with ENCRYPTION_SECRET)
+        ↓
+User Identity Binding Check (expectedUserId === token.userId)
+        ↓
+Action Scope Binding Check (expectedAction === token.action)
+        ↓
+TTL Validation (now - issuedAt <= 120 seconds)
+        ↓
+Future Timestamp Protection (issuedAt <= now + 5000ms clock skew)
+        ↓
+Authoritative Distributed Single-Use Consumption:
+  SET reauth_consumed:<sha256(proofToken)> "1" EX 180 NX (Upstash Redis)
+  ├── Redis unavailable / timeout (>2000ms) → HTTP 503 (FAIL CLOSED)
+  ├── Duplicate / Replayed Proof → HTTP 403 (REPLAY REJECTED)
+  └── Key set successfully ("OK") → PROCEED
+        ↓
+ONLY THEN: Irreversible Destructive Execution
+  ├── Step 1: Read-only metadata capture for notification dispatch
+  ├── Step 2: cancelAllUserSubscriptions(user.id, { immediate: true }) [Billing Hard Barrier]
+  ├── Step 3: Local database purge (subscriptions.delete(), audit log user_id anonymization)
+  ├── Step 4: Startup cascade deletion (startup_submissions.delete())
+  ├── Step 5: Permanent Supabase Auth purge (auth.admin.deleteUser(user.id))
+  ├── Step 6: Purge vrf_reauth_proof cookie (Max-Age=0, Path=/)
+  └── Step 7: Return HTTP 200 { success: true }
+```
+
+### Mandatory Security Findings & Root Cause Analysis
+
+1. **Original Vulnerability:**
+   - Prior to remediation, `DELETE /api/account/delete` and `DELETE /api/startup/[id]/delete` relied solely on general session authentication (`getAuthenticatedUser()`) without independently verifying a cryptographic re-authentication proof token.
+   - UI-level proof checking was bypassable through direct API invocation by any client possessing a valid session token.
+   - The frontend workflow prematurely consumed and deleted the `vrf_reauth_proof` cookie in the Server Action layer upon page render (`consumeReauthProofAction`), leaving destructive API endpoints unprotected.
+2. **Remediation & Hardening:**
+   - **Independent API Enforcement:** Destructive API routes independently extract and verify `vrf_reauth_proof`.
+   - **Cryptographic Binding:** Proofs are strictly bound to `userId` and canonical `action` (`delete-account` or `delete-startup:<id>`). Proofs minted for one startup cannot delete another startup.
+   - **Time-Bounded Invalidation:** Proofs expire strictly after 120 seconds (`REAUTH_PROOF_TTL_SECONDS = 120`).
+   - **Timing-Safe HMAC:** Verified using `crypto.timingSafeEqual` over HMAC-SHA256 digests generated with server-side `ENCRYPTION_SECRET`.
+   - **Passive UI Validation:** Confirmation pages passively inspect the cookie (`checkReauthProofAction`) without destroying it.
+   - **Authoritative Distributed Single-Use Consumption:** Proof consumption is executed atomically in Upstash Redis via `SET reauth_consumed:<sha256(proof)> "1" EX 180 NX` with a 180-second TTL.
+   - **Complete In-Memory Fallback Removal:** Process-local memory fallback was completely eliminated to prevent multi-execution across distributed Vercel serverless instances during outages.
+   - **Fail-Closed Redis Semantics:** If Redis is unconfigured, unreachable, or times out (> 2000ms), the API fails closed with **HTTP 503** (`"Security verification service temporarily unavailable"`). Replayed tokens return **HTTP 403**.
+
+### Destructive Route Coverage & Forensic Audit
+
+A comprehensive repository audit across all API routes, Server Actions, middleware, cron handlers, and background tasks confirmed:
+
+| Entry Point | Target Resource | Authorization Primitive | Side-Effect Isolation |
+| :--- | :--- | :--- | :--- |
+| `DELETE /api/account/delete` | Complete user account & billing purge | `consumeAndVerifyReauthProof(proof, user.id, "delete-account")` | 100% Gated; billing cancellation & data deletion cannot execute without proof consumption. |
+| `DELETE /api/startup/[id]/delete` | Startup submission row deletion | `consumeAndVerifyReauthProof(proof, startup.user_id, "delete-startup:" + id)` | 100% Gated; startup deletion cannot execute without startup-bound proof consumption. |
+| `src/app/dashboard/settings/actions.ts` | Server Action layer | `checkReauthProofAction(action)` / `createReauthIntentAction(action)` | Passive validation only; zero database deletions, zero billing mutations. |
+| `POST /api/billing/cancel` | Subscription period-end cancellation | Standard session auth (`getAuthenticatedUser()`) | Safe non-destructive operation (`cancel_at_cycle_end: true`); retains account, DB data, and active access until period end. |
+
+**Result:** Exactly **zero** alternate paths, unauthenticated routes, Server Actions, or background workers can execute destructive operations without passing through `consumeAndVerifyReauthProof()`.
+
+### Security Verification Matrix (P1–P7)
+
+| Probe ID | Verification Target | Invariant Enforced | Status Code | Destructive Execution? | Result |
+| :---: | :--- | :--- | :---: | :---: | :---: |
+| **P1** | Request without `vrf_reauth_proof` | Fails closed; ordinary session rejected | **HTTP 401 / 403** | **NO (0 executed)** | **PASS** |
+| **P2** | Malformed / tampered proof HMAC | Timing-safe HMAC rejection | **HTTP 403** | **NO (0 executed)** | **PASS** |
+| **P3** | Expired proof (> 120s TTL) | Time-bounded validity enforcement | **HTTP 403** | **NO (0 executed)** | **PASS** |
+| **P4** | Wrong-user proof (User A proof on User B) | Strict cross-user tenant isolation | **HTTP 403** | **NO (0 executed)** | **PASS** |
+| **P5** | Wrong-action proof (`delete-account` on startup) | Strict action scoping | **HTTP 403** | **NO (0 executed)** | **PASS** |
+| **P6** | Replay of previously consumed proof | Distributed atomic single-use guarantee | **HTTP 403** | **NO (0 executed)** | **PASS** |
+| **P7** | Redis unavailable / timeout | Distributed fail-closed behavior | **HTTP 503** | **NO (0 executed)** | **PASS** |
+
+### Distributed Single-Use Guarantee
+
+- **Problem with Process-Local Fallbacks:** In-memory Maps or local process caches cannot guarantee single-use semantics across distributed serverless environments. If Redis were allowed to fall back to process memory during an outage or network split, concurrent requests routed to separate serverless workers would each evaluate an empty local cache, allowing duplicate execution of destructive operations with the same proof token.
+- **Architectural Guarantee:** The security invariant *"The same valid re-authentication proof cannot authorize more than one destructive request across distributed serverless execution contexts"* is strictly anchored to Upstash Redis `SET NX`.
+  - **Healthy Redis:** Exactly ONE request consumes the key and receives `"OK"`; all duplicate/concurrent requests receive `null` and are rejected with HTTP 403.
+  - **Redis Outage / Timeout:** Proof consumption cannot be authoritatively established; all requests are rejected with HTTP 503 and ZERO destructive operations proceed.
+
+### Cookie Transport & Storage Semantics
+
+- **Name:** `vrf_reauth_proof`
+- **Security Flags:** `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, `Max-Age=120`.
+- **Client Security:** Token material is completely hidden from browser JavaScript (`document.cookie`), `localStorage`, and `sessionStorage`.
+- **Cleanup Guarantee:** Cookie is actively purged (`Max-Age=0; Expires=1970-01-01`) on both rejection (403/503) and successful completion (200).
+
+### Automated Test Evidence (60 / 60 PASS)
+
+| Test Suite | File | Tests | Status |
+| :--- | :--- | :---: | :---: |
+| **Re-Authentication API Boundary & Invariants** | `tests/reauth-api-boundary.test.ts` | 21 / 21 | **PASS** |
+| **Account Deletion & Billing Safety Barrier** | `tests/vrf005-account-deletion-billing-safety.test.ts` | 18 / 18 | **PASS** |
+| **Rate Limit Client Identity Trust Boundary** | `tests/01-c-rate-limit-trust-boundary.test.ts` | 8 / 8 | **PASS** |
+| **Build & Runtime Configuration Consistency** | `tests/01-d-build-runtime-consistency.test.ts` | 6 / 6 | **PASS** |
+| **Free Verification & Security Boundaries** | `tests/a4-2-free-verification-boundaries.test.ts` | 7 / 7 | **PASS** |
+| **Total Automated Regression Tests** | — | **60 / 60** | **PASS** |
+
+- **Type Check (`npm run type-check`):** 0 compilation errors (**PASS**).
+- **Production Build (`npm run build`):** 52/52 static pages generated successfully (**PASS**).
+
+### Production Authorization-Boundary Evidence
+
+- Non-destructive production verification against `https://www.verifii.in/api/account/delete` and protected routes confirmed that unauthenticated requests return HTTP 401, requests lacking valid re-auth cookies are rejected, and zero side effects occur.
+- *Explicit Evidence Boundary:* Authorization boundary verification was strictly non-destructive. No real production accounts or startups were deleted during testing.
+
+### Git Implementation Evidence
+
+- **Implementation Commit:** `0f91a7e` (`fix(security): enforce distributed fail-closed single-use re-auth consumption`).
+- **Initial Boundary Commit:** `c6899fd` (`fix(security): enforce re-authentication proof at destructive api boundary`).
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10152,6 +10284,7 @@ Examples:
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified 0 secret leakage in client bundles, 6/6 automated configuration tests, production build and runtime parity, and D-001 through D-010 consistency invariants. | Eshan Maurya |
 | 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). | Eshan Maurya |
 | 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. | Eshan Maurya |
+| 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary); verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). | Eshan Maurya |
 
 ---
 
@@ -10195,6 +10328,7 @@ Examples include:
 - TEST 01-E — Secret Exposure Through Bundles / API / Errors: CLOSED / VERIFIED. Confirmed zero real secrets exposed across browser bundles, source maps, HTML, RSC, API responses, error responses, headers, and logs (E-001 to E-015 PASS); hardened analytics constants into pure client-safe module (commit d360141).
 - TEST 01 Master Audit Closure: CLOSED / VERIFIED across all sub-audits (01-A, 01-B, 01-C, 01-D, 01-E). Formally established that TEST 01-F does not exist.
 - TEST 02 — Authentication & Session Lifecycle Security: PASS WITH LIMITATION. Verified Supabase SSR session architecture, server-side route guards, live invalid cookie deletion, API bearer token rejection, safe internal redirect normalization, and re-authentication HMAC proofs; formally recorded headless Google 3rd-party consent and production token TTL constraints.
+- TEST 03 — Re-Authentication Trust Boundary: CLOSED / VERIFIED. Formally closed and verified independent API-level re-authentication enforcement for irreversible operations (`DELETE /api/account/delete`, `DELETE /api/startup/[id]/delete`). Verified user-bound, action-bound, 120s TTL HMAC-SHA256 proofs (`crypto.timingSafeEqual`), distributed atomic single-use Upstash Redis `SET NX` consumption, complete removal of process-local memory fallbacks, fail-closed HTTP 503 outage resilience, and 60/60 automated regression passes (commits `c6899fd` and `0f91a7e`).
 
 This timeline provides historical context for future contributors.
 
@@ -10295,6 +10429,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified client bundle secret boundaries, 6/6 automated tests, and live production configuration parity. |
 | 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). |
 | 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. |
+| 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary); verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). |
 
 ---
 
@@ -10302,7 +10437,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.18**
+- Handbook Version: **2.19**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
