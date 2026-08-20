@@ -14,7 +14,7 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useDraftRecovery } from "@/hooks/useDraftRecovery";
 import { validateOnboarding, ConflictResponse } from "@/lib/validation/onboarding";
 import { trackOnboardingEvent } from "@/lib/analytics/tracker";
-import { ONBOARDING_ANALYTICS_EVENTS } from "@/lib/analytics/events";
+import { ONBOARDING_ANALYTICS_EVENTS } from "@/lib/analytics/event-constants";
 
 type PaymentMethod = {
   id: string;
