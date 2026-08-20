@@ -205,3 +205,95 @@ export function verifyReauthProof(
     return { valid: false, reason: "Failed to parse or verify re-authentication proof token." };
   }
 }
+
+/**
+ * Server-side memory consumption cache for local/test environments when Upstash Redis is not configured.
+ */
+const memoryConsumptionCache = new Map<string, number>();
+
+/**
+ * Helper to clear memory consumption cache in test fixtures.
+ */
+export function clearConsumedProofCacheForTesting(): void {
+  memoryConsumptionCache.clear();
+}
+
+/**
+ * Atomically verifies and consumes an HMAC-signed re-authentication proof token.
+ * Enforces single-use semantics across distributed/concurrent requests via Upstash Redis (or in-memory atomic cache fallback).
+ */
+export async function consumeAndVerifyReauthProof(
+  token: string | undefined | null,
+  expectedUserId: string,
+  expectedAction: string
+): Promise<{ valid: boolean; reason?: string }> {
+  // 1. Statically and cryptographically verify the token first
+  const verification = verifyReauthProof(token, expectedUserId, expectedAction);
+  if (!verification.valid || !token) {
+    return verification;
+  }
+
+  // 2. Derive cryptographically safe hash of the proof token for atomic consumption tracking
+  const proofHash = crypto.createHash("sha256").update(token).digest("hex");
+  const redisKey = `reauth_consumed:${proofHash}`;
+
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (redisUrl && redisToken) {
+    try {
+      const { Redis } = await import("@upstash/redis");
+      const redis = new Redis({ url: redisUrl, token: redisToken });
+      
+      // Atomic SET NX with 180-second TTL (guarantees single-use across the 120-second token lifecycle)
+      const setResult = await redis.set(redisKey, "1", { nx: true, ex: 180 });
+      if (!setResult) {
+        return { valid: false, reason: "Re-authentication proof has already been consumed." };
+      }
+    } catch (err: any) {
+      console.error("[consumeAndVerifyReauthProof] Redis error during atomic consumption check:", err.message);
+      return { valid: false, reason: "Re-authentication verification service temporarily unavailable." };
+    }
+  } else {
+    // In-memory atomic consumption check (local dev / automated tests)
+    const now = Date.now();
+    // Prune expired entries
+    for (const [k, exp] of memoryConsumptionCache.entries()) {
+      if (now > exp) memoryConsumptionCache.delete(k);
+    }
+
+    if (memoryConsumptionCache.has(proofHash)) {
+      return { valid: false, reason: "Re-authentication proof has already been consumed." };
+    }
+
+    memoryConsumptionCache.set(proofHash, now + 180_000);
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Safely retrieves the re-authentication proof token from an incoming HTTP Request
+ * or from Next.js request headers.
+ */
+export async function getReauthProofToken(request?: Request): Promise<string | undefined> {
+  if (request) {
+    const cookieHeader = request.headers.get("cookie");
+    if (cookieHeader) {
+      const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${REAUTH_PROOF_COOKIE_NAME}=([^;]*)`));
+      if (match) {
+        return decodeURIComponent(match[1]);
+      }
+    }
+  }
+
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    return cookieStore.get(REAUTH_PROOF_COOKIE_NAME)?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+

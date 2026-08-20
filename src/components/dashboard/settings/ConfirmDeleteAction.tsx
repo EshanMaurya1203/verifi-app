@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { consumeReauthProofAction } from "@/app/dashboard/settings/actions";
+import { checkReauthProofAction } from "@/app/dashboard/settings/actions";
 
 interface ConfirmDeleteActionProps {
   action: string;
@@ -32,9 +32,9 @@ export function ConfirmDeleteAction({
 
   useEffect(() => {
     let isMounted = true;
-    async function verifyAndConsumeProof() {
+    async function verifyProofPassive() {
       try {
-        const result = await consumeReauthProofAction(action);
+        const result = await checkReauthProofAction(action);
         if (isMounted) {
           setIsValidProof(result.valid);
           setProofErrorMessage(result.reason);
@@ -51,7 +51,7 @@ export function ConfirmDeleteAction({
       }
     }
 
-    verifyAndConsumeProof();
+    verifyProofPassive();
     return () => {
       isMounted = false;
     };

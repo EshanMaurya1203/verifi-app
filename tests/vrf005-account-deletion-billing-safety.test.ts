@@ -275,6 +275,7 @@ require.cache[authServerPath] = {
 } as NodeModule;
 
 function resetState() {
+  process.env.ENCRYPTION_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   process.env.RAZORPAY_KEY_ID = "rzp_test_dummy_key_id";
   process.env.RAZORPAY_KEY_SECRET = "rzp_test_dummy_secret";
   process.env.RAZORPAY_BILLING_WEBHOOK_SECRET = "test_billing_webhook_secret_123456";
@@ -293,6 +294,17 @@ function resetState() {
   deletedAuthUser = false;
   isUserDeletedInAuth = false;
   processedEvents.clear();
+}
+
+function makeAuthDeleteRequest(): Request {
+  const { signReauthProof } = require("../src/lib/reauth-proof");
+  const proof = signReauthProof("usr_test_vrf005_123", "delete-account");
+  return new Request("http://localhost:3000/api/account/delete", {
+    method: "DELETE",
+    headers: {
+      cookie: `vrf_reauth_proof=${proof}`,
+    },
+  });
 }
 
 async function run() {
@@ -577,7 +589,7 @@ async function run() {
     cancelFails = true; // Force Razorpay failure
 
     const { DELETE: deleteHandler } = await import("../src/app/api/account/delete/route");
-    const req = new Request("http://localhost:3000/api/account/delete", { method: "DELETE" });
+    const req = makeAuthDeleteRequest();
     const res = await deleteHandler(req);
 
     assert.strictEqual(res.status, 500, "Must return HTTP 500 on cancellation failure");
@@ -600,7 +612,7 @@ async function run() {
     ];
 
     const { DELETE: deleteHandler } = await import("../src/app/api/account/delete/route");
-    const req = new Request("http://localhost:3000/api/account/delete", { method: "DELETE" });
+    const req = makeAuthDeleteRequest();
     const res = await deleteHandler(req);
 
     assert.strictEqual(res.status, 200, "Must return HTTP 200 on success");
@@ -626,8 +638,9 @@ async function run() {
 
     const { DELETE: deleteHandler } = await import("../src/app/api/account/delete/route");
 
-    const req1 = new Request("http://localhost:3000/api/account/delete", { method: "DELETE" });
-    const req2 = new Request("http://localhost:3000/api/account/delete", { method: "DELETE" });
+    const req1 = makeAuthDeleteRequest();
+    await new Promise((r) => setTimeout(r, 5));
+    const req2 = makeAuthDeleteRequest();
 
     // Execute two deletion requests concurrently
     const [res1, res2] = await Promise.all([
@@ -783,7 +796,7 @@ async function run() {
     fetchStatuses = { sub_rzp_unverified_1800: "active" };
 
     const { DELETE: deleteHandler } = await import("../src/app/api/account/delete/route");
-    const req = new Request("http://localhost:3000/api/account/delete", { method: "DELETE" });
+    const req = makeAuthDeleteRequest();
     const res = await deleteHandler(req);
 
     assert.strictEqual(res.status, 500, "Must abort with HTTP 500 when provider verification fails");

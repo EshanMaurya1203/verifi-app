@@ -32,16 +32,12 @@ export async function createReauthIntentAction(action: string) {
 }
 
 /**
- * Server action to consume and verify a re-authentication proof cookie.
- * Immediately deletes the HttpOnly cookie upon reading, guaranteeing single-use behavior
- * regardless of whether verification succeeds or fails.
+ * Server action to passively verify a re-authentication proof cookie for UI state rendering.
+ * Does NOT delete or consume the cookie, preserving it for the subsequent destructive API call.
  */
-export async function consumeReauthProofAction(action: string) {
+export async function checkReauthProofAction(action: string) {
   const cookieStore = await cookies();
   const proofCookie = cookieStore.get(REAUTH_PROOF_COOKIE_NAME)?.value;
-
-  // Immediately delete cookie regardless of verification success or failure
-  cookieStore.delete(REAUTH_PROOF_COOKIE_NAME);
 
   const user = await getAuthenticatedUser();
   if (!user) {
@@ -50,3 +46,11 @@ export async function consumeReauthProofAction(action: string) {
 
   return verifyReauthProof(proofCookie, user.id, action);
 }
+
+/**
+ * @deprecated Use checkReauthProofAction for passive validation; consumption occurs at the destructive API boundary.
+ */
+export async function consumeReauthProofAction(action: string) {
+  return checkReauthProofAction(action);
+}
+

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getAuthenticatedUser } from "@/lib/auth-server";
 import { logger, LogEvent } from "@/lib/logger";
@@ -6,6 +7,11 @@ import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 import { dispatchNotification } from "@/notifications/dispatcher";
 import { generateIdempotencyKey } from "@/notifications/idempotency";
 import { cancelAllUserSubscriptions } from "@/lib/billing/subscription-cancellation";
+import {
+  consumeAndVerifyReauthProof,
+  getReauthProofToken,
+  REAUTH_PROOF_COOKIE_NAME,
+} from "@/lib/reauth-proof";
 
 export async function DELETE(request: Request) {
   try {
@@ -18,6 +24,35 @@ export async function DELETE(request: Request) {
     const user = await getAuthenticatedUser();
     if (!user) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    // ── Security Check: Re-Authentication Proof Enforcement ───────────────
+    // VRF-005 / TEST 03 Invariant: Account deletion requires fresh, valid,
+    // unexpired, user-bound, single-use re-authentication proof.
+    const proofToken = await getReauthProofToken(request);
+
+    const proofVerification = await consumeAndVerifyReauthProof(
+      proofToken,
+      user.id,
+      "delete-account"
+    );
+
+    if (!proofVerification.valid) {
+      logger.warn("Account deletion rejected: re-authentication required", {
+        event: LogEvent.ACCOUNT_DELETION_FAILED,
+        userId: user.id,
+        reason: proofVerification.reason,
+      });
+      const errorResponse = NextResponse.json(
+        { error: "Re-authentication required" },
+        { status: 403 }
+      );
+      errorResponse.cookies.set(REAUTH_PROOF_COOKIE_NAME, "", {
+        path: "/",
+        maxAge: 0,
+        expires: new Date(0),
+      });
+      return errorResponse;
     }
 
     // ── Step 1: Capture Notification Payload BEFORE Any Deletion ────────
@@ -246,7 +281,13 @@ export async function DELETE(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true });
+    const successResponse = NextResponse.json({ success: true });
+    successResponse.cookies.set(REAUTH_PROOF_COOKIE_NAME, "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+    });
+    return successResponse;
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error("Exception during account deletion", { event: LogEvent.ACCOUNT_DELETION_FAILED, error: errorMsg });

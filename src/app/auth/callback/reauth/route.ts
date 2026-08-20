@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: "/dashboard/settings/confirm-delete",
+    path: "/",
     maxAge: REAUTH_PROOF_TTL_SECONDS,
   });
 
