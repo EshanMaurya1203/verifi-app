@@ -40,37 +40,98 @@ async function withTimeout<T>(
 }
 
 /**
- * Extracts a unique identifier for the client based on IP and the requested route.
- * Priority:
- * 1. x-forwarded-for
- * 2. x-real-ip
- * 3. anonymous:${userAgent}:${pathname}
+ * Strict IPv4 / IPv6 syntax validation to reject injection payloads,
+ * malformed delimiters, and oversized inputs before constructing Redis keys.
  */
-export function getClientIdentifier(request: Request): string {
-  let pathname = "";
+export function isValidIp(ip: string): boolean {
+  if (!ip || ip.length > 45 || ip.length < 3) return false;
+  // IPv4: 4 octets 0-255
+  const ipv4Regex =
+    /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$/;
+  if (ipv4Regex.test(ip)) return true;
+  // IPv6: standard RFC format validation
+  const ipv6Regex =
+    /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^::1$|^([0-9a-fA-F]{1,4}:){1,7}:$|^([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}$|^([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}$|^([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}$|^([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}$|^([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}$|^[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})$|^:((:[0-9a-fA-F]{1,4}){1,7}|:)$/;
+  return ipv6Regex.test(ip);
+}
+
+/**
+ * Deterministic, compact 32-bit FNV-1a hash to produce bounded ASCII tokens
+ * for anonymous fallback. Prevents key injection and unbounded key lengths.
+ */
+export function hashToken(str: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function getCanonicalPath(request: Request, explicitNamespace?: string): string {
+  if (explicitNamespace && typeof explicitNamespace === "string" && explicitNamespace.trim()) {
+    return explicitNamespace.trim();
+  }
   try {
-    pathname = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    return url.pathname || "unknown_route";
   } catch {
-    pathname = "unknown";
+    return "unknown_route";
+  }
+}
+
+/**
+ * Extracts a secure, authoritative client identifier for rate limiting.
+ *
+ * Trust Hierarchy:
+ * 1. Verified server-side Supabase user.id (authoritative for authenticated routes)
+ * 2. Trusted runtime request.ip (socket remote address from NextRequest/runtime if present)
+ * 3. Empirically verified platform identity (x-vercel-forwarded-for on Vercel Edge)
+ * 4. Bounded anonymous fallback (anon_<hash(ua)>:<canonical_path>)
+ *
+ * Note: Untrusted/client-controllable headers (such as standalone x-forwarded-for or x-real-ip)
+ * are NOT trusted as authoritative identity sources to prevent trivial rate-limit bypass via header rotation.
+ */
+export function getClientIdentifier(
+  request: Request,
+  userIdOrOptions?: string | { userId?: string; namespace?: string }
+): string {
+  let userId: string | undefined;
+  let explicitNamespace: string | undefined;
+
+  if (typeof userIdOrOptions === "string") {
+    userId = userIdOrOptions.trim() || undefined;
+  } else if (userIdOrOptions && typeof userIdOrOptions === "object") {
+    userId = userIdOrOptions.userId?.trim() || undefined;
+    explicitNamespace = userIdOrOptions.namespace?.trim() || undefined;
   }
 
-  const forwarded = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
+  const canonicalPath = getCanonicalPath(request, explicitNamespace);
 
-  let ip = "";
-
-  if (forwarded) {
-    ip = forwarded.split(",")[0].trim();
-  } else if (realIp) {
-    ip = realIp.trim();
+  // 1. Authenticated User Identity (Authoritative)
+  if (userId) {
+    return `usr_${userId}:${canonicalPath}`;
   }
 
-  if (!ip) {
-    const ua = request.headers.get("user-agent") || "unknown";
-    return `anonymous:${ua}:${pathname}`;
+  // 2. Trusted Runtime Socket IP (if provided by Next.js / server runtime)
+  const runtimeIp = (request as any).ip;
+  if (typeof runtimeIp === "string" && isValidIp(runtimeIp.trim())) {
+    return `ip_${runtimeIp.trim()}:${canonicalPath}`;
   }
 
-  return `${ip}:${pathname}`;
+  // 3. Empirically Verified Platform Header (Vercel Edge)
+  const vercelForwardedFor = request.headers.get("x-vercel-forwarded-for");
+  if (vercelForwardedFor) {
+    const candidate = vercelForwardedFor.split(",")[0].trim();
+    if (isValidIp(candidate)) {
+      return `ip_${candidate}:${canonicalPath}`;
+    }
+  }
+
+  // 4. Bounded Anonymous Fallback
+  const rawUa = request.headers.get("user-agent") || "unknown_agent";
+  const uaToken = hashToken(rawUa);
+  return `anon_${uaToken}:${canonicalPath}`;
 }
 
 /**
