@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.14 |
+| **Version** | 2.15 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8265,6 +8265,110 @@ PHASE 2 OBJECTIVE 5 — SEARCH & DISCOVERY: CLOSED / VERIFIED / PRODUCTION PASS
 
 ---
 
+## 25.29 TEST 01-C — Rate-Limit Client Identity Trust Boundary
+
+### Security Objective
+
+Empirically remediate and verify the client-identity trust boundary in the rate-limiting infrastructure (`src/lib/rate-limit.ts`) so that rate limiting does not rely on attacker-controlled HTTP headers, respects platform-trusted headers in the Vercel production runtime, binds authenticated users strictly to verified server-side Supabase sessions, protects public endpoints with bounded anonymous fallbacks, ensures webhook routes remain securely verified by cryptographic signatures with fail-open resilience, and strictly isolates Redis rate-limit buckets across distinct routes.
+
+### Original Trust-Boundary Vulnerability
+
+The legacy implementation of `getClientIdentifier(request)` in `src/lib/rate-limit.ts` derived client identity via:
+1. `x-forwarded-for` (`forwarded.split(",")[0].trim()`)
+2. `x-real-ip`
+3. `anonymous:${userAgent}:${pathname}`
+
+**Vulnerability:** In standard proxy chains or direct HTTP requests, external clients can supply arbitrary `X-Forwarded-For` or `X-Real-IP` headers (e.g. rotating `100.64.0.x` on each request). Taking the first split element or trusting unverified headers allowed an attacker to create fresh, independent Redis rate-limit keys on every request, completely circumventing rate-limit thresholds.
+
+### Remediation Architecture & Authoritative Identity Hierarchy
+
+The rate limiter derives identity using an authoritative 4-tier trust hierarchy:
+
+1. **Verified Server-Side Supabase User ID (`user.id`):**
+   - Authoritative primary identity for authenticated operations obtained strictly via server-side session validation (`getAuthenticatedUser()`).
+   - Generates key: `usr_${userId}:${canonicalPath}`.
+   - Client-supplied parameters (`req.body.userId`, URL query strings, or client headers) are strictly forbidden from establishing identity.
+2. **Runtime Socket Connection IP (`request.ip`):**
+   - Trusted socket remote address when directly provided by the server/NextRequest runtime.
+   - Generates key: `ip_${runtimeIp}:${canonicalPath}`.
+3. **Empirically Verified Platform Header (`x-vercel-forwarded-for`):**
+   - Injected and managed by the Vercel Edge proxy network. Client-supplied values are stripped and overwritten at the edge with the true connecting TCP client IP.
+   - Generates key: `ip_${platformIp}:${canonicalPath}`.
+4. **Bounded Anonymous Fallback (`anon_${hashToken(ua)}:${canonicalPath}`):**
+   - Deterministic 32-bit FNV-1a hash of the User-Agent string.
+
+### Strict IP Validation & Sanitization
+
+- Added `isValidIp()` enforcing strict IPv4 (4 octets 0–255) and standard RFC IPv6 format validation.
+- Any malformed string, delimiter injection (e.g. `; DROP TABLE`, colons, spaces), or oversized value is rejected and falls back safely to the bounded anonymous token without corrupting Redis keys.
+
+### Anonymous Fallback Security Boundary
+
+- Explicitly documented: `anon_<hash(ua)>` is a **bounded key-safety fallback** designed to maintain predictable Redis key sizes and avoid key injection when no IP is available; it is **not** an anti-sybil proof of unique client identity since User-Agent headers are client-controllable.
+
+### Forwarded-Header Handling
+
+- Untrusted client-controllable headers (`x-real-ip` and `x-forwarded-for` standalone) are NOT treated as authoritative identity sources in the application. When platform headers are absent and socket IP is unavailable, the limiter degrades to the bounded anonymous fallback rather than trusting spoofable client headers.
+
+### Canonical Route & Namespace Isolation
+
+- Every Redis rate-limit key incorporates the normalized route pathname (`rate_limit:<identity>:<canonical_path>`), guaranteeing that distinct routes (e.g. `/api/live-feed`, `/api/trust-metrics`, `/api/billing/checkout`) have independent buckets and cannot exhaust each other.
+
+### Webhook Primacy & failOpen Rationale
+
+- Stripe and Razorpay webhook handlers (`/api/stripe/webhook`, `/api/razorpay/webhook`, `/api/billing/webhook/razorpay`) maintain cryptographic HMAC signature verification (`stripe.webhooks.constructEvent` and `timingSafeCompare`) and PostgreSQL idempotency claims (`processed_webhook_events`) as their primary, authoritative security gate.
+- Webhook rate limiting is secondary abuse mitigation and explicitly configured with `{ failOpen: true }` so that transient Redis timeouts (>2000ms) or outages never cause payment gateways (Stripe / Razorpay) to receive HTTP 429 and drop legitimate payment/subscription notifications.
+- Invalid, malformed, or unsigned webhook requests are strictly rejected with HTTP 400 before any business logic or privileged database RPC executes.
+
+### Redis Failure Semantics
+
+- Preserves fail-closed (`failOpen: false` default) for security-sensitive and destructive endpoints (e.g. `/api/account/delete`, `/api/billing/checkout`) to prevent abuse during Redis outages.
+- Preserves fail-open (`failOpen: true`) for read-only public endpoints (`/api/live-feed`, `/api/trust-metrics`) and webhook delivery endpoints.
+- Redis timeout preserved at 2,000 ms.
+
+### Automated Test Evidence (8/8 Passed)
+
+- **Test Suite:** `tests/01-c-rate-limit-trust-boundary.test.ts`
+- **Test A:** Verified platform header (`x-vercel-forwarded-for`) priority over spoofed headers (**PASS**).
+- **Test B:** Untrusted headers (`x-real-ip` / `x-forwarded-for`) alone fall back to bounded anonymous token without bucket rotation (**PASS**).
+- **Test C:** Attacker rotating `x-forwarded-for` & `x-real-ip` cannot create fresh Redis buckets (**PASS**).
+- **Test D:** Verified server-side `user.id` overrides all headers and creates distinct user buckets (**PASS**).
+- **Test E:** Same client identity on different routes produces strictly isolated keys (**PASS**).
+- **Test F:** Strict IP validation rejects injection payloads and malformed strings (**PASS**).
+- **Test G:** Redis error correctly obeys `failOpen: false` (block) vs `failOpen: true` (allow) (**PASS**).
+- **Test H:** Webhook routes enforce cryptographic signature checks and fail-open rate limiting (**PASS**).
+
+### Production Verification Evidence
+
+- **Target Endpoint:** `https://www.verifii.in/api/live-feed`
+- **Environment:** Production (Vercel Global Edge + Upstash Redis)
+- **Configuration:** 15 requests / 60-second window, `failOpen: true`
+- **Observed Live Execution:**
+  - Requests 1–15: Returned `HTTP 200 OK` (`x-vercel-cache: MISS`, duration 500–1200ms).
+  - Request 16: Returned `HTTP 429 Too Many Requests` (`Retry-After: 60`, `x-vercel-cache: MISS`).
+  - Requests 17–21 (Adversarial Header Rotation Probe): Dispatched with rotating spoofed `X-Forwarded-For` (`203.0.113.17..21`) and `X-Real-IP` (`198.51.100.17..21`); all requests returned `HTTP 429 Too Many Requests` (`Retry-After: 60`).
+  - **Result:** Confirmed that client-controlled headers cannot bypass production rate limiting.
+
+### Upstash Redis Production Confirmation
+
+- `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` confirmed active in Vercel Production.
+- Redis atomic `INCR` + `EXPIRE` operations verified live. Credentials securely retained in Vercel environment without documentation leakage.
+
+### Implementation & Cleanup Commits
+
+- **Implementation Commit:** `106d632` (`fix(security): resolve TEST 01-C rate-limit client identity trust boundary`)
+- **Diagnostic Cleanup Commit:** `5935d27` (`chore(security): remove temporary IP diagnostic endpoint`)
+
+### Final Status
+
+```
+============================================================
+TEST 01-C — RATE-LIMIT TRUST BOUNDARY: CLOSED / VERIFIED
+============================================================
+```
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -9822,6 +9926,7 @@ Examples:
 | 2.12 | August 2026 | Formally documented Launch Readiness P-07 production rate-limit threshold verification on `/api/live-feed` (15 req/60s, Upstash Redis atomic INCR+EXPIRE, 16/16 origin reach, HTTP 429 rejection on request 16). | Eshan Maurya |
 | 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Razorpay Webhook Timing-Safe HMAC Comparison); reclassified historical Syne font Vercel failure as a resolved upstream CDN incident; documented live production deployment of `timingSafeCompare` in commit `440d1ef` (`dpl_5zzfCee7ZnJvGud4Dyr1am2gMrz5`, `READY`). | Eshan Maurya |
 | 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Search, Filtering & Public Discovery) live production smoke test verification (commit `b4fcc81`, 17/17 probes HTTP 200, UI/pagination/sanitization verified, authoritative verification filter semantics structurally verified with explicit zero-public-data catalog limitation). | Eshan Maurya |
+| 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated test verification, spoofing-resistance evidence, webhook fail-open hardening, and production closure (commits 106d632 and 5935d27). | Eshan Maurya |
 
 ---
 
@@ -9860,6 +9965,7 @@ Examples include:
 - Phase 2 — Founder Experience: CLOSED / VERIFIED across all 7 core objectives (Founder Onboarding & Profile Setup, Payment Provider Connection & Multi-Gateway Support, Revenue Sync & Real-Time Aggregation Engine, Public Startup Profile & Trust Badging, Search, Filtering & Public Discovery, Founder Dashboard & Financial Health Center, and Verification Confidence & Fraud Defense Integration).
 - Phase 2 Objective 5 (Public Leaderboard Search & Discovery): CLOSED / VERIFIED / PRODUCTION SMOKE TEST PASSED. Verified live deployment of commit `b4fcc81` across 17 read-only HTTP probes (17/17 HTTP 200 OK, UI rendering, parameter binding, category allowlist, revenue range parsing, city filtering, context-aware empty state, pagination clamping, sanitization, and 0 private record leakage). Verification filter pipeline semantics structurally verified against deployed source with explicit documentation of zero-public-startups catalog limitation.
 - Launch Readiness P-07 — Production Rate-Limit Verification: CLOSED / VERIFIED. Empirically proved origin Upstash Redis rate-limit threshold enforcement on `/api/live-feed` (Requests 1–15 returned HTTP 200, Request 16 returned HTTP 429 `{"error":"Rate limit exceeded"}`, 16/16 `x-vercel-cache: MISS`, 0 database/auth mutations).
+- TEST 01-C — Rate-Limit Client Identity Trust Boundary: CLOSED / VERIFIED. Resolved client-identity trust boundary in rate limiting (server-validated user.id, runtime/platform IP, bounded anonymous fallback, strict IPv4/IPv6 validation, canonical route isolation, and webhook fail-open hardening); verified 8/8 automated test suites and confirmed live production enforcement on https://www.verifii.in/api/live-feed (15 req/60s threshold, HTTP 429 on request 16+, rotating spoofed XFF/X-Real-IP bypass blocked, commits 106d632 and 5935d27).
 
 This timeline provides historical context for future contributors.
 
@@ -9956,6 +10062,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.12 | August 2026 | Formally documented Launch Readiness P-07 production rate-limit threshold verification on `/api/live-feed` (15 req/60s threshold, Upstash Redis backend, HTTP 429 on request 16). |
 | 2.13 | August 2026 | Formally reconciled and closed VRF-004 (Timing-Safe HMAC Comparison) as CLOSED / VERIFIED following production deployment verification in commit `440d1ef` and historical Syne incident resolution. |
 | 2.14 | August 2026 | Formally recorded Phase 2 Objective 5 (Public Discovery & Search) live production verification on commit `b4fcc81` (17-probe smoke test, UI rendering, sanitization, 0 private leaks, and structural verification filter invariants). |
+| 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated tests, spoofing-resistance evidence, webhook fail-open hardening, and production closure. |
 
 ---
 
@@ -9963,7 +10070,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.14**
+- Handbook Version: **2.15**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
