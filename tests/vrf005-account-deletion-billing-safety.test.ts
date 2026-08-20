@@ -294,6 +294,20 @@ function resetState() {
   deletedAuthUser = false;
   isUserDeletedInAuth = false;
   processedEvents.clear();
+
+  const { setReauthRedisClientForTesting } = require("../src/lib/reauth-proof");
+  const testRedisStore = new Map<string, string>();
+  setReauthRedisClientForTesting({
+    set: async (key: string, value: string, options?: { nx?: boolean; ex?: number }) => {
+      if (options?.nx) {
+        if (testRedisStore.has(key)) return null;
+        testRedisStore.set(key, value);
+        return "OK";
+      }
+      testRedisStore.set(key, value);
+      return "OK";
+    },
+  });
 }
 
 function makeAuthDeleteRequest(): Request {

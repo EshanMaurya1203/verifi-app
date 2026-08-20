@@ -44,15 +44,22 @@ export async function DELETE(
     );
 
     if (!proofVerification.valid) {
-      logger.warn("Startup deletion rejected: re-authentication required", {
+      const statusCode = proofVerification.status || 403;
+      logger.warn("Startup deletion rejected: re-authentication failed", {
         event: LogEvent.STARTUP_DELETION_FAILED,
         startupId: Number(startupId),
         userId: startup.user_id,
         reason: proofVerification.reason,
+        statusCode,
       });
       const errorResponse = NextResponse.json(
-        { error: "Re-authentication required" },
-        { status: 403 }
+        {
+          error:
+            statusCode === 503
+              ? "Security verification service temporarily unavailable"
+              : "Re-authentication required",
+        },
+        { status: statusCode }
       );
       errorResponse.cookies.set(REAUTH_PROOF_COOKIE_NAME, "", {
         path: "/",

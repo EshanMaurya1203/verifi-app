@@ -206,70 +206,108 @@ export function verifyReauthProof(
   }
 }
 
-/**
- * Server-side memory consumption cache for local/test environments when Upstash Redis is not configured.
- */
-const memoryConsumptionCache = new Map<string, number>();
+export interface ReauthConsumptionResult {
+  valid: boolean;
+  reason?: string;
+  status?: number;
+}
+
+let testRedisClient: any = null;
 
 /**
- * Helper to clear memory consumption cache in test fixtures.
+ * Injects a mock/stub Redis client for automated testing of distributed race conditions and outages.
  */
-export function clearConsumedProofCacheForTesting(): void {
-  memoryConsumptionCache.clear();
+export function setReauthRedisClientForTesting(client: any): void {
+  testRedisClient = client;
 }
 
 /**
- * Atomically verifies and consumes an HMAC-signed re-authentication proof token.
- * Enforces single-use semantics across distributed/concurrent requests via Upstash Redis (or in-memory atomic cache fallback).
+ * Resets the test Redis client back to default environment resolution.
+ */
+export function resetReauthRedisClientForTesting(): void {
+  testRedisClient = null;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("Redis timeout")), timeoutMs)
+    ),
+  ]);
+}
+
+/**
+ * Authoritatively verifies and consumes an HMAC-signed re-authentication proof token
+ * using the distributed consumption store (Upstash Redis).
+ *
+ * FAILS CLOSED: If Redis is unavailable, unconfigured, or times out, the proof consumption
+ * cannot be authoritatively established across distributed instances, and the operation is rejected.
  */
 export async function consumeAndVerifyReauthProof(
   token: string | undefined | null,
   expectedUserId: string,
   expectedAction: string
-): Promise<{ valid: boolean; reason?: string }> {
+): Promise<ReauthConsumptionResult> {
   // 1. Statically and cryptographically verify the token first
   const verification = verifyReauthProof(token, expectedUserId, expectedAction);
   if (!verification.valid || !token) {
-    return verification;
+    return { ...verification, status: 403 };
   }
 
-  // 2. Derive cryptographically safe hash of the proof token for atomic consumption tracking
+  // 2. Authoritative distributed single-use consumption check
   const proofHash = crypto.createHash("sha256").update(token).digest("hex");
   const redisKey = `reauth_consumed:${proofHash}`;
 
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  try {
+    let redis = testRedisClient;
 
-  if (redisUrl && redisToken) {
-    try {
-      const { Redis } = await import("@upstash/redis");
-      const redis = new Redis({ url: redisUrl, token: redisToken });
-      
-      // Atomic SET NX with 180-second TTL (guarantees single-use across the 120-second token lifecycle)
-      const setResult = await redis.set(redisKey, "1", { nx: true, ex: 180 });
-      if (!setResult) {
-        return { valid: false, reason: "Re-authentication proof has already been consumed." };
+    if (!redis) {
+      const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+      const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+      if (!redisUrl || !redisToken) {
+        console.error(
+          "[consumeAndVerifyReauthProof] Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN. Failing closed."
+        );
+        return {
+          valid: false,
+          reason: "Security verification service configuration error. Single-use consumption cannot be verified.",
+          status: 503,
+        };
       }
-    } catch (err: any) {
-      console.error("[consumeAndVerifyReauthProof] Redis error during atomic consumption check:", err.message);
-      return { valid: false, reason: "Re-authentication verification service temporarily unavailable." };
-    }
-  } else {
-    // In-memory atomic consumption check (local dev / automated tests)
-    const now = Date.now();
-    // Prune expired entries
-    for (const [k, exp] of memoryConsumptionCache.entries()) {
-      if (now > exp) memoryConsumptionCache.delete(k);
+
+      const { Redis } = await import("@upstash/redis");
+      redis = new Redis({ url: redisUrl, token: redisToken });
     }
 
-    if (memoryConsumptionCache.has(proofHash)) {
-      return { valid: false, reason: "Re-authentication proof has already been consumed." };
+    // Atomic SET NX with 180-second TTL (guarantees single-use across the 120-second token lifecycle)
+    const setResult = await withTimeout(
+      redis.set(redisKey, "1", { nx: true, ex: 180 }),
+      2000
+    );
+
+    // Upstash Redis returns "OK" (or true) when key was set, or null/false if key already existed
+    if (setResult !== "OK" && setResult !== true) {
+      return {
+        valid: false,
+        reason: "Re-authentication proof has already been consumed.",
+        status: 403,
+      };
     }
 
-    memoryConsumptionCache.set(proofHash, now + 180_000);
+    return { valid: true };
+  } catch (err: any) {
+    console.error(
+      "[consumeAndVerifyReauthProof] Redis error/timeout during atomic single-use consumption:",
+      err.message
+    );
+    return {
+      valid: false,
+      reason: "Security verification service temporarily unavailable. Re-authentication proof cannot be verified.",
+      status: 503,
+    };
   }
-
-  return { valid: true };
 }
 
 /**

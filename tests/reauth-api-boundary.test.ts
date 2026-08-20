@@ -15,9 +15,39 @@ import {
   signReauthIntent,
   verifyReauthIntent,
   isValidReauthAction,
-  clearConsumedProofCacheForTesting,
+  setReauthRedisClientForTesting,
+  resetReauthRedisClientForTesting,
   REAUTH_PROOF_TTL_SECONDS,
 } from "../src/lib/reauth-proof";
+
+class MockRedis {
+  public store = new Map<string, string>();
+  public shouldTimeout = false;
+  public shouldFail = false;
+
+  async set(
+    key: string,
+    value: string,
+    options?: { nx?: boolean; ex?: number }
+  ): Promise<string | null> {
+    if (this.shouldTimeout) {
+      // Simulate timeout exceeding 2000ms threshold
+      await new Promise((r) => setTimeout(r, 2200));
+    }
+    if (this.shouldFail) {
+      throw new Error("Redis cluster connection refused (ECONNREFUSED)");
+    }
+    if (options?.nx) {
+      if (this.store.has(key)) {
+        return null;
+      }
+      this.store.set(key, value);
+      return "OK";
+    }
+    this.store.set(key, value);
+    return "OK";
+  }
+}
 
 describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () => {
   const testSecret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -25,23 +55,27 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
   const userB = "usr_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
   const startup1 = "101";
   const startup2 = "202";
+  let mockRedis: MockRedis;
 
   beforeEach(() => {
     process.env.ENCRYPTION_SECRET = testSecret;
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
-    clearConsumedProofCacheForTesting();
+    mockRedis = new MockRedis();
+    setReauthRedisClientForTesting(mockRedis);
   });
 
   it("TEST A: Request with missing / undefined proof fails closed", async () => {
     const res = await consumeAndVerifyReauthProof(undefined, userA, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /missing/i);
   });
 
   it("TEST B: Request with null / empty string proof fails closed", async () => {
     const res = await consumeAndVerifyReauthProof("", userA, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /missing/i);
   });
 
@@ -54,6 +88,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
 
     const res = await consumeAndVerifyReauthProof(expiredToken, userA, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /expired/i);
   });
 
@@ -65,6 +100,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
 
     const res = await consumeAndVerifyReauthProof(futureToken, userA, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /future/i);
   });
 
@@ -79,6 +115,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
 
     const res = await consumeAndVerifyReauthProof(tamperedProof, userA, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /invalid.*signature/i);
   });
 
@@ -86,6 +123,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     const proofUserA = signReauthProof(userA, "delete-account");
     const res = await consumeAndVerifyReauthProof(proofUserA, userB, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /user mismatch/i);
   });
 
@@ -93,6 +131,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     const proof = signReauthProof(userA, "delete-account");
     const res = await consumeAndVerifyReauthProof(proof, userA, "invalid-action");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /invalid target/i);
   });
 
@@ -100,6 +139,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     const accountProof = signReauthProof(userA, "delete-account");
     const res = await consumeAndVerifyReauthProof(accountProof, userA, `delete-startup:${startup1}`);
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /action mismatch/i);
   });
 
@@ -107,6 +147,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     const startupProof = signReauthProof(userA, `delete-startup:${startup1}`);
     const res = await consumeAndVerifyReauthProof(startupProof, userA, "delete-account");
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /action mismatch/i);
   });
 
@@ -114,6 +155,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     const startup1Proof = signReauthProof(userA, `delete-startup:${startup1}`);
     const res = await consumeAndVerifyReauthProof(startup1Proof, userA, `delete-startup:${startup2}`);
     assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403);
     assert.match(res.reason || "", /action mismatch/i);
   });
 
@@ -126,7 +168,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
 
   it("TEST L: Replay of consumed proof is rejected (Single-Use Guarantee)", async () => {
     const validProof = signReauthProof(userA, "delete-account");
-    
+
     // First consumption succeeds
     const firstConsumption = await consumeAndVerifyReauthProof(validProof, userA, "delete-account");
     assert.strictEqual(firstConsumption.valid, true);
@@ -134,6 +176,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     // Second consumption of the identical proof token fails
     const replayAttempt = await consumeAndVerifyReauthProof(validProof, userA, "delete-account");
     assert.strictEqual(replayAttempt.valid, false);
+    assert.strictEqual(replayAttempt.status, 403);
     assert.match(replayAttempt.reason || "", /already been consumed/i);
   });
 
@@ -155,7 +198,7 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
 
   it("TEST N: Passive checkReauthProof does NOT consume the token", () => {
     const validProof = signReauthProof(userA, "delete-account");
-    
+
     // Passive verification check (used when rendering confirmation view)
     const passive1 = verifyReauthProof(validProof, userA, "delete-account");
     assert.strictEqual(passive1.valid, true);
@@ -174,5 +217,79 @@ describe("TEST 03 — Re-Authentication Security & API Boundary Invariants", () 
     const tampered = intent.substring(0, intent.length - 4) + "AAAA";
     const tamperedRes = verifyReauthIntent(tampered);
     assert.strictEqual(tamperedRes.valid, false);
+  });
+
+  // ── DISTRIBUTED REDIS CONSTRAINTS & FAIL-CLOSED BOUNDARY TESTS ───────────────
+
+  it("TEST Q: Redis unavailable during proof consumption fails closed (HTTP 503)", async () => {
+    mockRedis.shouldFail = true;
+    const validProof = signReauthProof(userA, "delete-account");
+
+    const res = await consumeAndVerifyReauthProof(validProof, userA, "delete-account");
+    assert.strictEqual(res.valid, false, "Must reject operation when Redis is unavailable");
+    assert.strictEqual(res.status, 503, "Must return status 503");
+    assert.match(res.reason || "", /unavailable/i);
+  });
+
+  it("TEST R: Redis timeout during proof consumption fails closed (HTTP 503)", async () => {
+    mockRedis.shouldTimeout = true;
+    const validProof = signReauthProof(userA, "delete-account");
+
+    const res = await consumeAndVerifyReauthProof(validProof, userA, "delete-account");
+    assert.strictEqual(res.valid, false, "Must reject operation when Redis times out");
+    assert.strictEqual(res.status, 503, "Must return status 503");
+    assert.match(res.reason || "", /temporarily unavailable/i);
+  });
+
+  it("TEST S: Redis SET NX returns false (already consumed) -> HTTP 403", async () => {
+    const validProof = signReauthProof(userA, "delete-account");
+    const proofHash = crypto.createHash("sha256").update(validProof).digest("hex");
+    // Pre-populate Redis with the key (simulating prior consumption by another node)
+    mockRedis.store.set(`reauth_consumed:${proofHash}`, "1");
+
+    const res = await consumeAndVerifyReauthProof(validProof, userA, "delete-account");
+    assert.strictEqual(res.valid, false);
+    assert.strictEqual(res.status, 403, "Must return status 403 when proof is already consumed");
+    assert.match(res.reason || "", /already been consumed/i);
+  });
+
+  it("TEST T: Redis SET NX succeeds -> passes authorization boundary (valid = true)", async () => {
+    const validProof = signReauthProof(userA, "delete-account");
+    const res = await consumeAndVerifyReauthProof(validProof, userA, "delete-account");
+    assert.strictEqual(res.valid, true);
+    assert.strictEqual(res.reason, undefined);
+  });
+
+  it("TEST U: Two concurrent requests with same proof and healthy Redis -> exactly ONE passes", async () => {
+    const validProof = signReauthProof(userA, "delete-account");
+
+    const [res1, res2] = await Promise.all([
+      consumeAndVerifyReauthProof(validProof, userA, "delete-account"),
+      consumeAndVerifyReauthProof(validProof, userA, "delete-account"),
+    ]);
+
+    const results = [res1, res2];
+    const successes = results.filter((r) => r.valid);
+    const failures = results.filter((r) => !r.valid);
+
+    assert.strictEqual(successes.length, 1, "Exactly ONE concurrent request must succeed");
+    assert.strictEqual(failures.length, 1, "The second concurrent request must be rejected");
+    assert.strictEqual(failures[0].status, 403);
+    assert.match(failures[0].reason || "", /already been consumed/i);
+  });
+
+  it("TEST V: Two concurrent requests with same proof while Redis is unavailable -> ZERO requests execute", async () => {
+    mockRedis.shouldFail = true;
+    const validProof = signReauthProof(userA, "delete-account");
+
+    const [res1, res2] = await Promise.all([
+      consumeAndVerifyReauthProof(validProof, userA, "delete-account"),
+      consumeAndVerifyReauthProof(validProof, userA, "delete-account"),
+    ]);
+
+    assert.strictEqual(res1.valid, false, "Request 1 must NOT execute destructive action");
+    assert.strictEqual(res1.status, 503, "Request 1 must return 503");
+    assert.strictEqual(res2.valid, false, "Request 2 must NOT execute destructive action");
+    assert.strictEqual(res2.status, 503, "Request 2 must return 503");
   });
 });

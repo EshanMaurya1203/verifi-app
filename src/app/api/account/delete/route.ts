@@ -38,14 +38,21 @@ export async function DELETE(request: Request) {
     );
 
     if (!proofVerification.valid) {
-      logger.warn("Account deletion rejected: re-authentication required", {
+      const statusCode = proofVerification.status || 403;
+      logger.warn("Account deletion rejected: re-authentication failed", {
         event: LogEvent.ACCOUNT_DELETION_FAILED,
         userId: user.id,
         reason: proofVerification.reason,
+        statusCode,
       });
       const errorResponse = NextResponse.json(
-        { error: "Re-authentication required" },
-        { status: 403 }
+        {
+          error:
+            statusCode === 503
+              ? "Security verification service temporarily unavailable"
+              : "Re-authentication required",
+        },
+        { status: statusCode }
       );
       errorResponse.cookies.set(REAUTH_PROOF_COOKIE_NAME, "", {
         path: "/",
