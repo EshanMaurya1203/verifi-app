@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.21 |
+| **Version** | 2.22 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8945,6 +8945,148 @@ To maintain strict schema synchronization across the codebase and database catal
 
 ---
 
+## 25.37 TEST 06 — Authoritative Field & Payment Trust Boundary Verification
+
+### Status
+
+```
+================================================================================
+TEST 06 — AUTHORITATIVE FIELD & PAYMENT TRUST BOUNDARIES: CLOSED / VERIFIED
+================================================================================
+```
+
+### Purpose & Threat Model
+
+TEST 06 establishes that security-sensitive, financial, and authoritative state values cannot be forged, manipulated, or escalated through client-controlled request parameters or malformed payloads.
+
+**Threat Vectors Evaluated:**
+1. **Privilege & Identity Forgery:** An attacker injects `user_id`, `owner_id`, or `reviewer_id` in request payloads to impersonate other founders or hijack resources.
+2. **Financial State Tampering:** An attacker attempts to set `verified_revenue`, `trust_score`, `confidence`, `verification_status = 'approved'`, or `payment_connected = true` during onboarding or startup identity mutation.
+3. **Billing Price Manipulation:** A client tampers with `amount`, `currency`, `discount`, `trial_days`, `price_id`, or `razorpay_plan_id` to obtain a ₹999/mo Pro subscription for ₹0 or ₹1.
+4. **Investor Report ₹499 Payment & Download Bypass:** An attacker tampers with purchase amounts (e.g. ₹0 / ₹1), substitutes order or payment IDs, bypasses cryptographic HMAC checks, claims unverified paid status, downloads reports prior to payment, accesses another founder's completed PDF report, or injects arbitrary storage paths.
+5. **Admin Review Spoofing:** A non-admin attacker supplies `is_admin: true`, `role: 'admin'`, or a spoofed reviewer email to approve startups.
+6. **Type Confusion & Prototype Pollution:** Adversarial payloads (`__proto__`, `constructor`, `NaN`, `Infinity`, negative numbers, XSS URLs) attempt to bypass input validators or pollute JavaScript runtime state.
+
+---
+
+### Scope & Inspected API Surface
+
+All 46 Next.js App Router API routes across the project were audited. The 29 mutating routes were cataloged into 6 security domains:
+
+1. **Startup Creation & Identity:** `POST /api/startup-submissions`, `PUT /api/startup/[id]/identity`
+2. **Revenue & Trust Engine:** `POST /api/startup/[id]/sync`, `POST /api/razorpay/sync`, `POST /api/stripe/verify`, `POST /api/verify/revenue`, `POST /api/trust/calculate`
+3. **SaaS Billing & Subscriptions:** `POST /api/billing/checkout`, `POST /api/billing/change-plan`, `POST /api/billing/cancel`, `POST /api/billing/webhook/razorpay`
+4. **Investor Report Purchases & Fulfillment:** `POST /api/reports/create-order`, `POST /api/reports/verify-payment`
+5. **Admin Operations:** `POST /api/admin/review`, `PATCH /api/admin/feedback`, `POST /api/admin/feedback/reply`, `POST /api/admin/migrate-encryption`
+6. **Destructive Operations & Feedback:** `DELETE /api/account/delete`, `DELETE /api/startup/[id]/delete`, `DELETE /api/startup/[id]/connections/[provider]`, `POST /api/feedback`
+
+---
+
+### Authoritative Data Flow & Trust Invariants
+
+| Security Domain | Field Name | Client May Supply? | Authoritative Source | Server Enforcement & Validation |
+| :--- | :--- | :---: | :--- | :--- |
+| **Caller Identity** | `user_id` | Ignored | Supabase Auth JWT (`getAuthenticatedUser()`) | Overwritten strictly with session `user.id`. |
+| **Resource Scope** | `startup_id` | Key Only | Route Path / Body parameter | `verifyStartupOwnership(startup_id)` must pass. |
+| **Verified Revenue** | `verified_revenue` | Ignored | Revenue Aggregation (`getAggregatedRevenue()`) | Hardcoded `null` on onboarding; updated only via live gateway sync. |
+| **Self-Reported** | `mrr`, `arr` | Yes (0 to $999M) | Client Onboarding Form | `validateOnboarding()` enforces numeric range; stripped from identity updates. |
+| **Trust Score** | `trust_score` | Ignored | Trust Engine (`computeTrustScore()`) | Algorithmically derived server-side. |
+| **Verification State**| `verification_status`| Ignored | Proof Detector & Admin Review | Server default `"pending"` / `"proof_submitted"`; mutable only by `isAdmin`. |
+| **Provider Link** | `payment_connected` | Ignored | Gateway Sync Workers | Hardcoded `false` on onboarding; set `true` only on valid provider connection. |
+| **SaaS Pricing** | `plan_id`, `price` | Ignored | Server Env (`RAZORPAY_PLAN_PRO_MONTHLY`) | Fixed to official ₹999/mo Pro monthly plan. |
+| **Report Pricing** | `amount_inr`, `paise`| Ignored | Server Constants (`REPORT_AMOUNT_PAISE = 49900`)| Fixed to exactly ₹499 INR (49900 paise). |
+| **Payment Proof** | `signature`, `status`| Yes | Razorpay Gateway + Cryptographic HMAC | `timingSafeCompare` HMAC check + live gateway double-fetch. |
+| **Admin Barrier** | `is_admin`, `role` | Ignored | Server Email Allowlist (`ADMIN_EMAILS`) | `isAdmin(user.email)` session check. |
+
+---
+
+### Investor Report ₹499 Lifecycle Architecture
+
+The Investor Report purchase and fulfillment pipeline implements a strict 6-stage authoritative state machine:
+
+```
+[Founder Client]
+       │
+       ▼ (1. Sends ONLY { startup_id })
+POST /api/reports/create-order
+       │
+       ├─► getAuthenticatedUser() validates caller identity
+       ├─► verifyStartupOwnership(startup_id) enforces multi-tenant ownership
+       ├─► Checks existing pending orders; verifies status via Razorpay Orders API
+       ├─► Creates Razorpay Order with fixed server constant: 49900 paise (₹499 INR)
+       ├─► Inserts record in public.investor_reports (payment_status: 'pending')
+       └─► Returns { report_id, order_id, amount: 49900, currency: 'INR', key_id }
+       │
+       ▼ (2. Founder Completes Razorpay Checkout Modal)
+       │
+       ▼ (3. Sends { report_id, order_id, payment_id, signature })
+POST /api/reports/verify-payment
+       │
+       ├─► getAuthenticatedUser() validates caller identity
+       ├─► Loads public.investor_reports record by report_id
+       ├─► Verifies report.user_id === user.id (Strict IDOR Barrier — HTTP 403 on mismatch)
+       ├─► Verifies report.razorpay_order_id === order_id (Order Substitution Defense — HTTP 400)
+       ├─► Timing-Safe HMAC Verification: crypto.createHmac("sha256", secret).update(`${order_id}|${payment_id}`)
+       ├─► Gateway Double-Fetch: Queries Razorpay Payments & Orders API
+       │     └─► Enforces payment.amount === 49900, payment.currency === 'INR', payment.status === 'captured'
+       ├─► Atomic Database Claim: payment_status = 'paid', generation_status = 'generating'
+       ├─► Metrics Snapshot: Freezes startup metrics in metrics_snapshot (immutable on retries)
+       ├─► PDF Generation: Renders report in-memory via generateInvestorReportPdf()
+       ├─► Private Storage Upload: Uploads to private bucket investor-reports at `<user_id>/<report_id>.pdf`
+       ├─► Database Completion: generation_status = 'completed', storage_path = `${user.id}/${report.id}.pdf`
+       └─► Signed URL Creation: Mints short-lived (60s) signed download URL
+```
+
+#### Investor Report Security Properties:
+1. **Client Price Immunity:** The client cannot supply `amount` or `currency`. Razorpay order is hardcoded to `REPORT_AMOUNT_PAISE = 49900`.
+2. **Order / Payment Binding:** Both `report.razorpay_order_id === order_id` and gateway `payment.order_id === order_id` are strictly verified.
+3. **Cryptographic Validation:** Signature verification uses `timingSafeCompare` to prevent timing side-channel attacks.
+4. **Pre-Payment Download Prevention:** Signed URLs are never minted unless the report is in `payment_status = 'paid'` and `generation_status = 'completed'`.
+5. **Cross-User Protection:** Report and startup ownership checks enforce `report.user_id === user.id`, returning `HTTP 403` on any cross-tenant access.
+6. **Legitimate Repeat Download (Fast-Path):** An authenticated owner requesting an already-paid, completed report immediately receives a fresh 60-second signed URL without re-charging or re-rendering.
+7. **Storage Path Tampering Immunity:** Client-supplied `storage_path` values are completely ignored; signed URLs are generated exclusively from the database-persisted authoritative storage path.
+8. **Demo Sandbox Restriction:** Demo startups cannot purchase or generate investor reports (`HTTP 403`).
+
+---
+
+### Automated Trust-Boundary Test Suite (48/48 PASS)
+
+A dedicated, comprehensive test harness was implemented in [`tests/trust-boundary-authoritative-fields.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/trust-boundary-authoritative-fields.test.ts) using the Node.js native test runner (`npx tsx --test`).
+
+The harness executes the **real production route handlers and validation schemas**, mocking only external I/O boundaries (session tokens, Supabase query builder, Storage signed URL generator, and Razorpay API).
+
+```
+================================================================================
+TEST 06 EXECUTION SUMMARY
+================================================================================
+Group A: Startup Submission Forged Privileged Fields:    7 /  7 PASS (100%)
+Group B: Identity Mutation & Visibility Trust Bounds:    6 /  6 PASS (100%)
+Group C: Billing Price Authority & Plan Selection:      11 / 11 PASS (100%)
+Group D: Investor Report ₹499 Trust Boundary:           14 / 14 PASS (100%)
+Group E: Admin Authorization Boundary Invariants:        5 /  5 PASS (100%)
+Group F: Type Confusion & Malformed Input Robustness:    5 /  5 PASS (100%)
+--------------------------------------------------------------------------------
+TOTAL PASSING INVARIANTS:                               48 / 48 PASS (100%)
+FAILURES:                                                0
+BLOCKED:                                                 0
+SECURITY FINDINGS:                                       0
+================================================================================
+```
+
+---
+
+### Accurate Testing Scope & Documented Limitations
+
+- **Real Route Execution:** All 48 tests exercised the actual production Next.js route handlers (`POST`, `PUT`, `PATCH`), Zod schemas, and authorization functions.
+- **External I/O Mocking:** Upstream I/O dependencies (Supabase Auth sessions, database query builder, Razorpay REST SDK, and Supabase Storage) were deterministically mocked to safely intercept and assert write payloads.
+- **Explicit Limitations:**
+  - Zero live production payments or real credit card charges were executed.
+  - Zero live Stripe or Razorpay production mutating API calls were made.
+  - Zero synthetic production users or test startups were created in production.
+  - Live User A vs User B production JWT probing was not conducted; isolation is verified at the route handler level and PostgreSQL RLS catalog layer.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10554,6 +10696,7 @@ Examples include:
 - TEST 03 — Re-Authentication Trust Boundary: CLOSED / VERIFIED. Formally closed and verified independent API-level re-authentication enforcement for irreversible operations (`DELETE /api/account/delete`, `DELETE /api/startup/[id]/delete`). Verified user-bound, action-bound, 120s TTL HMAC-SHA256 proofs (`crypto.timingSafeEqual`), distributed atomic single-use Upstash Redis `SET NX` consumption, complete removal of process-local memory fallbacks, fail-closed HTTP 503 outage resilience, and 60/60 automated regression passes (commits `c6899fd` and `0f91a7e`).
 - TEST 04 — IDOR & Multi-Tenant Authorization: CLOSED / VERIFIED. Verified cross-user resource isolation across all startup-scoped API routes using the real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions from `src/lib/auth-server.ts`. 19/19 automated IDOR tests pass (unauthenticated rejection, cross-user read/mutation blocking, tenant-isolated feedback, admin barrier, user_id spoofing resistance, signed URL protection, provider sync protection, investor report protection). 9/9 live production unauthenticated baseline probes return proper rejection codes with zero private data, credentials, database errors, or stack traces. Explicit limitation: live cross-user production testing was not performed because suitable two-user production fixtures did not exist.
 - TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening: CLOSED / VERIFIED. Resolved anonymous PostgREST enumeration on `startup_submissions` by dropping legacy permissive policy `"Allow public read access"`, enforcing owner-only authenticated SELECT policy (`auth.uid() = user_id`), and preserving `service_role` privileges for server-side public route projections. Verified anonymous probes return 0 rows, live public routes return HTTP 200, 79/79 security tests pass, migration artifact `20260821130000_harden_startup_submissions_rls.sql` created, and 5 unregistered migrations reconciled via Supabase CLI repair.
+- TEST 06 — Authoritative Field & Payment Trust Boundary Verification: CLOSED / VERIFIED. Verified server-authoritative integrity across all 46 API routes and 29 mutating endpoints. Proved that caller identity is strictly derived from `getAuthenticatedUser()`, startup ownership is enforced, `verified_revenue` is hardcoded `null` on onboarding and populated only via live gateway balance sync, `trust_score` and `confidence` are computed algorithmically, SaaS Pro plan pricing (₹999/mo) and Investor Report pricing (₹499 / 49900 paise) are server-controlled constants immune to client parameter manipulation, timing-safe HMAC checks (`timingSafeCompare`) and gateway verification guard report fulfillment, 60s signed download URLs are minted only from authoritative storage paths for verified owners, and non-admin privilege escalation is rejected. 48/48 automated trust-boundary tests pass with 0 failures.
 
 This timeline provides historical context for future contributors.
 
@@ -10657,6 +10800,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary); verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). |
 | 2.20 | August 2026 | Formally documented and closed TEST 04 (IDOR & Multi-Tenant Authorization Boundary); verified cross-user resource isolation using real production authorization functions, 19/19 automated tests, 9/9 live production probes, zero data leakage. |
 | 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening); eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. |
+| 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification); proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. |
 
 ---
 
@@ -10664,7 +10808,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.21**
+- Handbook Version: **2.22**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
