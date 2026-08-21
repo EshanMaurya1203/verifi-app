@@ -5,13 +5,19 @@ import { computeTrustScore } from "@/lib/scoring";
 import { decrypt } from "@/lib/encryption";
 import { getPlatformStripe, getStripeForSecretKey, isStripeConnectAccountId } from "@/lib/stripe";
 import { resyncExistingRazorpayConnection } from "@/lib/razorpay-sync";
-
+import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { verifyStartupOwnership } from "@/lib/auth-server";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const identifier = getClientIdentifier(req);
+  const { allowed } = await checkRateLimit(identifier, 120000, 5);
+  if (!allowed) {
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  }
+
   const { id } = await params;
 
   // Enforce authentication and strict startup ownership validation

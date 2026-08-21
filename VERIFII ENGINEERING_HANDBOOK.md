@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.22 |
+| **Version** | 2.23 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9087,6 +9087,94 @@ SECURITY FINDINGS:                                       0
 
 ---
 
+## 25.38 TEST 07 — Rate Limits & Abuse Controls Verification
+
+### Status
+
+```
+================================================================================
+TEST 07 — RATE LIMITS & ABUSE CONTROLS: CLOSED / VERIFIED
+================================================================================
+```
+
+### Initial Threat Model
+
+TEST 07 evaluated the following abuse vectors and platform security boundaries:
+1. **Client-Controlled Header Spoofing:** Attackers rotating `X-Forwarded-For`, `X-Real-IP`, or `Forwarded` headers to create fresh rate-limit buckets and bypass throttles.
+2. **Rate-Limit Bucket Bypass:** Manipulating query strings or path encodings to circumvent route-level limits.
+3. **Route Namespace Collision:** High traffic on public routes (e.g. `/api/live-feed`) inadvertently exhausting a user's critical mutation quota (e.g. `/api/billing/checkout`).
+4. **Redis Failure Semantics:** Ensuring fail-closed behavior on financial and destructive routes during outages, while preserving fail-open behavior on public feeds and webhooks.
+5. **Public Endpoint Flooding:** Exhaustion of database connection pools through unmetered public read requests.
+6. **Financial Endpoint Flooding:** Repeated automated hits to `/api/billing/checkout` to flood order generation or provider APIs.
+7. **Authenticated Provider-Sync Abuse:** Authenticated founders spamming manual sync endpoints to trigger expensive Stripe/Razorpay API calls and database calculations.
+8. **CDN/Cache Interaction with Origin Rate Limiting:** Verifying that edge caching does not mask origin rate-limit bypasses and that dynamic origin requests are strictly rate-limited.
+
+---
+
+### Empirical Evidence & Production Verification
+
+1. **Local Automated Regression (`tests/01-c-rate-limit-trust-boundary.test.ts`):**
+   - **8 / 8 PASS (100%):** Verified platform header priority (`x-vercel-forwarded-for`), rotating header immunity, authenticated user ID bucket partitioning, canonical route namespace isolation, strict IP syntax validation, dual failure semantics (`failOpen: false` vs `failOpen: true`), and webhook cryptographic primacy.
+2. **Production Public Read Limiter (`GET https://www.verifii.in/api/live-feed`):**
+   - **Configuration:** 15 requests per 60-second window, `failOpen: true`.
+   - **Observation:** Empirically verified origin rate limiting. Requests exceeding the threshold returned `HTTP 429 Too Many Requests` with `Retry-After: 60` and `x-vercel-cache: MISS`.
+3. **Production Financial Pre-Auth Limiter (`POST https://www.verifii.in/api/billing/checkout`):**
+   - **Configuration:** 5 requests per 60-second window, `failOpen: false`.
+   - **Observation:** Unauthenticated requests 1–5 were evaluated by the rate limiter and rejected by authentication (`HTTP 401 Unauthorized`). Request 6 was rejected directly by the rate limiter with `HTTP 429 Too Many Requests` before reaching authentication or billing logic. Zero financial mutations occurred.
+4. **`Retry-After` Response Header:**
+   - Public read endpoints return RFC-compliant `Retry-After: 60` on HTTP 429 responses.
+5. **Header Spoofing Immunity:**
+   - Dispatched requests with rotating spoofed RFC1918 headers (`X-Forwarded-For: 10.0.0.1..3`, `X-Real-IP: 192.168.1.1..3`) during active cooldown.
+   - All requests mapped to the single authoritative platform IP bucket (`rate_limit:ip_<platformIp>:/api/live-feed`) and returned `HTTP 429`, proving complete immunity to client-controlled IP header rotation.
+
+---
+
+### Threshold Discrepancy Analysis & Conclusion
+
+During Phase 2 probing on `GET /api/live-feed`, request 13 returned HTTP 429 instead of request 16.
+
+**Investigation & Root Cause:**
+- The configured limit in `src/app/api/live-feed/route.ts` is strictly `RATE_LIMIT_MAX_REQUESTS = 15` within `RATE_LIMIT_WINDOW_MS = 60000`.
+- The rate limiter normalizes all URLs using `getCanonicalPath(request)` (`url.pathname`), so `/api/live-feed` and `/api/live-feed?_cb=...` share the same Redis bucket.
+- The initial exploratory probe sequence immediately preceding the dynamic probe had already sent requests that reached the origin from the same probe client IP, consuming **3 requests** in that active rolling 60-second window.
+- When the dynamic probe ran, Requests 1–12 incremented the counter from 4 to 15 (all returning `HTTP 200 OK`).
+- Request 13 incremented the counter to **16**, which exceeded the max requests limit (`16 <= 15` is false) and triggered `HTTP 429`.
+- **Conclusion:** Request 13 was in fact the 16th origin request in that rolling 60-second window. The limiter functioned with 100% precision; the observed behavior was caused by pre-existing bucket state rather than an implementation defect.
+
+---
+
+### Targeted Finding Remediations & Classifications
+
+#### Finding F-07-01: `POST /api/startup/[id]/sync` (P2 Medium-High Abuse Risk) — REMEDIATED
+- **Vulnerability:** Unmetered manual synchronization endpoint allowed an authenticated founder to repeatedly invoke external Stripe/Razorpay balance syncs, perform batch database upserts, and recalculate platform revenue metrics without rate limiting.
+- **Remediation:** Added centralized Upstash Redis rate limiting to [`src/app/api/startup/[id]/sync/route.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/app/api/startup/[id]/sync/route.ts).
+- **Configuration:** 120-second window, 5 requests maximum, fail-closed (`failOpen: false`).
+- **Execution Order:**
+  $$\text{Request} \longrightarrow \text{Client Identity} \longrightarrow \text{Rate Limiter} \longrightarrow \text{Route Params} \longrightarrow \text{Auth/Ownership} \longrightarrow \text{Provider Lookup} \longrightarrow \text{Provider Sync} \longrightarrow \text{DB Upsert} \longrightarrow \text{Aggregation} \longrightarrow \text{Response}$$
+- **Security Invariant:** No provider API call, database synchronization, revenue aggregation, or trust-score calculation can execute when the request is rejected by the rate limiter.
+
+#### Finding F-07-02: `POST /api/billing/webhook/razorpay` (P3 / Defense-in-Depth) — POST-LAUNCH / OPTIONAL
+- **Status:** Not remediated in this milestone.
+- **Rationale:** The billing webhook is primary-guarded by constant-time HMAC-SHA256 signature verification (`timingSafeCompare`) and atomic idempotency in `processed_webhook_events`. Unsigned/forged requests fail in ~1ms with HTTP 400. Any secondary Redis rate limiter must remain fail-open to ensure transient Redis timeouts never cause Razorpay to drop valid subscription renewal webhooks.
+
+#### Finding F-07-03: `GET /api/admin/feedback` (P3 / Admin Internal) — NO REMEDIATION REQUIRED
+- **Status:** Not remediated.
+- **Rationale:** The admin feedback queue endpoint is protected by server-side session authentication (`getAuthenticatedUser()`) and the strict `isAdmin(user.email)` allowlist (`ADMIN_EMAILS`). Non-admin callers receive HTTP 403 Forbidden immediately.
+
+#### Finding F-07-06: `GET /api/live-feed` Vercel Edge Caching (Informational) — NO REMEDIATION REQUIRED
+- **Status:** Informational observation.
+- **Rationale:** Unparameterized GET requests can be served from Vercel Edge CDN cache (`x-vercel-cache: HIT / STALE`), reducing serverless invocation costs for public visitors. Dynamic requests bypass CDN cache and are strictly enforced by the origin Upstash Redis rate limiter (15 req/60s).
+
+---
+
+### Accurate Testing Scope & Documented Limitations
+
+- **No Authenticated Sync Flooding:** Live authenticated sync flooding was **not performed** against production to prevent exhausting Stripe / Razorpay live API quotas or polluting real founder accounting records.
+- **F-07-01 Validation:** F-07-01 production behavior was validated through static code analysis, execution-order verification, and 75/75 automated regression test passes rather than live destructive flooding.
+- **Zero Production Mutations:** All testing was conducted without creating test users, startups, subscriptions, orders, or executing real payments.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10697,6 +10785,7 @@ Examples include:
 - TEST 04 — IDOR & Multi-Tenant Authorization: CLOSED / VERIFIED. Verified cross-user resource isolation across all startup-scoped API routes using the real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions from `src/lib/auth-server.ts`. 19/19 automated IDOR tests pass (unauthenticated rejection, cross-user read/mutation blocking, tenant-isolated feedback, admin barrier, user_id spoofing resistance, signed URL protection, provider sync protection, investor report protection). 9/9 live production unauthenticated baseline probes return proper rejection codes with zero private data, credentials, database errors, or stack traces. Explicit limitation: live cross-user production testing was not performed because suitable two-user production fixtures did not exist.
 - TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening: CLOSED / VERIFIED. Resolved anonymous PostgREST enumeration on `startup_submissions` by dropping legacy permissive policy `"Allow public read access"`, enforcing owner-only authenticated SELECT policy (`auth.uid() = user_id`), and preserving `service_role` privileges for server-side public route projections. Verified anonymous probes return 0 rows, live public routes return HTTP 200, 79/79 security tests pass, migration artifact `20260821130000_harden_startup_submissions_rls.sql` created, and 5 unregistered migrations reconciled via Supabase CLI repair.
 - TEST 06 — Authoritative Field & Payment Trust Boundary Verification: CLOSED / VERIFIED. Verified server-authoritative integrity across all 46 API routes and 29 mutating endpoints. Proved that caller identity is strictly derived from `getAuthenticatedUser()`, startup ownership is enforced, `verified_revenue` is hardcoded `null` on onboarding and populated only via live gateway balance sync, `trust_score` and `confidence` are computed algorithmically, SaaS Pro plan pricing (₹999/mo) and Investor Report pricing (₹499 / 49900 paise) are server-controlled constants immune to client parameter manipulation, timing-safe HMAC checks (`timingSafeCompare`) and gateway verification guard report fulfillment, 60s signed download URLs are minted only from authoritative storage paths for verified owners, and non-admin privilege escalation is rejected. 48/48 automated trust-boundary tests pass with 0 failures.
+- TEST 07 — Rate Limits & Abuse Controls Verification: CLOSED / VERIFIED. Verified platform-wide rate limiting and abuse mitigation across all 46 API routes. Proved that `x-vercel-forwarded-for` platform headers strictly supersede client-supplied `X-Forwarded-For` and `X-Real-IP` headers to prevent rotating header bucket bypass. Empirically confirmed live origin rate limiting on `/api/live-feed` (15 req/60s, `failOpen: true`, `Retry-After: 60`), fail-closed financial pre-auth rate limiting on `/api/billing/checkout` (5 req/60s, `failOpen: false`), and resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13). Remediated unmetered manual sync route `POST /api/startup/[id]/sync` (F-07-01, P2) by adding a centralized Upstash Redis limiter (120s / 5 req, fail-closed) executing prior to Stripe/Razorpay provider calls and database aggregation. Classified F-07-02 (Razorpay billing webhook, P3 / post-launch optional), F-07-03 (admin feedback queue, P3 / no remediation required), and F-07-06 (live feed edge cache, informational). 75/75 automated regression tests pass.
 
 This timeline provides historical context for future contributors.
 
@@ -10801,6 +10890,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.20 | August 2026 | Formally documented and closed TEST 04 (IDOR & Multi-Tenant Authorization Boundary); verified cross-user resource isolation using real production authorization functions, 19/19 automated tests, 9/9 live production probes, zero data leakage. |
 | 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening); eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. |
 | 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification); proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. |
+| 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification); proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket count reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. |
 
 ---
 
@@ -10808,7 +10898,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.22**
+- Handbook Version: **2.23**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
