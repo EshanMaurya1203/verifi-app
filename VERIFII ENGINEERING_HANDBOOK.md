@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.24 |
+| **Version** | 2.25 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9282,6 +9282,101 @@ The Node.js test runner reports: `# tests 98, # suites 26, # pass 98, # fail 0, 
 
 ---
 
+## 25.40 TEST 09 — CSRF / Cross-Origin Mutation Protection
+
+### Status
+**TEST 09 — CSRF / CROSS-ORIGIN MUTATION PROTECTION: CLOSED / VERIFIED**
+
+---
+
+### Scope & Threat Model
+TEST 09 verifies that sensitive state-changing endpoints resist unintended cross-origin browser requests across ambient cookie transport, SameSite policies, Origin/Referer controls, preflight mechanics, and sensitive business actions (account deletion, billing cancellations/checkouts, feedback, startup mutations, provider connections).
+
+**Threat Vectors Evaluated:**
+1. Cross-origin HTML `<form>` submissions (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`).
+2. Cross-origin JavaScript `fetch()` / `XMLHttpRequest` with custom headers or `application/json` payloads.
+3. Ambient credential attachment across cross-site navigations and subresource requests.
+4. Forged state mutations on endpoints without JSON body requirements (`POST /api/billing/cancel`).
+5. Destructive operations (`DELETE /api/account/delete`, `DELETE /api/startup/[id]/delete`).
+6. Webhook origin spoofing (`/api/stripe/webhook`, `/api/razorpay/webhook`, `/api/billing/webhook/razorpay`).
+7. Sensitive Server Action invocations (`src/app/dashboard/settings/actions.ts`).
+
+---
+
+### Complete Mutating Route Inventory (29 Endpoints Audited)
+The platform exposes 29 state-changing API endpoints across 4 HTTP methods:
+- **POST (25 routes):** `/api/startup-submissions`, `/api/startup/[id]/sync`, `/api/sync/stripe`, `/api/sync/razorpay`, `/api/stripe/verify`, `/api/razorpay/verify`, `/api/razorpay/sync`, `/api/verify/revenue`, `/api/verify/one-off`, `/api/trust/calculate`, `/api/billing/checkout`, `/api/billing/change-plan`, `/api/billing/cancel`, `/api/reports/create-order`, `/api/reports/verify-payment`, `/api/feedback`, `/api/analytics/onboarding`, `/api/admin/feedback/reply`, `/api/admin/review`, `/api/admin/migrate-encryption`, `/api/admin/test-email`, `/api/billing/webhook/razorpay`, `/api/stripe/webhook`, `/api/razorpay/webhook`.
+- **DELETE (3 routes):** `/api/account/delete`, `/api/startup/[id]/delete`, `/api/startup/[id]/connections/[provider]`.
+- **PUT (1 route):** `/api/startup/[id]/identity`.
+- **PATCH (1 route):** `/api/admin/feedback`.
+
+---
+
+### Subsystem Verification & Defense-in-Depth Architecture
+
+1. **CORS & Preflight Boundary:**
+   - Zero API routes emit `Access-Control-Allow-Origin` for arbitrary origins or wildcard `*`.
+   - Zero routes return `Access-Control-Allow-Credentials: true`.
+   - Cross-origin JavaScript requests attempting `PUT`, `DELETE`, `PATCH`, or `Content-Type: application/json` trigger browser CORS preflights that are blocked due to missing allow headers.
+2. **SameSite=Lax Cookie Model:**
+   - Supabase SSR session cookies (`sb-<ref>-auth-token`) and re-authentication proof cookies (`vrf_reauth_proof`) are configured with `SameSite: "lax"`.
+   - Under standard browser security models, cross-origin `POST`, `PUT`, `DELETE` requests do not attach `SameSite=Lax` cookies, causing `getAuthenticatedUser()` to return `null` and producing immediate `HTTP 401 Unauthorized`.
+3. **Simple Cross-Origin Request / Form Rejection:**
+   - Routes expecting JSON (`req.json()`) throw SyntaxError on urlencoded/multipart form payloads and reject requests without database or provider side effects.
+4. **Special Qualification — `/api/billing/cancel`:**
+   - `/api/billing/cancel` does **NOT** parse a JSON body. Its verified protection rests on:
+     - Mandatory authenticated user session derived from server-side session cookies.
+     - `SameSite=Lax` cookie isolation dropping session cookies on cross-origin POST requests.
+     - Zero side effects in unauthenticated/cross-site simulations.
+5. **Special Qualification — Account & Startup Deletion:**
+   - Account and startup deletions require multiple layers:
+     - `HTTP DELETE` method (cannot be initiated via standard HTML forms).
+     - Active authenticated user session.
+     - Cryptographic, single-use, 120s TTL HMAC-SHA256 re-authentication proof (`vrf_reauth_proof`) atomically verified and consumed in Upstash Redis prior to any database mutation.
+6. **Special Qualification — Webhook Signature Security:**
+   - Webhook endpoints (`/api/stripe/webhook`, `/api/razorpay/webhook`, `/api/billing/webhook/razorpay`) are protected by provider cryptographic signatures (`stripe-signature`, `x-razorpay-signature`) rather than browser session-cookie CSRF defenses.
+   - Proven that `Origin` or `Referer` headers cannot substitute for valid provider HMAC signatures.
+7. **Server Actions:**
+   - Sensitive Server Actions in `src/app/dashboard/settings/actions.ts` (`createReauthIntentAction`, `checkReauthProofAction`) enforce authenticated caller checks and passive validation without premature proof token destruction.
+
+---
+
+### Evidence Classification
+
+- **[A] Automated Route-Harness Evidence:**
+  - Verified CORS rejection, form payload rejection, SameSite simulation, re-auth proof enforcement, billing provider isolation, webhook signature validation, zero side effects, and same-origin regression across 44 automated tests.
+- **[C] Read-Only Production Observation:**
+  - Live production inspection confirms `Access-Control-Allow-Origin: null`, `Access-Control-Allow-Credentials: null`, and `X-Frame-Options: DENY`.
+- **[D] Browser-Standard / Framework Inference:**
+  - `SameSite=Lax` prevents ambient session cookies from being attached to ordinary cross-site POST/PUT/DELETE browser requests under compliant browser security models.
+- **[E] Not Verified (Explicit Limitation):**
+  - Actual cross-origin browser execution was not empirically tested because no browser automation harness (e.g. Playwright) is configured in the repository. Protection is established through route-harness verification [A], production observation [C], and browser-standard SameSite inference [D].
+
+---
+
+### Test Suite Accounting
+
+- `tests/csrf-cross-origin-mutation-protection.test.ts` (TEST 09): **44** native `it()` tests.
+- `tests/cache-repeated-request-consistency.test.ts` (TEST 08): **30** native `it()` tests.
+- `tests/trust-boundary-authoritative-fields.test.ts` (TEST 06): **48** native `it()` tests.
+- `tests/idor-authorization-boundary.test.ts` (TEST 04): **19** native `it()` tests.
+- `tests/01-c-rate-limit-trust-boundary.test.ts` (TEST 01-C): **8** logical checks (1 TAP item).
+- **Consolidated Logical Security Checks:** `44 + 30 + 48 + 19 + 8 = 149 / 149 PASS (100%)`.
+- **Consolidated Node TAP Test Items:** `44 + 30 + 48 + 19 + 1 = 142 / 142 PASS (100%)`.
+- **Same-Origin Legitimate Regression:** `4 / 4 PASS`.
+- **Zero Side Effects:** Strictly 0 DB inserts, 0 updates, 0 deletes, 0 storage mutations, 0 provider calls, 0 emails across all attack simulations.
+- **Remediation Status:** 0 application source code modifications required.
+
+---
+
+### Validation & Safety Confirmation
+
+- **TypeScript Compilation:** `npm run type-check` passed with 0 errors.
+- **Git Diff Check:** `git diff --check` passed with 0 whitespace/diff errors.
+- **Zero Production Mutations:** Zero production database writes, zero users created, zero startups created, zero subscriptions/orders created, zero real payments executed, zero Stripe/Razorpay mutations, zero storage mutations, zero deployment outside repository commit.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10894,6 +10989,7 @@ Examples include:
 - TEST 06 — Authoritative Field & Payment Trust Boundary Verification: CLOSED / VERIFIED. Verified server-authoritative integrity across all 46 API routes and 29 mutating endpoints. Proved that caller identity is strictly derived from `getAuthenticatedUser()`, startup ownership is enforced, `verified_revenue` is hardcoded `null` on onboarding and populated only via live gateway balance sync, `trust_score` and `confidence` are computed algorithmically, SaaS Pro plan pricing (₹999/mo) and Investor Report pricing (₹499 / 49900 paise) are server-controlled constants immune to client parameter manipulation, timing-safe HMAC checks (`timingSafeCompare`) and gateway verification guard report fulfillment, 60s signed download URLs are minted only from authoritative storage paths for verified owners, and non-admin privilege escalation is rejected. 48/48 automated trust-boundary tests pass with 0 failures.
 - TEST 07 — Rate Limits & Abuse Controls Verification: CLOSED / VERIFIED. Verified platform-wide rate limiting and abuse mitigation across all 46 API routes. Proved that `x-vercel-forwarded-for` platform headers strictly supersede client-supplied `X-Forwarded-For` and `X-Real-IP` headers to prevent rotating header bucket bypass. Empirically confirmed live origin rate limiting on `/api/live-feed` (15 req/60s, `failOpen: true`, `Retry-After: 60`), fail-closed financial pre-auth rate limiting on `/api/billing/checkout` (5 req/60s, `failOpen: false`), and resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13). Remediated unmetered manual sync route `POST /api/startup/[id]/sync` (F-07-01, P2) by adding a centralized Upstash Redis limiter (120s / 5 req, fail-closed) executing prior to Stripe/Razorpay provider calls and database aggregation. Classified F-07-02 (Razorpay billing webhook, P3 / post-launch optional), F-07-03 (admin feedback queue, P3 / no remediation required), and F-07-06 (live feed edge cache, informational). 75/75 automated regression tests pass.
 - TEST 08 — Cache & Repeated Request Consistency / Cache-Control Security: CLOSED / VERIFIED. Audited caching behavior across all 46 API routes and live production. Remediated F-08-01 across four private/authenticated route handlers (`GET /api/feedback`, `GET /api/startup/[id]/overview`, `GET /api/startup/[id]/connections`, `GET /api/admin/feedback`) by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across all response branches (200, 400, 401, 403, 404, 429, 500). Remediated F-08-02 on `GET /api/startup/[id]/proof` by setting `Cache-Control: private, no-store, max-age=0` on temporary 307 signed redirects and `private, no-store` on error branches while preserving 60s signed URL expiry and authoritative DB storage path source. Confirmed public caching preservation (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`). Verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations.
+- TEST 09 — CSRF / Cross-Origin Mutation Protection: CLOSED / VERIFIED. Audited all 29 state-changing API endpoints and sensitive Server Actions. Verified that zero routes grant permissive CORS (`Access-Control-Allow-Origin: null`, `Access-Control-Allow-Credentials: null`, `X-Frame-Options: DENY`). Proved that cross-origin HTML form encodings (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) are rejected without database or provider side effects. Documented `SameSite=Lax` browser cookie isolation on session and reauth cookies, dual-layer single-use HMAC re-authentication on destructive deletion routes (`/api/account/delete`, `/api/startup/[id]/delete`), provider signature boundaries on webhooks, and authenticated session requirements on `/api/billing/cancel` (zero side effects). Recorded explicit evidence qualification: actual cross-origin browser execution was not empirically tested because no browser automation harness is configured in the repository. Verified 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes and zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -11000,6 +11096,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification); proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. |
 | 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification); proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket count reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. |
 | 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security); audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. |
+| 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection); audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. |
 
 ---
 
@@ -11007,7 +11104,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.24**
+- Handbook Version: **2.25**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
