@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.20 |
+| **Version** | 2.21 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -8859,6 +8859,92 @@ Cross-user authorization was fully verified against the real production authoriz
 
 ---
 
+## 25.36 TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening
+
+### Status
+
+```
+================================================================================
+TEST 05 — POSTGREST READ BOUNDARY & RLS HARDENING: CLOSED / VERIFIED
+================================================================================
+```
+
+### Initial Vulnerability Discovery
+
+During Phase 2 reconnaissance and empirical database testing, a critical authorization bypass was identified at the PostgREST data layer on `public.startup_submissions`:
+
+- **Permissive Legacy Policy:** The table retained a legacy development policy named `"Allow public read access"` configured with `FOR SELECT USING (true)`.
+- **Direct Enumeration:** Anonymous PostgREST HTTP queries (`GET /rest/v1/startup_submissions?select=*`) bypassed Next.js server-side route guards and returned all database records directly.
+- **Sensitive Metadata Exposure:** Unpublished startups, internal review states, founder `user_id` identifiers, contact `email` addresses, `verification_status`, self-reported `mrr` and `arr`, and infrastructure timestamps were directly accessible to unauthenticated internet callers via public anonymous Supabase PostgREST endpoints.
+
+### Remediation & Dual Defense Architecture
+
+To eliminate direct data leakage while preserving public platform routes (e.g., `/leaderboard`, `/startup/[slug]`, public badges, and live feed), the platform implemented a **Dual Defense Architecture**:
+
+1. **Base Table Owner-Only Isolation (PostgreSQL RLS):**
+   - Atomically removed the permissive `"Allow public read access"` policy.
+   - Enforced `ALTER TABLE public.startup_submissions ENABLE ROW LEVEL SECURITY;`.
+   - Created a strict owner-only SELECT policy:
+     ```sql
+     CREATE POLICY "Users can view their own startups"
+     ON public.startup_submissions
+     FOR SELECT
+     TO authenticated
+     USING (auth.uid() = user_id);
+     ```
+2. **Server-Side Service-Role Proxying for Public Data:**
+   - Granted full privileges on `startup_submissions` to `service_role`.
+   - Public-facing read operations (such as verified leaderboard rankings, public startup profiles, badge rendering, and live feed events) query the database exclusively through trusted Next.js server routes using `supabaseServer` (`SUPABASE_SERVICE_ROLE_KEY`).
+   - Server routes apply strict application-level projection, sanitization, and verification filters (e.g. `is_published = true`, `hasVerificationEvidence = true`), preventing any unverified or unpublished founder data from reaching client consumers.
+
+### Live Production Verification
+
+Following database remediation on production project `trheiumltaintfsscbnw`:
+
+| Probe / Check | Endpoint / Interface | Result | Evidence |
+| :--- | :--- | :---: | :--- |
+| **Anonymous PostgREST Probe** | `GET /rest/v1/startup_submissions?select=*` | **0 Rows** | Returned `[]` with HTTP 200; zero startup rows or metadata returned. |
+| **Service Role Query Capability** | Server-side `supabaseServer` query | **Functional** | Successfully queried verified records for server-rendered endpoints. |
+| **Public Leaderboard Route** | `GET /leaderboard` | **HTTP 200** | Renders public verified startups cleanly without error. |
+| **Public Startup Profile** | `GET /startup/verseodin` | **HTTP 200** | Renders public profile with sanitized metrics. |
+| **Public Badge Route** | `GET /api/badge/verseodin` | **HTTP 200** | Generates SVG verification badge correctly. |
+| **OpenGraph Image Route** | `GET /api/og/startup/verseodin` | **HTTP 200** | Renders dynamic social card without error. |
+| **Live Feed Route** | `GET /api/live-feed` | **HTTP 200** | Streams public sanitized live feed events. |
+| **Sitemap Route** | `GET /sitemap.xml` | **HTTP 200** | Generates XML sitemap of public URLs. |
+
+### Migration History Reconciliation
+
+To maintain strict schema synchronization across the codebase and database catalog:
+- **Migration Artifact:** Created idempotent migration artifact [`20260821130000_harden_startup_submissions_rls.sql`](file:///c:/Users/eshan/Downloads/verifi-app/supabase/migrations/20260821130000_harden_startup_submissions_rls.sql).
+- **Physical Application:** Idempotent DDL was executed against the production database, verifying that table policies, permissions, and RLS flags were active.
+- **Migration History Repair:** Reconciled `supabase_migrations.schema_migrations` using `supabase migration repair <version> --status applied` across five unregistered production migrations:
+  1. `20260818000000` (`commercial_model_free_and_pro_999`)
+  2. `20260819000000` (`investor_reports_table`)
+  3. `20260819120000` (`investor_reports_concurrency_index`)
+  4. `20260819140000` (`create_feedback_system`)
+  5. `20260821130000` (`harden_startup_submissions_rls`)
+- **Alignment:** Post-repair CLI verification confirmed **0 local-only active migrations** and **0 remote-only migrations**.
+
+### Automated Security Regression Suite (79/79 PASS)
+
+| Test Suite | File | Passing Invariants | Result |
+| :--- | :--- | :---: | :---: |
+| **TEST 04 IDOR & Authorization** | `tests/idor-authorization-boundary.test.ts` | 19 / 19 | **PASS** |
+| **TEST 03 Re-Authentication Boundary** | `tests/reauth-api-boundary.test.ts` | 21 / 21 | **PASS** |
+| **VRF-005 Account Deletion Billing Safety** | `tests/vrf005-account-deletion-billing-safety.test.ts` | 18 / 18 | **PASS** |
+| **TEST 01-C Rate Limit Trust Boundary** | `tests/01-c-rate-limit-trust-boundary.test.ts` | 8 / 8 | **PASS** |
+| **TEST 01-D Build/Runtime Consistency** | `tests/01-d-build-runtime-consistency.test.ts` | 6 / 6 | **PASS** |
+| **A4.2 Free Verification Boundaries** | `tests/a4-2-free-verification-boundaries.test.ts` | 7 / 7 | **PASS** |
+| **Aggregate Security Regression** | **All 6 Test Suites** | **79 / 79** | **PASS** |
+
+### Testing Scope & Documented Limitations
+
+- **Anonymous Boundary Proof:** Empirically proven via live unauthenticated PostgREST HTTP requests against production.
+- **Cross-User Authenticated Isolation:** Authenticated owner-isolation (`auth.uid() = user_id`) is enforced directly in the PostgreSQL kernel catalog and validated across the 19/19 automated authorization harness.
+- **Explicit Limitation:** Live authenticated User A vs User B PostgREST probes were **not performed** because no safe pre-existing authenticated production accounts were available, and creating artificial synthetic production user fixtures was strictly prohibited by test safety rules.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10467,6 +10553,7 @@ Examples include:
 - TEST 02 — Authentication & Session Lifecycle Security: PASS WITH LIMITATION. Verified Supabase SSR session architecture, server-side route guards, live invalid cookie deletion, API bearer token rejection, safe internal redirect normalization, and re-authentication HMAC proofs; formally recorded headless Google 3rd-party consent and production token TTL constraints.
 - TEST 03 — Re-Authentication Trust Boundary: CLOSED / VERIFIED. Formally closed and verified independent API-level re-authentication enforcement for irreversible operations (`DELETE /api/account/delete`, `DELETE /api/startup/[id]/delete`). Verified user-bound, action-bound, 120s TTL HMAC-SHA256 proofs (`crypto.timingSafeEqual`), distributed atomic single-use Upstash Redis `SET NX` consumption, complete removal of process-local memory fallbacks, fail-closed HTTP 503 outage resilience, and 60/60 automated regression passes (commits `c6899fd` and `0f91a7e`).
 - TEST 04 — IDOR & Multi-Tenant Authorization: CLOSED / VERIFIED. Verified cross-user resource isolation across all startup-scoped API routes using the real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions from `src/lib/auth-server.ts`. 19/19 automated IDOR tests pass (unauthenticated rejection, cross-user read/mutation blocking, tenant-isolated feedback, admin barrier, user_id spoofing resistance, signed URL protection, provider sync protection, investor report protection). 9/9 live production unauthenticated baseline probes return proper rejection codes with zero private data, credentials, database errors, or stack traces. Explicit limitation: live cross-user production testing was not performed because suitable two-user production fixtures did not exist.
+- TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening: CLOSED / VERIFIED. Resolved anonymous PostgREST enumeration on `startup_submissions` by dropping legacy permissive policy `"Allow public read access"`, enforcing owner-only authenticated SELECT policy (`auth.uid() = user_id`), and preserving `service_role` privileges for server-side public route projections. Verified anonymous probes return 0 rows, live public routes return HTTP 200, 79/79 security tests pass, migration artifact `20260821130000_harden_startup_submissions_rls.sql` created, and 5 unregistered migrations reconciled via Supabase CLI repair.
 
 This timeline provides historical context for future contributors.
 
@@ -10569,6 +10656,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. |
 | 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary); verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). |
 | 2.20 | August 2026 | Formally documented and closed TEST 04 (IDOR & Multi-Tenant Authorization Boundary); verified cross-user resource isolation using real production authorization functions, 19/19 automated tests, 9/9 live production probes, zero data leakage. |
+| 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening); eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. |
 
 ---
 
@@ -10576,7 +10664,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.20**
+- Handbook Version: **2.21**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**
