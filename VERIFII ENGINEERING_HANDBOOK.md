@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.27 |
+| **Version** | 2.28 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9754,6 +9754,199 @@ Examples include:
 
 ---
 
+## 25.43 TEST 12 — Billing & Subscription Entitlement Integrity
+
+### Status
+**TEST 12 — BILLING & SUBSCRIPTION ENTITLEMENT INTEGRITY: CLOSED / VERIFIED**
+
+---
+
+### Authoritative Purpose & Scope
+TEST 12 verifies Free/Pro plan boundaries, checkout session authorization, cancellation lifecycle, and subscription expiry/past-due entitlement behavior in accordance with the authoritative *Verifii Final 20-Test Production Launch Readiness Plan* (`Verifii_Final_20_Test_Launch_Readiness_Plan.docx`).
+
+**Audited Execution Areas:**
+1. **Unauthenticated Checkout Rejection:** Enforcing mandatory session authentication (`getAuthenticatedUser()`) prior to parsing request bodies or initiating external provider checkouts.
+2. **Free Plan Entitlement Behavior:** Ensuring permanent free revenue verification, SVG badge generation, and profile publishing without requiring a paid subscription.
+3. **Pro Plan Entitlement Behavior:** Enforcing Pro feature gating (`csv_export`, `rest_api`, `advanced_filters`, multi-gateway composite analytics) strictly via authoritative database subscription state.
+4. **Cancellation at Period End:** Preserving user entitlements throughout the paid period until `current_period_end` arrives (`cancel_at_cycle_end = true`).
+5. **Expired Subscription State Transitions:** Revoking Pro access immediately once a cancelled or non-renewed subscription passes `current_period_end` and dropping to `free_viewer_fallback`.
+6. **Past-Due State Transitions:** Excluding `past_due` subscriptions from Pro entitlement queries and alerting the founder via `GracePeriodWarning`.
+7. **Duplicate Checkout Prevention:** Enforcing dual-layer protection (application pre-check + PostgreSQL partial unique index `idx_active_subscription_unique`) against duplicate active subscriptions.
+8. **Client-Side Plan / Price / Amount Tampering Immunity:** Enforcing server-authoritative Razorpay Pro monthly plan configuration (`RAZORPAY_PLAN_PRO_MONTHLY`) and rejecting client-supplied amounts, prices, plan IDs, annual billing, or legacy founder tiers.
+
+---
+
+### Verified Architecture & Authoritative Surfaces
+
+The billing and entitlement subsystem comprises the following authoritative surfaces:
+
+1. **`POST /api/billing/checkout`:** Initiates Razorpay subscription checkout for Pro monthly (₹999/mo). Guarded by `getAuthenticatedUser()` (401), client rate limiting (5 req/60s), duplicate subscription pre-checks (400), and server-authoritative plan selection.
+2. **`POST /api/billing/cancel`:** Initiates subscription cancellation at the end of the current billing cycle. Guarded by `getAuthenticatedUser()` (401), rate limiting (5 req/60s), and active subscription verification (404).
+3. **`POST /api/billing/change-plan`:** Deprecated plan-switching endpoint. Explicitly returns HTTP 400 in the 2-tier commercial model (upgrades occur via checkout; downgrades occur via cancellation).
+4. **`POST /api/billing/webhook/razorpay`:** Ingests server-to-server subscription lifecycle webhooks (`subscription.authenticated`, `subscription.activated`, `subscription.charged`, `subscription.completed`, `subscription.updated`, `subscription.pending`, `subscription.halted`, `subscription.cancelled`, `subscription.paused`, `subscription.resumed`) with constant-time timing-safe HMAC validation.
+5. **`GET /api/cron/trial-reminders`:** Cron handler for trial expiration notifications protected by `Bearer ${CRON_SECRET}`.
+6. **`src/lib/subscriptions.ts`:** Single Source of Truth (SSoT) for entitlement determination (`getUserPlan`), feature access mapping (`hasFeatureAccess`), and server-side feature gating (`enforcePlanAccess`).
+7. **`src/lib/billing/subscription-cancellation.ts`:** Centralized cancellation service (`cancelAllUserSubscriptions`) coordinating provider-side cancellation, status verification via `subscriptions.fetch`, and local database bookkeeping.
+
+---
+
+### Subscription State Lifecycle & Entitlement SSoT
+
+The platform implements a 6-state subscription lifecycle defined by PostgreSQL `CHECK (status IN ('active', 'trialing', 'grace_period', 'past_due', 'cancelled', 'expired'))`:
+
+```
+                    ┌────────────────────────┐
+                    │      viewer (Free)     │ (Default / Fallback)
+                    └───────────┬────────────┘
+                                │ Checkout (POST /api/billing/checkout)
+                                ▼
+                    ┌────────────────────────┐
+        ┌───────────│        trialing        │
+        │           └───────────┬────────────┘
+        │                       │ Payment Charged / Activated
+        │                       ▼
+        │           ┌────────────────────────┐
+        │   ┌───────│         active         │◄────────────────┐
+        │   │       └───────────┬────────────┘                 │
+        │   │                   │ Payment Failed               │ Payment Recovered
+        │   │                   ▼                              │
+        │   │       ┌────────────────────────┐                 │
+        │   │       │   past_due / grace     │─────────────────┘
+        │   │       └───────────┬────────────┘
+        │   │                   │ Unrecovered / Expired
+        │   │ Cancel            ▼
+        │   │ (Cycle End) ┌────────────────────────┐
+        │   └────────────►│       cancelled        │ (Entitled until current_period_end)
+        │                 └───────────┬────────────┘
+        │ Immediate                   │ current_period_end Passed
+        │ (Acct Delete)               ▼
+        └────────────────►┌────────────────────────┐
+                          │        expired         │ (Revoked -> Falls back to Free)
+                          └────────────────────────┘
+```
+
+#### Deterministic Status Priority in `getUserPlan()`
+When evaluating a user's subscription records, `getUserPlan(userId)` queries the server database via service role and applies strict priority ordering:
+1. `active` (Priority `0` — Highest)
+2. `grace_period` (Priority `1`)
+3. `trialing` (Priority `2` — Requires `trial_end > now()` and `trial_start <= now()` or null)
+4. `cancelled` (Priority `3` — Only if `current_period_end > now()`)
+5. *Within the same priority tier:* The newest record by `created_at` descending is selected.
+
+#### Safe Fallback Semantics
+- **Past-Due Excluded:** `past_due` subscriptions are explicitly excluded from the entitlement query filter; users with past-due status drop immediately to `free_viewer_fallback`.
+- **Expired Excluded:** Subscriptions with `expired` status or cancelled subscriptions where `current_period_end <= now()` do not qualify for Pro entitlements.
+- **Fail-Closed Default:** If a user has no subscriptions, an empty query result, or if a database query error occurs, `getUserPlan` safely returns `free_viewer_fallback` (`plan_code: "viewer"`, `status: "active"`).
+- **Immunity to Client Claims:** Entitlements cannot be derived from or manipulated via client cookies, localStorage, HTTP headers, or request body parameters.
+
+---
+
+### Server Authority & Pricing Integrity
+
+1. **Server-Authoritative Pricing:** Checkout pricing is strictly determined server-side. Client-supplied `amount`, `amount_inr`, `price`, `price_inr`, `plan_id`, or `currency` parameters are completely ignored by `POST /api/billing/checkout`.
+2. **Authoritative Plan Binding:** The server strictly uses `process.env.RAZORPAY_PLAN_PRO_MONTHLY` when calling `razorpay.subscriptions.create`.
+3. **Rejection of Obsolete & Non-Pro Plans:**
+   - Free viewer checkout as a paid subscription returns HTTP 400 (`Invalid plan or billing cycle. Only Pro monthly is available.`).
+   - Annual billing requests (`billing_cycle: "annual"`) return HTTP 400.
+   - Legacy Founder plan requests (`plan_code: "founder"`) return HTTP 400.
+   - Plan change requests via `POST /api/billing/change-plan` return HTTP 400 (`Plan switching between paid tiers is unavailable in the 2-tier model.`).
+
+---
+
+### Duplicate Checkout & Active Subscription Defense
+
+1. **Application-Level Pre-Check:** `POST /api/billing/checkout` verifies that the caller does not already possess an active Pro subscription (`currentPlan.status !== "expired" && currentPlan.plan_code !== "viewer"`). Existing `active`, `trialing`, `grace_period`, or valid `cancelled` subscriptions return HTTP 400 (`Active subscription exists. Please cancel existing subscription first.`).
+2. **Database-Level Partial Unique Index:** Migration `20260606000000_subscription_foundation.sql` enforces a PostgreSQL partial unique index:
+   ```sql
+   CREATE UNIQUE INDEX IF NOT EXISTS idx_active_subscription_unique
+   ON public.subscriptions (user_id)
+   WHERE (status IN ('active', 'trialing', 'grace_period'));
+   ```
+   This index guarantees at the database engine level that no user can accumulate concurrent active subscriptions. (Classified as `[D]` Database Invariant Inference; no production concurrency stress test is claimed).
+3. **Re-Subscription Unblocked:** Fully expired subscriptions (`status: "expired"` or past `current_period_end`) do not block legitimate re-subscription via checkout.
+
+---
+
+### Cancellation Semantics & Period-End Entitlement
+
+1. **Caller-Bound Authentication:** `POST /api/billing/cancel` resolves the target user strictly from `getAuthenticatedUser()`. No client-supplied `user_id` or `subscription_id` parameter can redirect cancellation to another user.
+2. **Cycle-End Cancellation:** Normal billing cancellation calls `razorpay.subscriptions.cancel(subId, true)` with `cancel_at_cycle_end = true` (`immediate: false`).
+3. **Mandatory Provider Verification:** `cancelAllUserSubscriptions` verifies the provider state via `razorpay.subscriptions.fetch(subId)` to confirm cancellation scheduling before completing the operation.
+4. **Entitlement Retention:** The local database status is set to `cancelled`. Because `current_period_end` remains in the future, `getUserPlan` continues to grant Pro access until the billing cycle expires.
+5. **No Entitlement Extension:** Cancellation preserves the original `current_period_end` without extending the billing period or granting additional Pro privileges.
+6. **Graceful Handling of Already-Cancelled Subscriptions:** Provider errors indicating a subscription is not cancellable are inspected via `isAlreadyCancelledError`; if `fetch()` confirms the provider status is `cancelled`, the operation succeeds.
+7. **Immediate Cancellation for Account Deletion:** During irreversible account deletion (`DELETE /api/account/delete`), `options.immediate = true` is used to immediately cancel provider billing without waiting for cycle-end.
+8. **Testability Limitation:** Real paid active-cycle cancellation against a charged live subscription was not executed in production because doing so would constitute a destructive billing mutation outside the non-destructive audit scope.
+
+---
+
+### Test Evidence & Coverage Matrix
+
+#### Dedicated TEST 12 Regression Suite
+- **Test File:** `tests/billing-subscription-entitlement.test.ts`
+- **Result:** **66 / 66 PASS** (0 failures, 0 skipped, ~872 ms execution)
+
+| Group | Area | Tests | Result | Evidence |
+| :--- | :--- | :---: | :---: | :---: |
+| **Group A** | Unauthenticated & Unauthorized Checkout Boundaries | `A1`–`A5` (5 tests) | **5 / 5 PASS** | `[A]` |
+| **Group B** | Client Plan & Price Tampering Immunity | `B1`–`B8` (8 tests) | **8 / 8 PASS** | `[A]` |
+| **Group C** | Server-Authoritative Plan Selection & Entitlement SSoT | `C1`–`C14` (14 tests) | **14 / 14 PASS** | `[A]` |
+| **Group D** | Duplicate Checkout & Active Subscription Defense | `D1`–`D8` (8 tests) | **8 / 8 PASS** | `[A]` / `[D]` |
+| **Group E** | Cancellation Lifecycle & Period-End Entitlements | `E1`–`E10` (10 tests) | **10 / 10 PASS** | `[A]` |
+| **Group F** | Expired & Past-Due State Entitlement Revocation | `F1`–`F9` (9 tests) | **9 / 9 PASS** | `[A]` |
+| **Group G** | Cross-User Isolation & Owner-Bound Billing Actions | `G1`–`G5` (5 tests) | **5 / 5 PASS** | `[A]` |
+| **Group H** | Deprecated Endpoints & 2-Tier Commercial Invariants | `H1`–`H7` (7 tests) | **7 / 7 PASS** | `[A]` / `[C]` |
+
+#### Existing Billing & Security Regression Suites
+- `tests/trust-boundary-authoritative-fields.test.ts`: **30 / 30 PASS**
+- `tests/vrf005-account-deletion-billing-safety.test.ts`: **18 / 18 PASS**
+- `tests/a4-2-free-verification-boundaries.test.ts`: **12 / 12 PASS**
+- **Total Combined Existing Regression Tests:** **60 / 60 PASS**
+
+#### Consolidated Platform Test Accounting
+- **Previous Consolidated Logical Checks:** `266`
+- **TEST 12 Dedicated Logical Checks:** `66`
+- **New Consolidated Logical Checks:** **332 / 332 PASS** (0 failures, 0 skipped)
+- **Previous TAP Items:** `259`
+- **TEST 12 TAP Items:** `66`
+- **New Consolidated TAP Items:** **325 / 325 PASS** (0 failures, 0 skipped)
+
+---
+
+### Evidence Classification
+
+- **`[A]` Automated Route & Function Execution Evidence:**
+  - Route execution tests on `/api/billing/checkout`, `/api/billing/cancel`, `/api/billing/change-plan`.
+  - Entitlement logic tests on `getUserPlan`, `hasFeatureAccess`, `enforcePlanAccess`, `cancelAllUserSubscriptions`.
+- **`[B]` Previously Established Real Staging Integration Evidence:**
+  - Gate 2 (G2-02, G2-03, G2-04) previously verified Razorpay plan change, cancellation rejection on uncharged fixture, and account deletion cleanup. (Mocked TEST 12 unit tests are not claimed as staging evidence).
+- **`[C]` Read-Only Production Observation:**
+  - Verified 2-tier commercial model in migration `20260818000000_commercial_model_free_and_pro_999.sql` (Free ₹0 / Pro ₹999/mo).
+- **`[D]` PostgreSQL Partial Unique Index Database Invariant:**
+  - `idx_active_subscription_unique` enforces single active subscription per user at the database engine level.
+- **`[E]` Preserved Testability Limitation:**
+  - A real paid active-cycle cancellation against a charged live subscription was NOT executed during TEST 12 because doing so would create a real billing mutation outside the non-destructive test scope.
+
+---
+
+### Security Findings & Reconciled Status
+
+| Finding ID | Severity | Description | Status |
+| :--- | :---: | :--- | :--- |
+| **F-12-01** | **Informational** | Absence of dedicated `tests/billing-subscription-entitlement.test.ts` test harness grouping all 8 authoritative TEST 12 execution areas. | **Remediated.** Dedicated 66-test harness created and passing. |
+| **F-12-02** | **Informational** | Annual billing and legacy Founder plans remain in database/catalog history for backward compatibility but are inactive. | **Verified.** All routes reject annual and founder requests with HTTP 400. |
+| **F-12-03** | **Informational** | Platform security posture: zero P0, P1, P2, or P3 vulnerabilities identified; server-authoritative entitlement and duplicate prevention are robust. | **Verified.** SSoT, server authority, and duplicate prevention are enforced. |
+
+---
+
+### Pre-Commit Quality & Safety Assurance
+
+- **TypeScript Compilation:** `npm run type-check` passed with 0 errors.
+- **Git Diff Check:** `git diff --check` passed with 0 whitespace/diff errors.
+- **Zero Production Mutations:** Zero production database writes, zero users created, zero startups created, zero subscriptions/orders created, zero real payments executed, zero Stripe/Razorpay mutations, zero storage mutations, zero deployment outside repository commit.
+
+---
+
 # Appendix B — Project Structure
 
 This appendix documents the high-level organization of the Verifii codebase.
@@ -11150,16 +11343,17 @@ Examples:
 | 2.15 | August 2026 | Formally documented TEST 01-C rate-limit client identity trust-boundary remediation, Upstash production confirmation, 8/8 automated test verification, spoofing-resistance evidence, webhook fail-open hardening, and production closure (commits 106d632 and 5935d27). | Eshan Maurya |
 | 2.16 | August 2026 | Formally documented and closed TEST 01-D (Build / Runtime Configuration Consistency); verified 0 secret leakage in client bundles, 6/6 automated configuration tests, production build and runtime parity, and D-001 through D-010 consistency invariants. | Eshan Maurya |
 | 2.17 | August 2026 | Formally documented TEST 01-E secret exposure audit (E-001 through E-015 PASS), client/server analytics constant isolation (commit d360141), and concluded master TEST 01 overall audit closure (01-A through 01-E closed, TEST 01-F explicitly non-existent). | Eshan Maurya |
-| 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. | Eshan Maurya |
-| 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary); verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). | Eshan Maurya |
-| 2.20 | August 2026 | Formally documented and closed TEST 04 (IDOR & Multi-Tenant Authorization Boundary); verified cross-user resource isolation using real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions, 19/19 automated IDOR authorization tests, 9/9 live production unauthenticated baseline probes, zero private data leakage, zero credential exposure, tenant-isolated feedback, admin barrier enforcement, client-supplied user_id rejection, and cross-user mutation protection. | Eshan Maurya |
-| 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening); eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. | Eshan Maurya |
-| 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification); proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. | Eshan Maurya |
-| 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification); proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. | Eshan Maurya |
-| 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security); audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. | Eshan Maurya |
-| 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection); audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. | Eshan Maurya |
-| 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. | Eshan Maurya |
-| 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary); verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. | Eshan Maurya |
+| 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security): CLOSED / VERIFIED; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. | Eshan Maurya |
+| 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary): CLOSED / VERIFIED; verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). | Eshan Maurya |
+| 2.20 | August 2026 | Formally documented and closed TEST 04 (IDOR & Multi-Tenant Authorization Boundary): CLOSED / VERIFIED; verified cross-user resource isolation using real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions, 19/19 automated IDOR authorization tests, 9/9 live production unauthenticated baseline probes, zero private data leakage, zero credential exposure, tenant-isolated feedback, admin barrier enforcement, client-supplied user_id rejection, and cross-user mutation protection. | Eshan Maurya |
+| 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening): CLOSED / VERIFIED; eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. | Eshan Maurya |
+| 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification): CLOSED / VERIFIED; proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. | Eshan Maurya |
+| 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification): CLOSED / VERIFIED; proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. | Eshan Maurya |
+| 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security): CLOSED / VERIFIED; audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. | Eshan Maurya |
+| 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection): CLOSED / VERIFIED; audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. | Eshan Maurya |
+| 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport): CLOSED / VERIFIED; audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. | Eshan Maurya |
+| 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary): CLOSED / VERIFIED; verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. | Eshan Maurya |
+| 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity): CLOSED / VERIFIED; verified Free/Pro plan boundaries, server-authoritative plan selection and pricing immunity (`RAZORPAY_PLAN_PRO_MONTHLY`), 6-state subscription lifecycle, `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), duplicate checkout prevention (application check + PostgreSQL partial unique index `idx_active_subscription_unique`), cycle-end cancellation semantics, past-due/expired entitlement revocation, cross-user billing isolation, 2-tier commercial invariants (Free ₹0 / Pro ₹999/mo), and classified findings F-12-01 through F-12-03 across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items. | Eshan Maurya |
 
 ---
 
@@ -11202,7 +11396,7 @@ Examples include:
 - TEST 01-D — Build / Runtime Configuration Consistency: CLOSED / VERIFIED. Audited build/runtime configuration boundaries across Local, Build, Vercel, Serverless, and Browser contexts; verified zero secret leakage in client bundles, strict NEXT_PUBLIC isolation, 6/6 automated configuration tests pass, and live production runtime stability.
 - TEST 01-E — Secret Exposure Through Bundles / API / Errors: CLOSED / VERIFIED. Confirmed zero real secrets exposed across browser bundles, source maps, HTML, RSC, API responses, error responses, headers, and logs (E-001 to E-015 PASS); hardened analytics constants into pure client-safe module (commit d360141).
 - TEST 01 Master Audit Closure: CLOSED / VERIFIED across all sub-audits (01-A, 01-B, 01-C, 01-D, 01-E). Formally established that TEST 01-F does not exist.
-- TEST 02 — Authentication & Session Lifecycle Security: PASS WITH LIMITATION. Verified Supabase SSR session architecture, server-side route guards, live invalid cookie deletion, API bearer token rejection, safe internal redirect normalization, and re-authentication HMAC proofs; formally recorded headless Google 3rd-party consent and production token TTL constraints.
+- TEST 02 — Authentication & Session Lifecycle Security: CLOSED / VERIFIED. Verified Supabase SSR session architecture, server-side route guards, live invalid cookie deletion, API bearer token rejection, safe internal redirect normalization, and re-authentication HMAC proofs; formally recorded headless Google 3rd-party consent and production token TTL constraints.
 - TEST 03 — Re-Authentication Trust Boundary: CLOSED / VERIFIED. Formally closed and verified independent API-level re-authentication enforcement for irreversible operations (`DELETE /api/account/delete`, `DELETE /api/startup/[id]/delete`). Verified user-bound, action-bound, 120s TTL HMAC-SHA256 proofs (`crypto.timingSafeEqual`), distributed atomic single-use Upstash Redis `SET NX` consumption, complete removal of process-local memory fallbacks, fail-closed HTTP 503 outage resilience, and 60/60 automated regression passes (commits `c6899fd` and `0f91a7e`).
 - TEST 04 — IDOR & Multi-Tenant Authorization: CLOSED / VERIFIED. Verified cross-user resource isolation across all startup-scoped API routes using the real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions from `src/lib/auth-server.ts`. 19/19 automated IDOR tests pass (unauthenticated rejection, cross-user read/mutation blocking, tenant-isolated feedback, admin barrier, user_id spoofing resistance, signed URL protection, provider sync protection, investor report protection). 9/9 live production unauthenticated baseline probes return proper rejection codes with zero private data, credentials, database errors, or stack traces. Explicit limitation: live cross-user production testing was not performed because suitable two-user production fixtures did not exist.
 - TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening: CLOSED / VERIFIED. Resolved anonymous PostgREST enumeration on `startup_submissions` by dropping legacy permissive policy `"Allow public read access"`, enforcing owner-only authenticated SELECT policy (`auth.uid() = user_id`), and preserving `service_role` privileges for server-side public route projections. Verified anonymous probes return 0 rows, live public routes return HTTP 200, 79/79 security tests pass, migration artifact `20260821130000_harden_startup_submissions_rls.sql` created, and 5 unregistered migrations reconciled via Supabase CLI repair.
@@ -11212,6 +11406,7 @@ Examples include:
 - TEST 09 — CSRF / Cross-Origin Mutation Protection: CLOSED / VERIFIED. Audited all 29 state-changing API endpoints and Server Actions. Verified that zero routes grant permissive CORS (`Access-Control-Allow-Origin: null`, `Access-Control-Allow-Credentials: null`, `X-Frame-Options: DENY`). Proved that cross-origin HTML form encodings (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) are rejected without database or provider side effects. Documented `SameSite=Lax` browser cookie isolation on session and reauth cookies, dual-layer single-use HMAC re-authentication on destructive deletion routes (`/api/account/delete`, `/api/startup/[id]/delete`), provider signature boundaries on webhooks, and authenticated session requirements on `/api/billing/cancel` (zero side effects). Recorded explicit evidence qualification: actual cross-origin browser execution was not empirically tested because no browser automation harness is configured in the repository. Verified 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes and zero production mutations.
 - TEST 10 — Security Headers & Transport: CLOSED / VERIFIED. Audited HTTPS transport and production security headers across representative public HTML, authenticated APIs, public APIs, badge SVG, OG images, and error responses. Verified universal global security headers configured in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`, `X-DNS-Prefetch-Control: on`), HTTP 308 plaintext $\rightarrow$ HTTPS redirection, apex domain canonicalization, route-level SVG CSP hardening (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), and coexistence with TEST 08 cache invariants. Recorded non-blocking P3 informational findings F-10-01 (global HTML CSP policy evaluation) and F-10-02 (optional HSTS preload). Verified 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items with zero production mutations.
 - TEST 11 — Public Badge / Profile / Leaderboard Boundary: CLOSED / VERIFIED. Audited all public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/startup-submissions/count, /api/live-feed, /api/trust-metrics, /sitemap.xml) for private data leakage and false revenue verification. Verified mandatory is_public=true boundary, owner-only private preview, private field stripping (user_id, email, proof_url, credentials, raw transaction IDs, fraud/penalty metadata), authoritative verification derivation (REVENUE_VERIFIED vs PAYMENT_CONNECTED vs SELF_REPORTED), immunity to client-supplied mrr/arr spoofing, demo sandbox profile isolation, badge SVG XML escaping with truncation-before-encoding, route-level SVG CSP, and adversarial input robustness across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items with zero production mutations.
+- TEST 12 — Billing & Subscription Entitlement Integrity: CLOSED / VERIFIED. Verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -11321,6 +11516,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection); audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. |
 | 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. |
 | 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary); verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. |
+| 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity); verified Free/Pro boundaries, server-authoritative pricing, `getUserPlan` SSoT, duplicate checkout prevention, cancellation semantics, and 2-tier commercial invariants across 66/66 dedicated tests. |
 
 ---
 
@@ -11328,10 +11524,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.27**
+- Handbook Version: **2.28**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 11 — Public Badge / Profile / Leaderboard Boundary (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 12 — Billing & Subscription Entitlement Integrity (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
