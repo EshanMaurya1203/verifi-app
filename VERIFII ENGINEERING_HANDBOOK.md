@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.25 |
+| **Version** | 2.26 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9377,6 +9377,123 @@ The platform exposes 29 state-changing API endpoints across 4 HTTP methods:
 
 ---
 
+## 25.41 TEST 10 — Security Headers & Transport
+
+### Status
+**TEST 10 — SECURITY HEADERS & TRANSPORT: CLOSED / VERIFIED**
+
+---
+
+### Authoritative Purpose & Scope
+TEST 10 verifies HTTPS transport enforcement and production security headers across the platform in accordance with the authoritative *Verifii Final 20-Test Production Launch Readiness Plan*.
+
+**Scope of Audit:**
+1. **Public HTML Pages:** `/`, `/leaderboard`, `/startup/[slug]`.
+2. **Authenticated / Private APIs:** `/api/feedback`, `/api/startup/[id]/overview`, `/api/admin/feedback`.
+3. **Public APIs:** `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`.
+4. **Badge Endpoint:** `/api/badge/[slug]` (SVG dynamic rendering and route-level CSP).
+5. **OG Image Generator:** `/api/og/startup/[slug]` (PNG rendering).
+6. **Error Responses:** Representative `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, and `500 Internal Server Error` responses.
+7. **HTTPS & Transport Invariants:** Plaintext HTTP redirect behavior, apex canonicalization, and HSTS enforcement.
+8. **Sensitive Cookie Attributes:** `vrf_reauth_proof` and Supabase SSR session cookie security flags.
+
+---
+
+### Verified Global Security Headers
+Configured centrally in `next.config.ts` (`source: "/(.*)"`) and verified on production responses from `https://www.verifii.in`:
+
+- **`Strict-Transport-Security`:** `max-age=31536000; includeSubDomains` (Enforces HTTPS for 1 full year across the domain and all subdomains).
+- **`X-Content-Type-Options`:** `nosniff` (Prevents MIME-type sniffing and content-type confusion).
+- **`X-Frame-Options`:** `DENY` (Disallows embedding in `<iframe>`, `<frame>`, `<embed>`, or `<object>` to prevent clickjacking).
+- **`Referrer-Policy`:** `strict-origin-when-cross-origin` (Protects private URL paths on cross-origin navigations while stripping Referer on downgrades).
+- **`Permissions-Policy`:** `camera=(), microphone=(), geolocation=(), interest-cohort=()` (Explicitly disables sensitive device hardware APIs and FLoC tracking).
+- **`X-DNS-Prefetch-Control`:** `on` (Enables DNS prefetching control).
+
+---
+
+### Transport & Host Canonicalization Invariants
+- **HTTP $\rightarrow$ HTTPS:** Plaintext `http://www.verifii.in/` immediately terminates at Vercel Edge and returns `HTTP 308 Permanent Redirect` with `Location: https://www.verifii.in/`. Sensitive routes cannot be reached over plaintext HTTP.
+- **Apex Host Normalization:** Requests to `http://verifii.in/` and `https://verifii.in/` return `HTTP 308 Permanent Redirect` normalizing to canonical `https://www.verifii.in/`.
+- **HSTS Enforcement:** Live production HTTPS responses return `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
+
+---
+
+### Cookie Security & Ephemeral Re-Authentication Proofs
+- **Re-Authentication Proof Cookie (`vrf_reauth_proof`):**
+  - `HttpOnly`: `true` (Inaccessible to client-side JavaScript).
+  - `Secure`: `true` in production (`process.env.NODE_ENV === "production"`).
+  - `SameSite`: `lax` (Blocks cross-site ambient POST attachment).
+  - `Path`: `/`.
+  - `Max-Age`: `120` (Strict 2-minute ephemeral TTL bound to server-side HMAC-SHA256 signature).
+- **Supabase SSR Auth Cookies (`sb-<project-ref>-auth-token`):**
+  - Handled via `@supabase/ssr` server-side client with `Path: "/"`, `SameSite: "lax"`, `Secure: true`.
+  - `middleware.ts` automatically purges stale authentication cookies upon unrecoverable session failures.
+
+---
+
+### Badge SVG Route-Level CSP Hardening
+The dynamic badge route (`/api/badge/[slug]`) renders vector graphics and enforces route-level CSP to prevent SVG-embedded script execution:
+- **`Content-Security-Policy`:** `default-src 'none'; style-src 'unsafe-inline'`
+- **`Content-Type`:** `image/svg+xml`
+- **`Content-Disposition`:** `inline; filename="badge.svg"`
+- **`Cache-Control`:** `public, max-age=3600`
+
+---
+
+### Error Response Security Header Consistency
+In Next.js App Router, `next.config.ts` headers are applied at the routing layer before route resolution. Consequently, representative `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, and `500 Internal Server Error` responses retain 100% of applicable global security headers (`HSTS`, `nosniff`, `DENY`, `Referrer-Policy`, `Permissions-Policy`).
+
+---
+
+### Cache Invariant Coexistence (TEST 08 Compatibility)
+TEST 10 verified that security headers coexist seamlessly with the caching invariants established in TEST 08:
+- **Private Authenticated Routes:** Maintain `Cache-Control: private, no-store, no-cache, must-revalidate` alongside HSTS and nosniff.
+- **Proof Redirect:** Maintains `Cache-Control: private, no-store, max-age=0` on `GET /api/startup/[id]/proof`.
+- **Public API Routes:** Maintain `Cache-Control: public, s-maxage=10, stale-while-revalidate=59` on `/api/live-feed`.
+- **Public Badge Route:** Maintains `Cache-Control: public, max-age=3600` on `/api/badge/[slug]`.
+
+---
+
+### Security Findings & Classification
+
+1. **F-10-01: Global HTML Content-Security-Policy (CSP) Absent**
+   - **Classification:** P3 / Informational / Project Policy Decision.
+   - **Details:** The badge SVG endpoint enforces strict route-level CSP (`default-src 'none'; style-src 'unsafe-inline'`), but global HTML pages do not currently set a `Content-Security-Policy` header. Next.js 15 uses built-in React XSS escaping and sanitized JSX rendering. Implementing a strict nonce-based CSP requires architectural coordination across inline hydration scripts, Google Fonts, Supabase WebSockets, and external avatar CDNs. This is classified as a post-launch roadmap enhancement and is **not** a pre-launch blocker.
+2. **F-10-02: HSTS Preload Directive Absent**
+   - **Classification:** P3 / Informational / Optional.
+   - **Details:** `Strict-Transport-Security` is configured with 1-year duration (`max-age=31536000; includeSubDomains`). The `preload` directive is optional and omitted until formal domain submission to the Chromium HSTS Preload List.
+
+---
+
+### Test Suite Accounting
+
+- `tests/security-headers-transport.test.ts` (TEST 10): **40** native `it()` tests.
+- `tests/csrf-cross-origin-mutation-protection.test.ts` (TEST 09): **44** native `it()` tests.
+- `tests/cache-repeated-request-consistency.test.ts` (TEST 08): **30** native `it()` tests.
+- `tests/trust-boundary-authoritative-fields.test.ts` (TEST 06): **48** native `it()` tests.
+- `tests/idor-authorization-boundary.test.ts` (TEST 04): **19** native `it()` tests.
+- `tests/01-c-rate-limit-trust-boundary.test.ts` (TEST 01-C): **8** logical checks (1 TAP item).
+- **Consolidated Logical Security Checks:** `40 + 44 + 30 + 48 + 19 + 8 = 189 / 189 PASS (100%)`.
+- **Consolidated Node TAP Test Items:** `40 + 44 + 30 + 48 + 19 + 1 = 182 / 182 PASS (100%)`.
+- **Remediation Status:** 0 application source code changes required.
+
+---
+
+### Evidence Limitations
+- Production HTTP/HTTPS probes were strictly read-only; zero database mutations, zero user creations, zero order creations, and zero real payments were executed.
+- Sensitive cookies were verified through implementation contracts and response metadata without exposing raw token values.
+- Browser-specific HSTS/CSP behavior represents verified route-level contracts and web-standard inference, not headless browser automation.
+
+---
+
+### Validation & Safety Confirmation
+
+- **TypeScript Compilation:** `npm run type-check` passed with 0 errors.
+- **Git Diff Check:** `git diff --check` passed with 0 whitespace/diff errors.
+- **Zero Production Mutations:** Zero production database writes, zero users created, zero startups created, zero subscriptions/orders created, zero real payments executed, zero Stripe/Razorpay mutations, zero storage mutations, zero deployment outside repository commit.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10990,6 +11107,7 @@ Examples include:
 - TEST 07 — Rate Limits & Abuse Controls Verification: CLOSED / VERIFIED. Verified platform-wide rate limiting and abuse mitigation across all 46 API routes. Proved that `x-vercel-forwarded-for` platform headers strictly supersede client-supplied `X-Forwarded-For` and `X-Real-IP` headers to prevent rotating header bucket bypass. Empirically confirmed live origin rate limiting on `/api/live-feed` (15 req/60s, `failOpen: true`, `Retry-After: 60`), fail-closed financial pre-auth rate limiting on `/api/billing/checkout` (5 req/60s, `failOpen: false`), and resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13). Remediated unmetered manual sync route `POST /api/startup/[id]/sync` (F-07-01, P2) by adding a centralized Upstash Redis limiter (120s / 5 req, fail-closed) executing prior to Stripe/Razorpay provider calls and database aggregation. Classified F-07-02 (Razorpay billing webhook, P3 / post-launch optional), F-07-03 (admin feedback queue, P3 / no remediation required), and F-07-06 (live feed edge cache, informational). 75/75 automated regression tests pass.
 - TEST 08 — Cache & Repeated Request Consistency / Cache-Control Security: CLOSED / VERIFIED. Audited caching behavior across all 46 API routes and live production. Remediated F-08-01 across four private/authenticated route handlers (`GET /api/feedback`, `GET /api/startup/[id]/overview`, `GET /api/startup/[id]/connections`, `GET /api/admin/feedback`) by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across all response branches (200, 400, 401, 403, 404, 429, 500). Remediated F-08-02 on `GET /api/startup/[id]/proof` by setting `Cache-Control: private, no-store, max-age=0` on temporary 307 signed redirects and `private, no-store` on error branches while preserving 60s signed URL expiry and authoritative DB storage path source. Confirmed public caching preservation (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`). Verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations.
 - TEST 09 — CSRF / Cross-Origin Mutation Protection: CLOSED / VERIFIED. Audited all 29 state-changing API endpoints and sensitive Server Actions. Verified that zero routes grant permissive CORS (`Access-Control-Allow-Origin: null`, `Access-Control-Allow-Credentials: null`, `X-Frame-Options: DENY`). Proved that cross-origin HTML form encodings (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) are rejected without database or provider side effects. Documented `SameSite=Lax` browser cookie isolation on session and reauth cookies, dual-layer single-use HMAC re-authentication on destructive deletion routes (`/api/account/delete`, `/api/startup/[id]/delete`), provider signature boundaries on webhooks, and authenticated session requirements on `/api/billing/cancel` (zero side effects). Recorded explicit evidence qualification: actual cross-origin browser execution was not empirically tested because no browser automation harness is configured in the repository. Verified 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes and zero production mutations.
+- TEST 10 — Security Headers & Transport: CLOSED / VERIFIED. Audited HTTPS transport and production security headers across representative public HTML, authenticated APIs, public APIs, badge SVG, OG images, and error responses. Verified universal global security headers configured in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`, `X-DNS-Prefetch-Control: on`), HTTP 308 plaintext $\rightarrow$ HTTPS redirection, apex domain canonicalization, route-level SVG CSP hardening (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), and coexistence with TEST 08 cache invariants. Recorded non-blocking P3 informational findings F-10-01 (global HTML CSP policy evaluation) and F-10-02 (optional HSTS preload). Verified 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items with zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -11097,6 +11215,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification); proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket count reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. |
 | 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security); audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. |
 | 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection); audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. |
+| 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. |
 
 ---
 
@@ -11104,9 +11223,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.25**
+- Handbook Version: **2.26**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
+- Latest Verification Milestone: **TEST 10 — Security Headers & Transport (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
