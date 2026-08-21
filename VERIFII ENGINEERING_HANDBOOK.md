@@ -9904,12 +9904,19 @@ When evaluating a user's subscription records, `getUserPlan(userId)` queries the
 - **Total Combined Existing Regression Tests:** **60 / 60 PASS**
 
 #### Consolidated Platform Test Accounting
-- **Previous Consolidated Logical Checks:** `266`
-- **TEST 12 Dedicated Logical Checks:** `66`
-- **New Consolidated Logical Checks:** **332 / 332 PASS** (0 failures, 0 skipped)
-- **Previous TAP Items:** `259`
-- **TEST 12 TAP Items:** `66`
-- **New Consolidated TAP Items:** **325 / 325 PASS** (0 failures, 0 skipped)
+- `tests/billing-subscription-entitlement.test.ts` (TEST 12): **66** native `it()` tests.
+- `tests/public-boundary-verification.test.ts` (TEST 11): **77** native `it()` tests.
+- `tests/security-headers-transport.test.ts` (TEST 10): **40** native `it()` tests.
+- `tests/csrf-cross-origin-mutation-protection.test.ts` (TEST 09): **44** native `it()` tests.
+- `tests/cache-repeated-request-consistency.test.ts` (TEST 08): **30** native `it()` tests.
+- `tests/trust-boundary-authoritative-fields.test.ts` (TEST 06): **48** native `it()` tests.
+- `tests/idor-authorization-boundary.test.ts` (TEST 04): **19** native `it()` tests.
+- `tests/01-c-rate-limit-trust-boundary.test.ts` (TEST 01-C): **8** logical checks (1 TAP item).
+
+$$\text{Consolidated Logical Checks: } 66 + 77 + 40 + 44 + 30 + 48 + 19 + 8 = \mathbf{332 / 332\text{ PASS (100\%)}}$$
+$$\text{Consolidated Node TAP Items: } 66 + 77 + 40 + 44 + 30 + 48 + 19 + 1 = \mathbf{325 / 325\text{ PASS (100\%)}}$$
+
+*Accounting Note:* TEST 01-C executes 8 logical security checks (TEST A through TEST H) within a custom top-level asynchronous runner, registering as 1 test item under Node.js TAP reporting. The 332 logical checks and 325 TAP items across all 8 security regression suites are both complete with 0 failures.
 
 ---
 
