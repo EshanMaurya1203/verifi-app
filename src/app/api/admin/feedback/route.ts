@@ -19,7 +19,15 @@ export async function GET(request: Request) {
   try {
     const user = await getAuthenticatedUser();
     if (!user || !isAdmin(user.email)) {
-      return NextResponse.json({ error: "Forbidden. Admin access required." }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden. Admin access required." },
+        {
+          status: 403,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -45,7 +53,15 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error("[Admin Feedback API] GET error:", error);
-      return NextResponse.json({ error: "Failed to fetch admin feedback queue." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to fetch admin feedback queue." },
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     const formatted = (feedbackList || []).map((item) => ({
@@ -57,10 +73,25 @@ export async function GET(request: Request) {
         : [],
     }));
 
-    return NextResponse.json({ feedback: formatted });
+    return NextResponse.json(
+      { feedback: formatted },
+      {
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (err: any) {
     console.error("[Admin Feedback API] GET exception:", err);
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error." },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 }
 

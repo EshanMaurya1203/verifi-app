@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.23 |
+| **Version** | 2.24 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9175,6 +9175,113 @@ During Phase 2 probing on `GET /api/live-feed`, request 13 returned HTTP 429 ins
 
 ---
 
+## 25.39 TEST 08 — Cache & Repeated Request Consistency / Cache-Control Security
+
+### Status
+
+```
+================================================================================
+TEST 08 — CACHE & REPEATED REQUEST CONSISTENCY: CLOSED / VERIFIED
+================================================================================
+```
+
+### Threat Model & Purpose
+
+TEST 08 verifies that caching layers (Vercel Edge Network CDN, intermediate ISP/corporate forward proxies, browser HTTP caches, and in-memory application caches) cannot leak private data across tenants, serve incorrect or stale authorization/verification states, or cache sensitive temporary storage access URLs.
+
+**Threat Vectors Evaluated:**
+1. **Cross-User Cache Contamination:** User A's private dashboard state, provider credentials, or feedback history being cached at intermediate edge nodes and returned to User B.
+2. **Error & Rejection Response Caching:** Unauthenticated (`HTTP 401`) or unauthorized (`HTTP 403`) responses lacking explicit `no-store` directives being cached publicly by downstream proxies, preventing subsequent legitimate authenticated requests from succeeding.
+3. **Temporary Signed URL Redirect Caching:** Temporary 60-second signed storage redirects (`HTTP 307`) being cached downstream, causing subsequent callers to receive expired signed URLs or bypassing authorization.
+4. **Cache Partitioning & Query Parameter Collisions:** Public cacheable assets (such as dynamic SVG verification badges) colliding across different query parameters (e.g., `?theme=dark` vs. `?theme=light`).
+5. **State Invalidation & Freshness:** Mutations to startup publication state (`is_public = false`) or financial revenue transactions failing to reflect immediately due to over-aggressive caching.
+6. **Public vs. Private Cache Boundary:** Ensuring public endpoints (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`) remain intentionally and safely cacheable with appropriate TTLs without exposing sensitive fields (emails, founder identities).
+
+---
+
+### Findings & Root Cause Analysis
+
+Reconnaissance across all 46 API routes and live empirical audit against `https://www.verifii.in` identified two P3 defense-in-depth findings:
+
+1. **Finding F-08-01 (Authenticated & Error API Responses Lacked Explicit Private No-Store):**
+   - *Vulnerability:* When route handlers returned JSON error responses (`HTTP 401`, `HTTP 403`, `HTTP 400`, `HTTP 404`, `HTTP 429`, `HTTP 500`) without explicit `Cache-Control` headers, Next.js App Router emitted its default response header:
+     `Cache-Control: public, max-age=0, must-revalidate`
+   - While `max-age=0` instructs RFC-compliant caches to revalidate, non-compliant intermediate proxies could theoretically interpret `public` as permission to store error payloads.
+   - *Affected Routes:* `GET /api/feedback`, `GET /api/startup/[id]/overview`, `GET /api/startup/[id]/connections`, `GET /api/admin/feedback`.
+2. **Finding F-08-02 (Proof Redirect Lacked Explicit Cache-Control):**
+   - *Vulnerability:* `GET /api/startup/[id]/proof` emitted `NextResponse.redirect(data.signedUrl)` without explicit cache directives on the redirect response, potentially allowing downstream proxies to cache the temporary 60-second signed URL.
+
+---
+
+### Remediation & Cache Invariants
+
+All five designated route handlers were hardened with strict, explicit response headers:
+
+#### 1. Authenticated & Private Route Hardening (F-08-01)
+Added `headers: { "Cache-Control": "private, no-store, no-cache, must-revalidate" }` across all response branches (`200`, `400`, `401`, `403`, `404`, `429`, `500`):
+- [`src/app/api/feedback/route.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/app/api/feedback/route.ts): Hardened unauthenticated 401, error 500, and authenticated 200 feedback history branches.
+- [`src/app/api/startup/[id]/overview/route.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/app/api/startup/%5Bid%5D/overview/route.ts): Hardened invalid ID 400, unauthenticated 401, non-owner 403, rate-limit 429, not found 404, error 500, and authenticated 200 overview branches.
+- [`src/app/api/startup/[id]/connections/route.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/app/api/startup/%5Bid%5D/connections/route.ts): Hardened rate-limit 429, unauthenticated 401, non-owner 403, error 500, and authenticated 200 provider MRR branches.
+- [`src/app/api/admin/feedback/route.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/app/api/admin/feedback/route.ts): Hardened non-admin 403, error 500, and admin 200 feedback queue branches.
+
+#### 2. Signed Proof Redirect Hardening (F-08-02)
+Modified [`src/app/api/startup/[id]/proof/route.ts`](file:///c:/Users/eshan/Downloads/verifi-app/src/app/api/startup/%5Bid%5D/proof/route.ts):
+- The `HTTP 307` temporary redirect explicitly carries:
+  `Cache-Control: private, no-store, max-age=0`
+- All error branches (`400`, `401`, `403`, `404`, `500`) carry:
+  `Cache-Control: private, no-store, no-cache, must-revalidate`
+
+#### 3. Core Proof-Route Security Invariants Preserved
+- **Strict Multi-Tenant Authorization:** Access requires `isOwner || adminUser`; non-owners receive `HTTP 403`.
+- **Authoritative Database Storage Path:** File paths are sourced exclusively from database `submission.proof_url`; client-supplied paths are completely ignored.
+- **Short-Lived Signed URL TTL:** Signed URLs remain strictly valid for exactly 60 seconds (`createSignedUrl(filePath, 60)`).
+
+#### 4. Preservation of Intentionally Public Caching
+Public cacheable endpoints remain intentionally configured with cache headers to minimize origin load while scrubbing sensitive data:
+- `GET /api/badge/[slug]`: `Cache-Control: public, max-age=3600` (1-hour edge cache).
+- `GET /api/live-feed`: `Cache-Control: public, s-maxage=10, stale-while-revalidate=59` (10s CDN cache, scrubbed email/founder names).
+- `GET /api/trust-metrics`: `Cache-Control: public, s-maxage=10, stale-while-revalidate=59` (10s aggregate cache).
+- `GET /api/startup-submissions`: `Cache-Control: public, s-maxage=10, stale-while-revalidate=59` (10s public feed cache).
+
+---
+
+### Automated Test Evidence & Test Count Reconciliation
+
+A dedicated 30-test regression harness was implemented in [`tests/cache-repeated-request-consistency.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/cache-repeated-request-consistency.test.ts) covering 8 security groups:
+- **Group A (Public vs Private Cache Partitioning):** 3 / 3 PASS (Public badge TTL, live-feed scrubbing, trust metrics scrubbing).
+- **Group B (Authenticated & Owner Responses):** 11 / 11 PASS (Explicit `private, no-store` assertions across all 4 hardened routes).
+- **Group C (Authorization & Cache Isolation):** 3 / 3 PASS (Tenant isolation, instant session logout revocation, route-level boundary).
+- **Group D (Query Parameter Partitioning):** 3 / 3 PASS (Dark vs light SVG isolation, analytics cache key partitioning).
+- **Group E (Proof Redirect & Signed URL Handling):** 4 / 4 PASS (Unauthenticated 401, non-owner 403, owner 307 with `private, no-store, max-age=0`, admin 307).
+- **Group F (State Freshness Across Dynamic Mutations):** 2 / 2 PASS (Immediate 404 upon unpublishing `is_public = false`, immediate score recalculation upon revenue insert).
+- **Group G (Next.js Cache & In-Memory Isolation):** 1 / 1 PASS (Analytics in-memory cache isolation and TTL expiry).
+- **Group H (Header Contracts & Baseline Invariants):** 2 / 2 PASS (Zero `Set-Cookie` on public feeds, `X-Content-Type-Options: nosniff` on badges).
+
+#### Test Count Accounting & Reconciliation (105 Logical Checks vs. 98 TAP Items)
+When executing the multi-suite security regression command:
+```bash
+npx tsx --test tests/cache-repeated-request-consistency.test.ts tests/trust-boundary-authoritative-fields.test.ts tests/idor-authorization-boundary.test.ts tests/01-c-rate-limit-trust-boundary.test.ts
+```
+The Node.js test runner reports: `# tests 98, # suites 26, # pass 98, # fail 0, # skipped 0`.
+
+**Auditor Note on Accounting:**
+- `tests/cache-repeated-request-consistency.test.ts` (TEST 08): **30** native `it()` tests.
+- `tests/trust-boundary-authoritative-fields.test.ts` (TEST 06): **48** native `it()` tests.
+- `tests/idor-authorization-boundary.test.ts` (TEST 04): **19** native `it()` tests.
+- `tests/01-c-rate-limit-trust-boundary.test.ts` (TEST 01-C): **8** logical checks (TEST A through TEST H). Because TEST 01-C uses a custom top-level async harness rather than native `it()` blocks, Node.js test runner registers the entire script as **1 TAP test item**.
+- **Logical Security Checks:** `30 + 48 + 19 + 8 = 105 / 105 PASS (100%)`.
+- **Node TAP Test Items:** `30 + 48 + 19 + 1 = 98 / 98 PASS (100%)`.
+
+---
+
+### Validation & Safety Confirmation
+
+- **TypeScript Compilation:** `npm run type-check` passed with 0 errors.
+- **Git Diff Check:** `git diff --check` passed with 0 whitespace/diff errors.
+- **Zero Production Mutations:** Zero production database writes, zero users created, zero startups created, zero orders created, zero real payments executed, zero Stripe/Razorpay mutations, zero storage mutations, zero deployment outside repository commit.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -10786,6 +10893,7 @@ Examples include:
 - TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening: CLOSED / VERIFIED. Resolved anonymous PostgREST enumeration on `startup_submissions` by dropping legacy permissive policy `"Allow public read access"`, enforcing owner-only authenticated SELECT policy (`auth.uid() = user_id`), and preserving `service_role` privileges for server-side public route projections. Verified anonymous probes return 0 rows, live public routes return HTTP 200, 79/79 security tests pass, migration artifact `20260821130000_harden_startup_submissions_rls.sql` created, and 5 unregistered migrations reconciled via Supabase CLI repair.
 - TEST 06 — Authoritative Field & Payment Trust Boundary Verification: CLOSED / VERIFIED. Verified server-authoritative integrity across all 46 API routes and 29 mutating endpoints. Proved that caller identity is strictly derived from `getAuthenticatedUser()`, startup ownership is enforced, `verified_revenue` is hardcoded `null` on onboarding and populated only via live gateway balance sync, `trust_score` and `confidence` are computed algorithmically, SaaS Pro plan pricing (₹999/mo) and Investor Report pricing (₹499 / 49900 paise) are server-controlled constants immune to client parameter manipulation, timing-safe HMAC checks (`timingSafeCompare`) and gateway verification guard report fulfillment, 60s signed download URLs are minted only from authoritative storage paths for verified owners, and non-admin privilege escalation is rejected. 48/48 automated trust-boundary tests pass with 0 failures.
 - TEST 07 — Rate Limits & Abuse Controls Verification: CLOSED / VERIFIED. Verified platform-wide rate limiting and abuse mitigation across all 46 API routes. Proved that `x-vercel-forwarded-for` platform headers strictly supersede client-supplied `X-Forwarded-For` and `X-Real-IP` headers to prevent rotating header bucket bypass. Empirically confirmed live origin rate limiting on `/api/live-feed` (15 req/60s, `failOpen: true`, `Retry-After: 60`), fail-closed financial pre-auth rate limiting on `/api/billing/checkout` (5 req/60s, `failOpen: false`), and resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13). Remediated unmetered manual sync route `POST /api/startup/[id]/sync` (F-07-01, P2) by adding a centralized Upstash Redis limiter (120s / 5 req, fail-closed) executing prior to Stripe/Razorpay provider calls and database aggregation. Classified F-07-02 (Razorpay billing webhook, P3 / post-launch optional), F-07-03 (admin feedback queue, P3 / no remediation required), and F-07-06 (live feed edge cache, informational). 75/75 automated regression tests pass.
+- TEST 08 — Cache & Repeated Request Consistency / Cache-Control Security: CLOSED / VERIFIED. Audited caching behavior across all 46 API routes and live production. Remediated F-08-01 across four private/authenticated route handlers (`GET /api/feedback`, `GET /api/startup/[id]/overview`, `GET /api/startup/[id]/connections`, `GET /api/admin/feedback`) by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across all response branches (200, 400, 401, 403, 404, 429, 500). Remediated F-08-02 on `GET /api/startup/[id]/proof` by setting `Cache-Control: private, no-store, max-age=0` on temporary 307 signed redirects and `private, no-store` on error branches while preserving 60s signed URL expiry and authoritative DB storage path source. Confirmed public caching preservation (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`). Verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -10891,6 +10999,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening); eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. |
 | 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification); proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. |
 | 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification); proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket count reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. |
+| 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security); audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. |
 
 ---
 
@@ -10898,7 +11007,7 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.23**
+- Handbook Version: **2.24**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
 - Latest ADR: **ADR-030**

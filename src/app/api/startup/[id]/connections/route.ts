@@ -15,7 +15,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const identifier = getClientIdentifier(req);
   const { allowed } = await checkRateLimit(identifier, 120000, 5);
   if (!allowed) {
-    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    return NextResponse.json(
+      { error: "Rate limit exceeded" },
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 
   try {
@@ -26,13 +34,29 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { authenticated, owned } = await verifyStartupOwnership(startupId);
 
     if (!authenticated) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Authentication required" },
+        {
+          status: 401,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // Security check 2: Strict ownership enforcement (return 403 if not owned)
     // Removed isDemo fallback to ensure connections API is strictly protected
     if (!owned) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden" },
+        {
+          status: 403,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // Security check 3: Explicitly select ONLY required safe fields
@@ -44,7 +68,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     if (error) {
       console.error("[Connections API] Database error:", error);
-      return NextResponse.json({ success: false, error: "Failed to fetch connections" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Failed to fetch connections" },
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // Map to strictly typed response
@@ -58,9 +90,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const totalMRR = providers.reduce((sum, p) => sum + p.latest_revenue, 0);
 
-    return NextResponse.json({ success: true, providers, totalMRR });
+    return NextResponse.json(
+      { success: true, providers, totalMRR },
+      {
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error("[Connections API] Internal error:", error);
-    return NextResponse.json({ success: false, error: "Failed to fetch connections" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch connections" },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 }

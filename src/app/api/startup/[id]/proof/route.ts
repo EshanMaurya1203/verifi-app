@@ -11,14 +11,30 @@ export async function GET(
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);
     if (isNaN(id)) {
-      return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid ID" },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // 1. Get authenticated user
     const user = await getAuthenticatedUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        {
+          status: 401,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // 2. Fetch the submission
@@ -29,11 +45,27 @@ export async function GET(
       .single();
 
     if (submissionError || !submission) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Not found" },
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     if (!submission.proof_url) {
-      return NextResponse.json({ error: "No proof uploaded" }, { status: 404 });
+      return NextResponse.json(
+        { error: "No proof uploaded" },
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // 3. Verify access (Must be the owner or an admin)
@@ -41,7 +73,15 @@ export async function GET(
     const adminUser = isAdmin(user.email);
 
     if (!isOwner && !adminUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden" },
+        {
+          status: 403,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // 4. Use the canonical proof_url directly
@@ -56,17 +96,31 @@ export async function GET(
       console.error("Signed URL generation failed:", error);
       return NextResponse.json(
         { error: "Failed to generate access URL" },
-        { status: 500 }
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
       );
     }
 
     // 6. Redirect to the signed URL
-    return NextResponse.redirect(data.signedUrl);
+    return NextResponse.redirect(data.signedUrl, {
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0",
+      },
+    });
   } catch (err: any) {
     console.error("Proof API Error:", err);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
     );
   }
 }

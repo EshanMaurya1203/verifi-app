@@ -24,7 +24,15 @@ export async function GET() {
   try {
     const user = await getAuthenticatedUser();
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        {
+          status: 401,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     const { data: feedbackList, error } = await supabaseServer
@@ -37,7 +45,15 @@ export async function GET() {
 
     if (error) {
       console.error("[Feedback API] GET error:", error);
-      return NextResponse.json({ error: "Failed to fetch feedback history." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to fetch feedback history." },
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     // Sort replies chronologically inside each feedback
@@ -50,10 +66,25 @@ export async function GET() {
         : [],
     }));
 
-    return NextResponse.json({ feedback: formatted });
+    return NextResponse.json(
+      { feedback: formatted },
+      {
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (err: any) {
     console.error("[Feedback API] GET exception:", err);
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error." },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 }
 

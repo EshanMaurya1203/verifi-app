@@ -23,21 +23,53 @@ export async function GET(
   const startupId = Number(rawId);
 
   if (isNaN(startupId)) {
-    return NextResponse.json({ error: "Invalid startup ID" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid startup ID" },
+      {
+        status: 400,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 
   const ownership = await verifyStartupOwnership(startupId);
   if (!ownership.authenticated) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Authentication required" },
+      {
+        status: 401,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
   if (!ownership.owned && !ownership.isDemo) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Forbidden" },
+      {
+        status: 403,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 
   const identifier = getClientIdentifier(req);
   const { allowed } = await checkRateLimit(identifier, 120000, 10, { failOpen: true });
   if (!allowed) {
-    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    return NextResponse.json(
+      { error: "Rate limit exceeded" },
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 
   try {
@@ -84,7 +116,15 @@ export async function GET(
     if (txnRes.error) console.error("[Overview] transactions query error:", txnRes.error);
 
     if (startupRes.error || !startupRes.data) {
-      return NextResponse.json({ error: "Startup not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Startup not found" },
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "private, no-store, no-cache, must-revalidate",
+          },
+        }
+      );
     }
 
     const revenue = (revenueRes.data || []).map((snap) => ({
@@ -156,9 +196,21 @@ export async function GET(
       },
     };
 
-    return NextResponse.json(overview);
+    return NextResponse.json(overview, {
+      headers: {
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+      },
+    });
   } catch (error) {
     console.error("[StartupOverview] Critical Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   }
 }
