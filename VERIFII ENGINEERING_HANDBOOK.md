@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.26 |
+| **Version** | 2.27 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9494,6 +9494,102 @@ TEST 10 verified that security headers coexist seamlessly with the caching invar
 
 ---
 
+## 25.42 TEST 11 — Public Badge / Profile / Leaderboard Boundary
+
+### Status
+**TEST 11 — PUBLIC BADGE / PROFILE / LEADERBOARD BOUNDARY: CLOSED / VERIFIED**
+
+---
+
+### Authoritative Purpose & Scope
+TEST 11 verifies that public surfaces never expose private, unverified, or falsely inflated revenue information in accordance with the authoritative *Verifii Final 20-Test Production Launch Readiness Plan*.
+
+**Audited Public Surfaces:**
+1. **Public Startup Profiles (`/startup/[slug]`):** Dynamic Server-Rendered profile pages displaying verified revenue breakdowns, confidence badges, growth charts, and founder metadata.
+2. **Dynamic Badge Endpoint (`/api/badge/[slug]`):** Vector SVG verification badges embedded by external startup websites.
+3. **OpenGraph Social Preview Cards (`/api/og/startup/[slug]`):** Dynamic PNG social card generation for Twitter, LinkedIn, and messaging previews.
+4. **Public Leaderboard (`/leaderboard`):** Ranked directory of verified startups with multi-parameter filtering (search, categories, revenue tiers, verification status) and pagination.
+5. **Public Submissions API (`/api/startup-submissions`):** JSON feed of public startups.
+6. **Public Submissions Count API (`/api/startup-submissions/count`):** Aggregate count of published startups.
+7. **Public Live Feed API (`/api/live-feed`):** Real-time stream of platform verification events.
+8. **Public Trust Metrics API (`/api/trust-metrics`):** Aggregate verified startup count and platform-wide verified revenue volume.
+9. **Sitemap (`/sitemap.xml`):** Search-engine index of public startup profile URLs.
+
+---
+
+### Core Security Boundaries & Verified Invariants
+
+1. **Mandatory `is_public = true` Gate:** Every public read path unconditionally requires `is_public = true`. Private startups (`is_public = false`) return `404 Not Found` (or empty array) to public requests and are excluded from all public aggregations.
+2. **Private Startup Isolation:** Private startups cannot be surfaced through direct URL slug navigation, search queries, category filters, revenue range bounds, or pagination offsets.
+3. **Owner-Only Private Access:** Authenticated founders may preview their own unpublished startups (`startup.user_id === user.id`) where explicitly supported by application architecture; cross-user non-owner access is strictly blocked.
+4. **Private Field Non-Exposure:** Sensitive fields—including founder `user_id` (auth UUID), contact `email`, `proof_url` storage paths, provider API tokens/credentials, raw ledger transaction IDs, internal fraud signals, and anomaly penalty counts—are strictly omitted or stripped from all public projections.
+5. **Proof Document Authorization Gate:** The uploaded financial proof link (`/api/startup/[id]/proof`) is rendered exclusively when `isOwnerOrAdmin` (`user.id === startup.user_id || isAdmin(user.email)`) is true; public viewers cannot view or download private verification documents.
+6. **Authoritative Revenue Derivation:** Public verified revenue is derived strictly from real-time ledger synchronization (`revenue_transactions` $\ge 3$ transactions) and active `provider_connections` (`status = 'connected'`).
+7. **Client Spoofing Resistance:** Client-supplied `mrr` and `arr` values in request bodies or query parameters cannot elevate verification status or override server-derived verified revenue amounts.
+8. **Verification Tier Hierarchy:**
+   - `REVENUE_VERIFIED` (#b9ff4b, "Revenue Verified"): Requires active provider connection, $\ge 3$ verified transactions, and fresh ledger sync within 7 days.
+   - `PAYMENT_CONNECTED` (#f59e0b, "Payment Connected"): Assigned when a provider is linked but transaction threshold or sync recency is pending. Cannot be falsely represented as `REVENUE_VERIFIED`.
+   - `SELF_REPORTED` (#71717a, "Self Reported"): Assigned when no provider is connected. Self-reported claims are explicitly labeled as declared estimates and dimmed to 50% opacity on the leaderboard.
+9. **Demo / Sandbox Isolation:** Startups created by demo user accounts (`00000000-0000-0000-0000-...`) are forced into `SELF_REPORTED` status with a prominent "Sandbox sample data" disclaimer, and are strictly excluded from `/api/live-feed`, `/api/trust-metrics`, and `sitemap.xml`.
+10. **Badge SVG Output Encoding & Truncation Order:** Name truncation (`rawName.length > 15 ? rawName.substring(0, 14) + "..." : rawName`) executes **before** XML escaping (`escapeXml()`), completely preventing severed entity sequences. Route-level CSP (`default-src 'none'; style-src 'unsafe-inline'`) neutralizes SVG-embedded scripts.
+11. **Identifier & Adversarial Robustness:** Malformed slugs, URL-encoded path traversals (`../../`), SQL wildcard injections (`%`, `_`), XSS strings, Unicode, and numeric ID queries fail safely with HTTP 404 or sanitized parameters.
+12. **Immediate Unpublishing Freshness:** Toggling `is_public = false` immediately revokes badge generation (HTTP 404) and removes the startup from all public feeds without stale cache retention.
+
+---
+
+### Test Suite Accounting & Distinction
+
+A dedicated 77-test regression suite was implemented in [`tests/public-boundary-verification.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/public-boundary-verification.test.ts) covering 7 distinct test groups:
+- **Group A (Public Profile Visibility & Private Field Guard):** 8 / 8 PASS
+- **Group B (Badge SVG Security & Verification State):** 16 / 16 PASS
+- **Group C (Leaderboard Public Boundary & Filter Invariants):** 14 / 14 PASS
+- **Group D (Public API Boundary Integrity):** 12 / 12 PASS
+- **Group E (Authoritative Revenue Consistency):** 10 / 10 PASS
+- **Group F (Demo / Sandbox Profile Isolation):** 6 / 6 PASS
+- **Group G (Identifier & Adversarial Input Robustness):** 11 / 11 PASS
+
+#### Consolidated Security Test Accounting:
+- `tests/public-boundary-verification.test.ts` (TEST 11): **77** native `it()` tests.
+- `tests/security-headers-transport.test.ts` (TEST 10): **40** native `it()` tests.
+- `tests/csrf-cross-origin-mutation-protection.test.ts` (TEST 09): **44** native `it()` tests.
+- `tests/cache-repeated-request-consistency.test.ts` (TEST 08): **30** native `it()` tests.
+- `tests/trust-boundary-authoritative-fields.test.ts` (TEST 06): **48** native `it()` tests.
+- `tests/idor-authorization-boundary.test.ts` (TEST 04): **19** native `it()` tests.
+- `tests/01-c-rate-limit-trust-boundary.test.ts` (TEST 01-C): **8** logical checks (1 TAP item).
+
+$$\text{Consolidated Logical Checks: } 77 + 40 + 44 + 30 + 48 + 19 + 8 = \mathbf{266 / 266\text{ PASS (100\%)}}$$
+$$\text{Consolidated Node TAP Items: } 77 + 40 + 44 + 30 + 48 + 19 + 1 = \mathbf{259 / 259\text{ PASS (100\%)}}$$
+
+*Accounting Note:* TEST 01-C executes 8 logical security checks within a custom top-level asynchronous runner, registering as 1 test item under Node.js TAP reporting. The 266 logical checks and 259 TAP items are both complete with 0 failures.
+
+---
+
+### Evidence Classification
+
+- **`[A]` Automated Route/Function Evidence:** The TEST 11 harness directly executes production route handlers (`GET /api/badge/[slug]`, `GET /api/startup-submissions`, `GET /api/live-feed`, `GET /api/trust-metrics`), verification state calculations (`computeVerificationState`), visibility filters (`canStartupBePublic`), XML encoders (`escapeXml`), and query builders via deterministic in-memory interception.
+- **`[B]` Read-Only Production Observation:** Probed live production endpoints (`https://www.verifii.in/api/badge/non-existent-slug-xyz`, `/api/og/startup/...`, `/api/startup-submissions`, `/api/live-feed`, `/api/trust-metrics`, `/leaderboard`) confirming safe 404 responses, sanitized public projections, and zero data leakage.
+- **`[C]` Static Code Evidence:** Audited parameter parsers, column projection strings (`PUBLIC_STARTUP_FIELDS`), and JSX sanitization pipelines.
+- **`[D]` Framework / Standard Inference:** React JSX automatic text escaping and browser CSP enforcement.
+- **`[E]` Not Verified (Explicit Limitation):** The Phase 2A harness exercises real server-side execution paths using deterministic in-memory I/O interception; it does not constitute headless browser UI automation.
+
+---
+
+### Revenue Consistency & Public/Private Findings
+
+- **Ledger Authority:** Verified revenue displayed across public surfaces is derived exclusively from server-side ledger transaction sums and verified provider connection states.
+- **Baseline Distinction:** The `mrr` column returned by `/api/startup-submissions` represents the founder's initial declared onboarding baseline and is documented as distinct from live provider-verified revenue.
+- **Zero Cross-Surface Discrepancies:** Public profiles, badges, leaderboard entries, and public APIs evaluate verification tiers using the shared authoritative `computeVerificationState()` engine, ensuring complete consistency.
+
+---
+
+### Validation & Safety Confirmation
+
+- **TypeScript Compilation:** `npm run type-check` passed with 0 errors.
+- **Git Diff Check:** `git diff --check` passed with 0 whitespace/diff errors.
+- **Zero Production Mutations:** Zero production database writes, zero users created, zero startups created, zero subscriptions/orders created, zero real payments executed, zero Stripe/Razorpay mutations, zero storage mutations, zero deployment outside repository commit.
+
+---
+
 # Appendix A — Glossary
 
 This glossary defines commonly used technical and product terms throughout the Verifii Engineering Handbook.
@@ -11057,6 +11153,13 @@ Examples:
 | 2.18 | August 2026 | Formally documented and closed TEST 02 (Authentication & Session Lifecycle Security) with PASS WITH LIMITATION; verified server auth guards, live invalid cookie purge, API token rejection, open-redirect immunity, and documented headless Google consent and token TTL constraints. | Eshan Maurya |
 | 2.19 | August 2026 | Formally documented and closed TEST 03 (Re-Authentication Trust Boundary); verified independent API-level proof enforcement on account and startup deletion routes, distributed atomic single-use Redis SET NX consumption, fail-closed 503 behavior on Redis outages, elimination of process-local fallback, P1-P7 non-destructive production evidence, and 60/60 automated regression tests (commits c6899fd and 0f91a7e). | Eshan Maurya |
 | 2.20 | August 2026 | Formally documented and closed TEST 04 (IDOR & Multi-Tenant Authorization Boundary); verified cross-user resource isolation using real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions, 19/19 automated IDOR authorization tests, 9/9 live production unauthenticated baseline probes, zero private data leakage, zero credential exposure, tenant-isolated feedback, admin barrier enforcement, client-supplied user_id rejection, and cross-user mutation protection. | Eshan Maurya |
+| 2.21 | August 2026 | Formally documented and closed TEST 05 (Direct PostgREST Read Boundary & startup_submissions RLS Hardening); eliminated anonymous PostgREST enumeration by replacing legacy public read policy with owner-only SELECT policy (`auth.uid() = user_id`), verified 0 rows returned on anonymous PostgREST queries, preserved server-side service-role access for public routes (all HTTP 200), created migration artifact `20260821130000_harden_startup_submissions_rls.sql`, reconciled 5 unregistered migrations via Supabase CLI repair, and verified 79/79 security regression passes. | Eshan Maurya |
+| 2.22 | August 2026 | Formally documented and closed TEST 06 (Authoritative Field & Payment Trust Boundary Verification); proved that caller identity, startup ownership, verified revenue, trust score, confidence, verification status, SaaS Pro billing amount (₹999/mo), and Investor Report pricing (₹499 / 49900 paise) are strictly server-authoritative. Verified timing-safe HMAC checks (`timingSafeCompare`), gateway captured state validation, private bucket `<user_id>/<report_id>.pdf` isolation, 60s signed URL creation, owner fast-path repeat download, demo startup restriction, admin allowlist barrier, and type confusion/prototype pollution immunity across 48/48 passing automated trust-boundary tests. | Eshan Maurya |
+| 2.23 | August 2026 | Formally documented and closed TEST 07 (Rate Limits & Abuse Controls Verification); proved platform header priority (`x-vercel-forwarded-for`), rotating header spoofing immunity, verified production origin rate limiting on `/api/live-feed` (15 req/60s, `Retry-After: 60`) and pre-auth fail-closed protection on `/api/billing/checkout` (5 req/60s), resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13), remediated F-07-01 by adding Upstash Redis rate limiting (120s / 5 req, fail-closed) to `POST /api/startup/[id]/sync` before provider calls and DB aggregation, and classified findings F-07-02, F-07-03, and F-07-06 across 75/75 passing automated regression tests. | Eshan Maurya |
+| 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security); audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. | Eshan Maurya |
+| 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection); audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. | Eshan Maurya |
+| 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. | Eshan Maurya |
+| 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary); verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. | Eshan Maurya |
 
 ---
 
@@ -11104,10 +11207,11 @@ Examples include:
 - TEST 04 — IDOR & Multi-Tenant Authorization: CLOSED / VERIFIED. Verified cross-user resource isolation across all startup-scoped API routes using the real production `getAuthenticatedUser()` and `verifyStartupOwnership()` functions from `src/lib/auth-server.ts`. 19/19 automated IDOR tests pass (unauthenticated rejection, cross-user read/mutation blocking, tenant-isolated feedback, admin barrier, user_id spoofing resistance, signed URL protection, provider sync protection, investor report protection). 9/9 live production unauthenticated baseline probes return proper rejection codes with zero private data, credentials, database errors, or stack traces. Explicit limitation: live cross-user production testing was not performed because suitable two-user production fixtures did not exist.
 - TEST 05 — Direct PostgREST Read Boundary & startup_submissions RLS Hardening: CLOSED / VERIFIED. Resolved anonymous PostgREST enumeration on `startup_submissions` by dropping legacy permissive policy `"Allow public read access"`, enforcing owner-only authenticated SELECT policy (`auth.uid() = user_id`), and preserving `service_role` privileges for server-side public route projections. Verified anonymous probes return 0 rows, live public routes return HTTP 200, 79/79 security tests pass, migration artifact `20260821130000_harden_startup_submissions_rls.sql` created, and 5 unregistered migrations reconciled via Supabase CLI repair.
 - TEST 06 — Authoritative Field & Payment Trust Boundary Verification: CLOSED / VERIFIED. Verified server-authoritative integrity across all 46 API routes and 29 mutating endpoints. Proved that caller identity is strictly derived from `getAuthenticatedUser()`, startup ownership is enforced, `verified_revenue` is hardcoded `null` on onboarding and populated only via live gateway balance sync, `trust_score` and `confidence` are computed algorithmically, SaaS Pro plan pricing (₹999/mo) and Investor Report pricing (₹499 / 49900 paise) are server-controlled constants immune to client parameter manipulation, timing-safe HMAC checks (`timingSafeCompare`) and gateway verification guard report fulfillment, 60s signed download URLs are minted only from authoritative storage paths for verified owners, and non-admin privilege escalation is rejected. 48/48 automated trust-boundary tests pass with 0 failures.
-- TEST 07 — Rate Limits & Abuse Controls Verification: CLOSED / VERIFIED. Verified platform-wide rate limiting and abuse mitigation across all 46 API routes. Proved that `x-vercel-forwarded-for` platform headers strictly supersede client-supplied `X-Forwarded-For` and `X-Real-IP` headers to prevent rotating header bucket bypass. Empirically confirmed live origin rate limiting on `/api/live-feed` (15 req/60s, `failOpen: true`, `Retry-After: 60`), fail-closed financial pre-auth rate limiting on `/api/billing/checkout` (5 req/60s, `failOpen: false`), and resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13). Remediated unmetered manual sync route `POST /api/startup/[id]/sync` (F-07-01, P2) by adding a centralized Upstash Redis limiter (120s / 5 req, fail-closed) executing prior to Stripe/Razorpay provider calls and database aggregation. Classified F-07-02 (Razorpay billing webhook, P3 / post-launch optional), F-07-03 (admin feedback queue, P3 / no remediation required), and F-07-06 (live feed edge cache, informational). 75/75 automated regression tests pass.
+- TEST 07 — Rate Limits & Abuse Controls Verification: CLOSED / VERIFIED. Verified platform-wide rate limiting and abuse mitigation across all 46 API routes. Proved that `x-vercel-forwarded-for` platform headers strictly supersede client-supplied `X-Forwarded-For` and `X-Real-IP` headers to prevent rotating header bucket bypass. Empirically confirmed live origin rate limiting on `/api/live-feed` (15 req/60s, `failOpen: true`, `Retry-After: 60`), fail-closed financial pre-auth rate limiting on `/api/billing/checkout` (5 req/60s), and resolved live-feed threshold consistency (pre-existing bucket counter reaching 16 on request 13). Remediated unmetered manual sync route `POST /api/startup/[id]/sync` (F-07-01, P2) by adding a centralized Upstash Redis limiter (120s / 5 req, fail-closed) executing prior to Stripe/Razorpay provider calls and DB aggregation. Classified F-07-02 (Razorpay billing webhook, P3 / post-launch optional), F-07-03 (admin feedback queue, P3 / no remediation required), and F-07-06 (live feed edge cache, informational). 75/75 automated regression tests pass.
 - TEST 08 — Cache & Repeated Request Consistency / Cache-Control Security: CLOSED / VERIFIED. Audited caching behavior across all 46 API routes and live production. Remediated F-08-01 across four private/authenticated route handlers (`GET /api/feedback`, `GET /api/startup/[id]/overview`, `GET /api/startup/[id]/connections`, `GET /api/admin/feedback`) by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across all response branches (200, 400, 401, 403, 404, 429, 500). Remediated F-08-02 on `GET /api/startup/[id]/proof` by setting `Cache-Control: private, no-store, max-age=0` on temporary 307 signed redirects and `private, no-store` on error branches while preserving 60s signed URL expiry and authoritative DB storage path source. Confirmed public caching preservation (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`). Verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations.
-- TEST 09 — CSRF / Cross-Origin Mutation Protection: CLOSED / VERIFIED. Audited all 29 state-changing API endpoints and sensitive Server Actions. Verified that zero routes grant permissive CORS (`Access-Control-Allow-Origin: null`, `Access-Control-Allow-Credentials: null`, `X-Frame-Options: DENY`). Proved that cross-origin HTML form encodings (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) are rejected without database or provider side effects. Documented `SameSite=Lax` browser cookie isolation on session and reauth cookies, dual-layer single-use HMAC re-authentication on destructive deletion routes (`/api/account/delete`, `/api/startup/[id]/delete`), provider signature boundaries on webhooks, and authenticated session requirements on `/api/billing/cancel` (zero side effects). Recorded explicit evidence qualification: actual cross-origin browser execution was not empirically tested because no browser automation harness is configured in the repository. Verified 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes and zero production mutations.
+- TEST 09 — CSRF / Cross-Origin Mutation Protection: CLOSED / VERIFIED. Audited all 29 state-changing API endpoints and Server Actions. Verified that zero routes grant permissive CORS (`Access-Control-Allow-Origin: null`, `Access-Control-Allow-Credentials: null`, `X-Frame-Options: DENY`). Proved that cross-origin HTML form encodings (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) are rejected without database or provider side effects. Documented `SameSite=Lax` browser cookie isolation on session and reauth cookies, dual-layer single-use HMAC re-authentication on destructive deletion routes (`/api/account/delete`, `/api/startup/[id]/delete`), provider signature boundaries on webhooks, and authenticated session requirements on `/api/billing/cancel` (zero side effects). Recorded explicit evidence qualification: actual cross-origin browser execution was not empirically tested because no browser automation harness is configured in the repository. Verified 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes and zero production mutations.
 - TEST 10 — Security Headers & Transport: CLOSED / VERIFIED. Audited HTTPS transport and production security headers across representative public HTML, authenticated APIs, public APIs, badge SVG, OG images, and error responses. Verified universal global security headers configured in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`, `X-DNS-Prefetch-Control: on`), HTTP 308 plaintext $\rightarrow$ HTTPS redirection, apex domain canonicalization, route-level SVG CSP hardening (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), and coexistence with TEST 08 cache invariants. Recorded non-blocking P3 informational findings F-10-01 (global HTML CSP policy evaluation) and F-10-02 (optional HSTS preload). Verified 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items with zero production mutations.
+- TEST 11 — Public Badge / Profile / Leaderboard Boundary: CLOSED / VERIFIED. Audited all public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/startup-submissions/count, /api/live-feed, /api/trust-metrics, /sitemap.xml) for private data leakage and false revenue verification. Verified mandatory is_public=true boundary, owner-only private preview, private field stripping (user_id, email, proof_url, credentials, raw transaction IDs, fraud/penalty metadata), authoritative verification derivation (REVENUE_VERIFIED vs PAYMENT_CONNECTED vs SELF_REPORTED), immunity to client-supplied mrr/arr spoofing, demo sandbox profile isolation, badge SVG XML escaping with truncation-before-encoding, route-level SVG CSP, and adversarial input robustness across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items with zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -11117,7 +11221,7 @@ This timeline provides historical context for future contributors.
 
 Record important architectural changes that affect multiple systems.
 
-Examples:
+Examples include:
 
 - India-first platform strategy adopted.
 - Private-by-default visibility model introduced.
@@ -11216,6 +11320,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.24 | August 2026 | Formally documented and closed TEST 08 (Cache & Repeated Request Consistency / Cache-Control Security); audited all 46 API routes and live CDN behavior, remediated F-08-01 by enforcing explicit `Cache-Control: private, no-store, no-cache, must-revalidate` across 4 private/authenticated routes (`/api/feedback`, `/api/startup/[id]/overview`, `/api/startup/[id]/connections`, `/api/admin/feedback`), remediated F-08-02 by setting `private, no-store, max-age=0` on `/api/startup/[id]/proof` temporary 307 signed redirects, preserved public caching (`/api/badge/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/api/startup-submissions`), and verified 30/30 dedicated TEST 08 tests, 105/105 logical security checks, and 98/98 TAP test items with zero production mutations. |
 | 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection); audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. |
 | 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. |
+| 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary); verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. |
 
 ---
 
@@ -11223,10 +11328,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.26**
+- Handbook Version: **2.27**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 10 — Security Headers & Transport (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 11 — Public Badge / Profile / Leaderboard Boundary (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
