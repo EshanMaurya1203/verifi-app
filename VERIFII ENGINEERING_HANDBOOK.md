@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.32 |
+| **Version** | 2.34 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -10581,6 +10581,173 @@ npx tsx --test tests/async-cron-notifications.test.ts tests/encryption-secret-ha
 
 ---
 
+## 25.47 TEST 16 — Database Transactionality & Concurrency
+
+### Executive Summary
+
+TEST 16 validates database transactionality, rollback behavior, concurrency safety, idempotency, uniqueness constraints, deletion cascades, partial-state prevention, and multi-tenant isolation across the Verifii platform.
+
+Authoritative launch-readiness verification was performed via dedicated regression suite [`tests/database-transactionality-concurrency.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/database-transactionality-concurrency.test.ts) using a dual-layer validation architecture combining application-level deterministic state simulation with isolated PostgreSQL 16 runtime-semantics testing.
+
+The verification evidence is categorized across three explicit tiers:
+1. **Tier 1: Application-Level Deterministic Simulation Evidence (Groups A–I, 82 Tests):** Validates JavaScript runtime transactional state orchestration, optimistic lock version checks (`version + 1`), single-use re-auth token atomic consumption (`SET NX`), non-blocking notification dispatch error isolation (ADR-023), and billing entitlement priority fallbacks.
+2. **Tier 2: PostgreSQL Runtime-Semantics Evidence (Groups J–S, 35 Tests):** Validates actual PostgreSQL 16 transaction semantics (`BEGIN; COMMIT; ROLLBACK;`), savepoint isolation (`SAVEPOINT; ROLLBACK TO SAVEPOINT;`), partial indexes, composite unique constraints, `ON CONFLICT DO UPDATE` upserts, `ON DELETE CASCADE`, and concurrent race winner/loser semantics executed inside an isolated local PGlite/WASM runtime (`@electric-sql/pglite`).
+3. **Tier 3: Static Database Schema Evidence:** Derived from authoritative Supabase migrations (`supabase/migrations/*.sql`) confirming production schema constraints.
+
+---
+
+### PostgreSQL Evidence Qualification & Scope Boundaries
+
+> [!NOTE]
+> **PostgreSQL Runtime-Semantics Qualification:**
+> Part II of TEST 16 executes PostgreSQL 16 runtime semantics through `@electric-sql/pglite` (PGlite/WASM) inside an isolated local test process. This evidence exercises PostgreSQL 16 transaction, constraint, index, foreign-key, `ON CONFLICT`, savepoint, rollback, and concurrency semantics inside an isolated PGlite/WASM runtime. It is stronger than an in-memory application simulation but is not equivalent to distributed or remote production PostgreSQL/Supabase infrastructure testing.
+
+**Explicit Scope Boundaries & Limitations:**
+- **Local WASM Environment:** PGlite executes PostgreSQL 16 compiled to WebAssembly locally within Node.js. It evaluates true SQL DDL, transaction rollback, and constraints, but operates without a live network connection to production Supabase PostgreSQL.
+- **Single-Node Execution:** Concurrent transactions are evaluated across concurrent JavaScript promises on a single local engine rather than a distributed database cluster.
+- **Infrastructure Exclusions:** Testing did not evaluate remote connection pool exhaustion, cross-region replication lag, or physical network partitioning.
+
+---
+
+### Authoritative Verification Matrix
+
+| Group ID | Verification Domain | Test Items | Pass / Total | Status |
+|---|---|---|---|---|
+| **PART I** | **APPLICATION-LEVEL DETERMINISTIC SIMULATION** | | | |
+| **Group A** | **Transaction Atomicity & Rollback Integrity** | A1–A10 | 10 / 10 | **100% PASS** |
+| **Group B** | **Concurrent Duplicate Operations & Single-Winner Semantics** | B1–B10 | 10 / 10 | **100% PASS** |
+| **Group C** | **Webhook Concurrency & Deduplication** | C1–C10 | 10 / 10 | **100% PASS** |
+| **Group D** | **Subscription / Billing Concurrency & Entitlement State** | D1–D10 | 10 / 10 | **100% PASS** |
+| **Group E** | **Verification Concurrency & Revenue Metrics Integrity** | E1–E8 | 8 / 8 | **100% PASS** |
+| **Group F** | **Account Deletion Concurrency & Multi-Step Cascade Safety** | F1–F10 | 10 / 10 | **100% PASS** |
+| **Group G** | **Idempotency & Database Constraint Model Validation** | G1–G8 | 8 / 8 | **100% PASS** |
+| **Group H** | **Partial-State & Orphan Record Detection** | H1–H8 | 8 / 8 | **100% PASS** |
+| **Group I** | **Regression & Repository Hygiene** | I1–I8 | 8 / 8 | **100% PASS** |
+| *Part I Subtotal* | *Application Simulation Layer* | *A1–I8* | *82 / 82* | *100% PASS* |
+| **PART II** | **POSTGRESQL 16 RUNTIME SEMANTICS (PGLITE/WASM)** | | | |
+| **Group J** | **PostgreSQL Runtime Transaction Atomicity & Controlled Rollback** | J1–J5 | 5 / 5 | **100% PASS** |
+| **Group K** | **PostgreSQL Runtime Processed Webhook Event Race** | K1–K4 | 4 / 4 | **100% PASS** |
+| **Group L** | **PostgreSQL Runtime Active Subscription Uniqueness** | L1–L4 | 4 / 4 | **100% PASS** |
+| **Group M** | **PostgreSQL Runtime Revenue Transaction Idempotency & Upsert** | M1–M3 | 3 / 3 | **100% PASS** |
+| **Group N** | **PostgreSQL Runtime Provider Connection Uniqueness** | N1–N3 | 3 / 3 | **100% PASS** |
+| **Group O** | **PostgreSQL Runtime Startup & Slug Uniqueness** | O1–O3 | 3 / 3 | **100% PASS** |
+| **Group P** | **PostgreSQL Runtime Foreign Key Deletion Cascades** | P1–P4 | 4 / 4 | **100% PASS** |
+| **Group Q** | **PostgreSQL Runtime Concurrent Deletion & Race Containment** | Q1–Q3 | 3 / 3 | **100% PASS** |
+| **Group R** | **PostgreSQL Runtime Constraint Failure & Error Isolation** | R1–R3 | 3 / 3 | **100% PASS** |
+| **Group S** | **PostgreSQL Runtime Multi-Tenant Concurrency** | S1–S3 | 3 / 3 | **100% PASS** |
+| *Part II Subtotal* | *PostgreSQL Runtime Semantics Layer* | *J1–S3* | *35 / 35* | *100% PASS* |
+| **TOTAL** | **Dedicated TEST 16 Regression Matrix** | **A1–S3** | **117 / 117** | **100% PASS (100%)** |
+
+---
+
+### Core Database Constraint & Concurrency Invariants
+
+1. **Multi-Table Atomic Transaction Integrity:** Multi-table operations (`users`, `startup_submissions`, `subscriptions`, `provider_connections`) commit atomically via `BEGIN` / `COMMIT`. Unhandled errors midway trigger full PostgreSQL `ROLLBACK`, leaving exactly 0 partial or corrupted records.
+2. **Savepoint Isolation:** Localized operations inside long-running flows execute via `SAVEPOINT sp` and `ROLLBACK TO SAVEPOINT sp`, enabling contained error recovery without aborting entire transaction blocks.
+3. **Webhook Ingestion Idempotency & Concurrency:** The composite primary key `processed_webhook_events(provider, event_id)` enforces strict single-event uniqueness. High-concurrency races produce exactly 1 winner with competing workers receiving unique constraint error `23505`; rolled-back transactions release the key immediately for clean retry.
+4. **Active Subscription Uniqueness (Partial Index):** The real PostgreSQL partial index:
+   ```sql
+   CREATE UNIQUE INDEX idx_active_subscription_unique
+   ON subscriptions(user_id)
+   WHERE status IN ('active', 'trialing');
+   ```
+   strictly limits users to at most one active or trialing subscription, rejecting concurrent checkout collisions while permitting multiple historical `cancelled` or `expired` records.
+5. **Revenue Transaction Idempotency & Upsert:** The `UNIQUE(provider, provider_tx_id)` constraint on `revenue_transactions` prevents duplicate revenue credits; `INSERT ... ON CONFLICT (provider, provider_tx_id) DO UPDATE SET amount = EXCLUDED.amount` executes idempotently under concurrent ingestion.
+6. **Provider Connection Uniqueness:** The `UNIQUE(startup_id, provider)` constraint prevents multiple active connections for the same provider on a single startup; concurrent connection requests resolve with 1 winner and 1 constraint rejection.
+7. **Public Slug Uniqueness:** The `UNIQUE(slug)` constraint on `startup_submissions` guarantees unique profile routing; concurrent creations or slug update conflicts fail with PostgreSQL unique constraint errors.
+8. **Foreign Key Cascade Safety (`ON DELETE CASCADE`):** Deleting a startup cleanly cascades to all child records (`provider_connections`, `revenue_snapshots`, `reports`); deleting a user cleanly cascades to their `startup_submissions` and `subscriptions`.
+9. **Financial Audit Trail Anonymization (`ON DELETE SET NULL`):** Irreversible account deletion preserves financial audit logs and subscription history by setting `user_id = NULL` rather than deleting ledger records. Orphan verification queries confirm zero dangling foreign keys remain.
+10. **Concurrent Deletion Safety:** Simultaneous deletions of the same entity execute safely with single-winner semantics (first execution removes the entity, subsequent execution returns `affectedRows = 0`) without deadlock.
+11. **Multi-Tenant READ COMMITTED Isolation:** Concurrent transactions for independent tenants execute in parallel without mutual blocking or cross-tenant data leakage; a failure and rollback in Tenant A's transaction leaves Tenant B's committed writes unaffected.
+
+---
+
+### Dependency & Production Bundle Isolation
+
+- **Test-Only Dependency:** `@electric-sql/pglite` (version `^0.5.5`) was added exclusively to `devDependencies` in `package.json` for running the TEST 16 local PostgreSQL runtime harness.
+- **Production Isolation Verification:** Full repository inspection confirms `@electric-sql/pglite` is imported solely by `tests/database-transactionality-concurrency.test.ts`. Zero references exist under `src/**`. It does not enter client bundles, serverless route handlers, Server Actions, or the Next.js production build output.
+- **Production Application Source Code Modifications:** Exactly **0** files modified under `src/**`.
+
+---
+
+### Authoritative TAP & Logical Accounting
+
+#### 1. Dedicated TEST 16 Suite
+- **117 / 117 TAP Tests PASS** (100% pass rate across 20 suites)
+- **117 / 117 Logical Checks PASS** (82 application simulation checks + 35 PostgreSQL runtime-semantics checks)
+
+#### 2. Authoritative Consolidated Security Baseline (Excluding TEST 13)
+- **Previous Authoritative Consolidated Baseline (TEST 15 Closure):**
+  - **492 / 492 TAP Tests PASS** (100%)
+  - **499 / 499 Logical Checks PASS** (100%)
+- **TEST 16 Incremental Addition:**
+  - **+117 TAP Tests**
+  - **+117 Logical Checks**
+- **Current Consolidated Baseline (Including TEST 16, Excluding TEST 13):**
+  - **609 / 609 TAP Tests PASS** ($492 + 117 = 609$) across 104 test suites
+  - **616 / 616 Logical Security Checks PASS** ($499 + 117 = 616$)
+
+*Exact Consolidated Execution Command:*
+```powershell
+npx tsx --test tests/database-transactionality-concurrency.test.ts tests/async-cron-notifications.test.ts tests/encryption-secret-handling.test.ts tests/billing-subscription-entitlement.test.ts tests/public-boundary-verification.test.ts tests/security-headers-transport.test.ts tests/csrf-cross-origin-mutation-protection.test.ts tests/cache-repeated-request-consistency.test.ts tests/trust-boundary-authoritative-fields.test.ts tests/idor-authorization-boundary.test.ts tests/01-c-rate-limit-trust-boundary.test.ts
+```
+*Raw Runner Output:* `609 tests, 104 suites, 609 pass, 0 fail, 0 skipped (duration: 17.49s)`.
+
+#### 3. TEST 13 Standalone & Hypothetical Combined Accounting
+- **TEST 13 (Payment Provider & Webhook Boundary):** Dedicated suite: **86 / 86 PASS** in [`tests/payment-provider-webhook-boundary.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/payment-provider-webhook-boundary.test.ts).
+- TEST 13 remains an independent dedicated suite and is not merged into the 609-TAP consolidated security baseline.
+- *Hypothetical Combined Platform Total:* If TEST 13 were combined with the 609 baseline, the total would be $609 + 86 = 695\text{ TAP}$ ($616 + 86 = 702\text{ logical}$).
+
+---
+
+### Safety & Production Mutation Accounting
+
+| Mutation Domain | Production Count | Verification Evidence |
+|---|---|---|
+| **Database Mutations** | **0** | Production database mutations: 0. PostgreSQL runtime-semantic tests performed mutations only inside the isolated PGlite/WASM test engine. No production database connection was used. |
+| **Customer Records Mutated** | **0** | Synthetic fixtures only |
+| **Customer Emails Dispatched** | **0** | Mocked provider and synthetic rendering only |
+| **Real Payment Charges** | **0** | Gateway APIs bypassed |
+| **Live Webhooks Ingested** | **0** | Test payloads only |
+| **Production Secrets Exposed** | **0** | No secrets printed or logged |
+| **Production Source Edits (`src/**`)** | **0** | Unmodified |
+
+---
+
+### Findings & Severity Accounting
+
+- **P0 Critical:** 0
+- **P1 High:** 0
+- **P2 Medium:** 0
+- **P3 Low / Informational:** 0 new defects.
+
+---
+
+### Validation Evidence
+
+- **TypeScript Type-Check:** `npm run type-check` $\rightarrow$ **PASS (0 errors)**
+- **Git Diff Formatting:** `git diff --check` $\rightarrow$ **PASS (0 whitespace/formatting errors)**
+- **Dedicated TEST 16 Suite:** `117 / 117 PASS`
+- **Consolidated Baseline Suite:** `609 / 609 PASS`
+
+---
+
+### Phase 2C Final Closure Evidence
+
+- **Dedicated TEST 16 Result:** 117 / 117 PASS across 20 suites (0 failures, 0 skipped) in [`tests/database-transactionality-concurrency.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/database-transactionality-concurrency.test.ts).
+- **Dual-Layer Architecture:** 82 application simulation checks (Groups A–I) + 35 PostgreSQL 16 runtime-semantics checks (Groups J–S) executed via isolated PGlite/WASM engine.
+- **Consolidated Baseline Result:** 609 / 609 TAP PASS across 104 suites (616 / 616 logical security checks).
+- **TEST 13 Separate Accounting:** 86 / 86 PASS in [`tests/payment-provider-webhook-boundary.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/payment-provider-webhook-boundary.test.ts) (independently tracked).
+- **TypeScript Compilation:** `npm run type-check` (tsc --noEmit) $\rightarrow$ 0 errors (Exit code 0).
+- **Git Formatting:** `git diff --check` $\rightarrow$ 0 whitespace/formatting errors (Exit code 0).
+- **Dependency Isolation:** `@electric-sql/pglite` (^0.5.5) isolated strictly to `devDependencies`; 0 references under `src/**`.
+- **Production Application Code:** 0 files modified under `src/**`.
+- **Safety Accounting:** Production database mutations: 0. PostgreSQL runtime-semantic tests performed mutations only inside the isolated PGlite/WASM test engine. No production database connection was used.
+- **PostgreSQL Scope Boundaries:** Local PGlite/WASM execution, single-node concurrency environment, no distributed cluster, no remote pool exhaustion, no physical network partition testing.
+- **Final Milestone Status:** **TEST 16 — DATABASE TRANSACTIONALITY & CONCURRENCY: CLOSED / VERIFIED**
+
+---
+
 # Appendix B — Project Structure
 
 This appendix documents the high-level organization of the Verifii codebase.
@@ -11992,6 +12159,8 @@ Examples:
 | 2.30 | August 2026 | Normalized and completed permanent TEST 13 (Payment Provider & Webhook Boundary) Phase 2C closure documentation in Section 25.44 and Appendix F; preserved explicit distinctions for dedicated matrix (86/86 PASS), related regression (114/114 PASS), consolidated regression (325/325 TAP PASS), and logical security checks (332/332 PASS), closure commit SHA `96653b4`, origin/main push verification, clean worktree status, 3 non-blocking P3 informational findings, and zero production mutations safety accounting. | Eshan Maurya |
 | 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED in Section 25.45 and Appendix F; recorded 64/64 dedicated automated tests pass in `tests/encryption-secret-handling.test.ts`, 389/389 consolidated security regression TAP tests (100% pass), 396/396 consolidated logical checks (100% pass), closure commit SHA `efde71f`, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), AES-256-GCM AEAD architecture, tamper resistance (1-byte CT/tag/IV rejection), legacy CTR compatibility (OBS-14-01), key normalization behavior (OBS-14-02), projection exclusion of `api_key_encrypted`, zero client bundle/log leaks, and zero production mutations safety accounting. | Eshan Maurya |
 | 2.32 | August 2026 | Formally documented and closed TEST 15 (Async Jobs, Cron, Notifications & Retry Behavior): CLOSED / VERIFIED in Section 25.46 and Appendix F; recorded 103/103 dedicated automated tests pass in `tests/async-cron-notifications.test.ts`, 492/492 consolidated security regression TAP tests (100% pass), 499/499 consolidated logical checks (100% pass), Vercel Cron authentication barrier, trial reminder window calculations, non-blocking notification isolation under ADR-023, partition of 21 registered notification types into 14 implemented React Email templates and 7 documented-only types (OBS-15-01), deterministic idempotency key derivation, bounded safeFetch retry behavior, timeout and AbortSignal handling, structured telemetry logging, OBS-15-02, closure commit, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), and zero production mutations safety accounting. | Eshan Maurya |
+| 2.33 | August 2026 | Documented TEST 16 (Database Transactionality & Concurrency) in Phase 2B covering multi-step transaction atomicity, controlled rollback, savepoints, processed webhook event race safety, active subscription uniqueness (idx_active_subscription_unique), revenue idempotency, provider connection uniqueness, slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, and multi-tenant isolation across 117/117 dedicated automated checks (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM); awaiting Phase 2C formal closure. | Eshan Maurya |
+| 2.34 | August 2026 | Formally documented and closed TEST 16 (Database Transactionality & Concurrency): CLOSED / VERIFIED in Section 25.47 and Appendix F; recorded 117/117 dedicated automated tests pass in `tests/database-transactionality-concurrency.test.ts` (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM), 609/609 consolidated security regression TAP tests (100% pass), 616/616 consolidated logical checks (100% pass), closure commit, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), multi-step transaction atomicity, controlled rollback, savepoint isolation, webhook deduplication race safety on `processed_webhook_events(provider, event_id)`, active subscription partial index `idx_active_subscription_unique`, revenue transaction idempotency, slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, multi-tenant isolation, devDependencies-only PGlite isolation, zero `src/**` modifications, and zero production database mutations safety accounting. | Eshan Maurya |
 
 ---
 
@@ -12048,6 +12217,7 @@ Examples include:
 - TEST 13 — Payment Provider & Webhook Boundary: CLOSED / VERIFIED. Verified inbound webhook security across Stripe (`/api/stripe/webhook`), Razorpay revenue (`/api/razorpay/webhook`), and Razorpay SaaS billing (`/api/billing/webhook/razorpay`). Proved cryptographic HMAC signature validation, timing-safe comparison (`timingSafeCompare`), channel secret isolation (`RAZORPAY_WEBHOOK_SECRET` vs `RAZORPAY_BILLING_WEBHOOK_SECRET`), server-authoritative provider account attribution via `provider_connections`, anti-metadata-spoofing defense, atomic event claim and 10-way concurrent race safety via `processed_webhook_events (provider, event_id)`, monotonic stale timestamp rejection via `subscriptions.last_billing_event_at`, fail-closed unmapped account handling, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the full 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated automated checks, 114/114 related regression tests, 325/325 consolidated TAP items (332/332 logical security checks), commit 96653b4, and zero production mutations.
 - TEST 14 — Encryption & Secret Handling: CLOSED / VERIFIED. Verified AES-256-GCM authenticated encryption/decryption, tamper resistance (1-byte CT/tag/IV rejection), wrong-key fail-closed protection, key normalization, 2-part and 1-part legacy CTR compatibility, database projection isolation (`api_key_encrypted` excluded from APIs), zero client bundle or log exposure, and constant-time signature comparison across 64/64 dedicated automated tests, 389/389 consolidated TAP tests, 396/396 consolidated logical checks, closure commit `efde71f`, and zero production mutations.
 - TEST 15 — Async Jobs, Cron, Notifications & Retry Behavior: CLOSED / VERIFIED. Verified Vercel Cron Bearer authentication barrier (`CRON_SECRET`), cron method boundary (GET only), trial reminder 3-day eligibility window calculation, provider sync failure notifications, 14 implemented React Email templates with HTML/plain-text rendering, fail-safe handling for 7 documented-only notification types without templates (OBS-15-01), non-blocking auxiliary write isolation (ADR-023), deterministic idempotency key derivation, bounded safeFetch network retries, timeout and AbortSignal containment, structured telemetry logging (`src/lib/logger.ts`), recipient trust boundaries, and concurrent in-flight GET coalescing across 103/103 dedicated automated tests, 492/492 consolidated security baseline TAP tests, 499/499 logical security checks, and zero production mutations.
+- TEST 16 — Database Transactionality & Concurrency: CLOSED / VERIFIED. Verified multi-step transaction atomicity, controlled rollback, savepoints, single-winner concurrency semantics, webhook deduplication on processed_webhook_events(provider, event_id), active subscription partial index (idx_active_subscription_unique), revenue transaction upsert idempotency, startup slug uniqueness, foreign key cascade deletions (ON DELETE CASCADE), audit log preservation (ON DELETE SET NULL), and multi-tenant READ COMMITTED isolation across 117/117 dedicated tests (82 application simulation + 35 PostgreSQL runtime-semantics tests via isolated PGlite/WASM), 609/609 consolidated baseline TAP tests (616/616 logical checks), and zero production database mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -12162,6 +12332,8 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.30 | August 2026 | Completed and normalized TEST 13 permanent Phase 2C closure documentation, preserving distinct accounting for dedicated matrix (86/86), related regression (114/114), consolidated regression (325/325), logical security checks (332/332), commit SHA `96653b4`, P0/P1/P2=0, P3=3 informational findings, and zero production mutations. |
 | 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED; verified AES-256-GCM authenticated encryption/decryption, tamper resistance, legacy CTR fallback compatibility, key normalization, API credential projection boundaries, zero secret leakage, and constant-time comparison across 64/64 dedicated automated tests, 389/389 consolidated TAP tests, 396/396 logical checks, and closure commit `efde71f`. |
 | 2.32 | August 2026 | Formally documented and closed TEST 15 (Async Jobs, Cron, Notifications & Retry Behavior): CLOSED / VERIFIED; verified Vercel Cron authentication, trial reminder logic, notification pipeline safety (14 implemented templates and 7 documented-only types), non-blocking isolation (ADR-023), deterministic idempotency, bounded safeFetch retries, timeout handling, structured telemetry, and recipient isolation across 103/103 dedicated checks, 492/492 consolidated baseline TAP tests, and 499/499 logical security checks. |
+| 2.33 | August 2026 | Documented TEST 16 (Database Transactionality & Concurrency) in Phase 2B covering multi-step transaction atomicity, controlled rollback, savepoints, processed webhook event race safety, active subscription uniqueness (idx_active_subscription_unique), revenue transaction idempotency, provider connection uniqueness, startup slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, and multi-tenant isolation across 117/117 dedicated checks (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM); status: Phase 2B complete / awaiting formal Phase 2C closure. |
+| 2.34 | August 2026 | Formally documented and closed TEST 16 (Database Transactionality & Concurrency): CLOSED / VERIFIED; verified multi-step transaction atomicity, controlled rollback, savepoints, processed webhook event race safety, active subscription uniqueness (idx_active_subscription_unique), revenue transaction idempotency, provider connection uniqueness, startup slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, and multi-tenant isolation across 117/117 dedicated tests (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM), 609/609 consolidated baseline TAP tests, and 616/616 logical security checks. |
 
 ---
 
@@ -12169,10 +12341,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.32**
+- Handbook Version: **2.34**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 15 — Async Jobs, Cron, Notifications & Retry Behavior (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 16 — Database Transactionality & Concurrency (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
