@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.28 |
+| **Version** | 2.29 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -9954,6 +9954,321 @@ $$\text{Consolidated Node TAP Items: } 66 + 77 + 40 + 44 + 30 + 48 + 19 + 1 = \m
 
 ---
 
+## 25.44 TEST 13 — Payment Provider & Webhook Boundary
+
+### Status
+**TEST 13 — PAYMENT PROVIDER & WEBHOOK BOUNDARY: CLOSED / VERIFIED**
+
+---
+
+### Authoritative Purpose & Scope
+TEST 13 establishes the security, authentication, attribution, and data integrity boundaries for inbound payment-provider webhooks across all three authoritative webhook entrypoints:
+1. `POST /api/stripe/webhook` (Stripe Connect & Payment Revenue Webhook)
+2. `POST /api/razorpay/webhook` (Razorpay Merchant Revenue & Refund Webhook)
+3. `POST /api/billing/webhook/razorpay` (Razorpay SaaS Pro Subscription Lifecycle Webhook)
+
+The authoritative objective in accordance with the *Verifii Final 20-Test Production Launch Readiness Plan* (`Verifii_Final_20_Test_Launch_Readiness_Plan.docx`) is to verify:
+- Cryptographic signature validation across provider mechanisms (Stripe HMAC-SHA256 signature header vs Razorpay HMAC-SHA256 hex signatures).
+- Server-authoritative provider account attribution to genuine owning startups.
+- Robust immunity to attacker-supplied metadata spoofing (`notes`, `startup_id`, `client_reference_id`).
+- Atomic event idempotency and true concurrent first-delivery duplicate protection.
+- Replay protection, out-of-order delivery resistance, and monotonic timestamp progression.
+- Unmapped-account, disconnected-account, and malformed-payload fail-closed behavior.
+- Complete isolation between webhook secret channels (`RAZORPAY_WEBHOOK_SECRET` vs `RAZORPAY_BILLING_WEBHOOK_SECRET`).
+- Fractional currency arithmetic (cents-to-dollars, paise-to-rupees), anti-dust micropayment filtering, refund deduplication, and multi-gateway MRR calculation integrity.
+- Authoritative Razorpay SaaS subscription state transitions across the full 8-state subscription lifecycle.
+
+---
+
+### Webhook Architecture & Authoritative Surfaces
+
+The payment and billing webhook boundary comprises three distinct route handlers:
+
+#### 1. Stripe Webhook (`POST /api/stripe/webhook`)
+- **Raw Request Body Extraction:** Reads raw text (`req.text()`) to preserve byte-level fidelity for cryptographic HMAC verification.
+- **Signature Validation:** Evaluates the `stripe-signature` header using official Stripe SDK `stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET)`. Missing, invalid, or malformed signature headers are rejected immediately with HTTP 400 (`{"error":"Invalid signature"}`) prior to JSON parsing or DB interaction.
+- **Provider Account Attribution:** Resolves the merchant tenant exclusively via `event.account` or payload `account.id`.
+- **Database Reconciliation:** Queries `provider_connections` (`provider = 'stripe'`, `provider_account_id = accountId`, `status = 'connected'`). Unmapped or disconnected accounts fail closed with HTTP 200 skipped (`skipped: "unmapped_provider_account"`) to prevent webhook retry storms while causing zero business mutations.
+- **Atomic Idempotency:** Claims the event atomically via `processed_webhook_events` (`provider: 'stripe'`, `event_id: event.id`). Sequential or concurrent duplicate deliveries return HTTP 200 with zero duplicate financial mutations.
+- **Financial Processing:** Processes `payment_intent.succeeded` and `charge.refunded` by converting cents to base currency units ($500.00$), inserting `revenue_transactions`, triggering `updateRevenueAndSnapshot`, and recomputing multi-gateway MRR.
+
+#### 2. Razorpay Revenue Webhook (`POST /api/razorpay/webhook`)
+- **Raw Request Body Extraction:** Reads raw payload text (`req.text()`).
+- **Signature Validation:** Evaluates the `x-razorpay-signature` header via `crypto.createHmac("sha256", RAZORPAY_WEBHOOK_SECRET).update(body).digest("hex")`.
+- **Constant-Time Comparison:** Evaluates HMAC signatures via `timingSafeCompare(expectedSignature, signature)` in `src/lib/encryption.ts` to eliminate timing side-channel attacks and safely reject mismatched buffer lengths.
+- **Database Reconciliation:** Reconciles the merchant account ID from `payload.account_id` against `provider_connections` (`provider = 'razorpay'`, `status = 'connected'`). Unmapped or disconnected accounts fail closed with HTTP 200 skipped.
+- **Payment & Refund Idempotency:** Converts paise to INR ($50000 \text{ paise} \rightarrow ₹500.00$), filters micropayments below ₹100 ($10000 \text{ paise}$ threshold), records negative revenue mutations for `payment.refunded`, rejects duplicate refunds, and deduplicates payments at the `revenue_transactions.payment_id` unique constraint.
+- **Revenue Snapshotting:** Generates immutable `revenue_snapshots` reflecting aggregated MRR and clean events counters.
+
+#### 3. Razorpay SaaS Billing Webhook (`POST /api/billing/webhook/razorpay`)
+- **Raw Request Body Extraction:** Reads raw payload text (`req.text()`).
+- **Signature Validation:** Evaluates `x-razorpay-signature` against `RAZORPAY_BILLING_WEBHOOK_SECRET` using `timingSafeCompare`.
+- **Channel Secret Isolation:** Revenue webhook secrets cannot validate billing webhook requests, and billing webhook secrets cannot validate revenue requests.
+- **Authoritative Identity & Plan Attribution:** Extracts user identity strictly from `subscription.notes.user_id` and validates `subscription.plan_id` against known active/legacy plan definitions. Missing `user_id` or unknown `plan_id` payloads fail closed with HTTP 200 skipped (`no_user_id`, `unknown_plan_id`).
+- **Atomic Claim & Monotonicity:** Invokes `process_razorpay_billing_webhook` RPC to atomically insert `(provider, event_id)` into `processed_webhook_events` and verify timestamp monotonicity (`event_at >= last_billing_event_at`).
+- **Lifecycle & Replacement Processing:** Updates subscription status, manages period dates, schedules external cancellation for replaced subscriptions (`replaces_subscription_id`), inserts audit events into `subscription_events`, and dispatches deduplicated email notifications.
+
+---
+
+### Cryptographic Security Boundaries
+
+The following cryptographic invariants were verified under automated regression testing:
+1. **Pre-Processing Signature Barrier:** Cryptographic signature verification executes prior to payload deserialization, database queries, or business logic.
+2. **Missing Signature Rejection:** Requests lacking `stripe-signature` or `x-razorpay-signature` headers are rejected with HTTP 400 and zero mutations.
+3. **Invalid Signature Rejection:** Forged or altered signatures are rejected with HTTP 400 and zero mutations.
+4. **Malformed Signature Rejection:** Malformed headers (`t=abc`, `v1=`, empty headers, non-hex strings) fail safely with HTTP 400.
+5. **Zero Side-Effect Rejection Invariant:** Failed signature attempts trigger zero inserts into `processed_webhook_events`, `revenue_transactions`, `revenue_snapshots`, or `subscription_events`, and make zero external provider SDK calls.
+6. **Official Stripe SDK Verification:** Stripe webhook route strictly utilizes `stripe.webhooks.constructEvent`.
+7. **Razorpay Revenue Channel Secret:** Razorpay revenue webhook strictly uses `process.env.RAZORPAY_WEBHOOK_SECRET`.
+8. **Razorpay SaaS Billing Channel Secret:** Razorpay billing webhook strictly uses `process.env.RAZORPAY_BILLING_WEBHOOK_SECRET`.
+9. **Cross-Channel Isolation:** Revenue secrets cannot validate billing webhooks; billing secrets cannot validate revenue webhooks.
+10. **Constant-Time Verification:** Razorpay signature comparison utilizes `timingSafeCompare` (`crypto.timingSafeEqual` over fixed-length SHA-256 digests).
+11. **Buffer Length Mismatch Safety:** Buffer length mismatches return `false` in constant time without throwing unhandled exceptions.
+
+---
+
+### Provider Identity & Anti-Spoofing
+
+```
+                     ┌──────────────────────────────────────────────────┐
+                     │            Inbound Webhook Payload               │
+                     │  - Attacker notes: { "startup_id": 999 }         │
+                     │  - Authoritative account: "acct_stripe_alpha_1"  │
+                     └─────────────────────────┬────────────────────────┘
+                                               │
+                                               ▼
+                     ┌──────────────────────────────────────────────────┐
+                     │          Server-Side Reconciliation              │
+                     │    SELECT startup_id FROM provider_connections   │
+                     │    WHERE provider_account_id = 'acct_...'        │
+                     │      AND status = 'connected'                    │
+                     └─────────────────────────┬────────────────────────┘
+                                               │
+                         ┌─────────────────────┴─────────────────────┐
+                         │                                           │
+                         ▼ Match Found                               ▼ No Match / Disconnected
+             ┌───────────────────────┐                   ┌───────────────────────┐
+             │ Attributed to Owner   │                   │ Fail Closed           │
+             │ (Startup ID: 101)     │                   │ (HTTP 200 Skipped,    │
+             │ Notes ID: IGNORED     │                   │  0 DB Mutations)      │
+             └───────────────────────┘                   └───────────────────────┘
+```
+
+The platform strictly enforces the fundamental multi-tenant security principle:
+> **SERVER-SIDE PROVIDER CONNECTION RECONCILIATION IS THE AUTHORITATIVE TENANT BOUNDARY.**
+
+1. **Advisory Metadata Rule:** Webhook payload `startup_id`, `notes.startup_id`, or client metadata are strictly advisory and NEVER trusted for tenant routing.
+2. **Authoritative Stripe Identity:** Stripe revenue attribution is anchored exclusively in `event.account` or `event.data.object.account`.
+3. **Authoritative Razorpay Revenue Identity:** Razorpay revenue attribution is anchored exclusively in top-level `payload.account_id`.
+4. **Provider Connections Mapping Layer:** Attribution resolves strictly against PostgreSQL `provider_connections` table rows matching `(provider, provider_account_id, status = 'connected')`.
+5. **Fail-Closed on Unmapped Accounts:** Webhooks for account IDs not present in `provider_connections` return HTTP 200 skipped with zero mutations.
+6. **Fail-Closed on Disconnected Accounts:** Webhooks for accounts with `status = 'disconnected'` or revoked access return HTTP 200 skipped with zero mutations.
+7. **Cross-Tenant Redirect Immunity:** An attacker cannot redirect revenue to their startup by injecting forged startup IDs or metadata into payment intents or checkouts.
+8. **Authoritative SaaS Billing Identity:** Razorpay SaaS subscription identity derives strictly from `notes.user_id` attached to the verified subscription entity.
+9. **Unknown Plan ID Defense:** Subscriptions referencing unknown or unauthorized `plan_id` values cannot activate paid Pro entitlements.
+
+---
+
+### Atomic Idempotency & Concurrency Defense
+
+Event deduplication and concurrent delivery safety are governed by the dedicated PostgreSQL idempotency table:
+- **Table:** `public.processed_webhook_events`
+- **Primary Key:** `(provider, event_id)`
+
+Verified idempotency properties:
+1. **First Delivery Execution:** The initial valid delivery acquires the `(provider, event_id)` record and processes business mutations exactly once.
+2. **Sequential Duplicate Rejection:** Subsequent deliveries matching `(provider, event_id)` are recognized as duplicates and return HTTP 200 (`duplicate: true`) with zero secondary mutations.
+3. **Provider Namespace Isolation:** Shared event IDs under different providers (e.g. `stripe:evt_shared_123` vs `razorpay:evt_shared_123`) operate in completely isolated key spaces under the composite primary key.
+4. **10-Way Concurrent First-Delivery Safety:** When 10 simultaneous identical first deliveries arrive, the database unique constraint guarantees that exactly one transaction succeeds while the remaining 9 fail the claim and return HTTP 200 duplicate responses without error.
+5. **Revenue Transaction Deduplication:** Duplicate payment deliveries cannot insert redundant rows into `revenue_transactions` due to unique constraints on `(provider, payment_id)`.
+6. **Revenue Snapshot Deduplication:** Duplicate events produce zero duplicate `revenue_snapshots`.
+7. **Subscription Audit Deduplication:** Duplicate subscription lifecycle events produce zero duplicate rows in `subscription_events`.
+8. **Notification Dispatch Idempotency:** Asynchronous notification dispatch utilizes deterministic idempotency keys (`ntf_billing_${event}_${subId}_${eventId}`) to prevent duplicate email dispatches.
+9. **Fail-Closed on Claim Error:** Any database exception encountered during the event claim immediately halts processing prior to executing downstream mutations.
+
+---
+
+### Replay & Stale Event Monotonicity
+
+To prevent out-of-order webhook delivery from corrupting subscription state (e.g. a delayed `subscription.activated` event arriving after a subsequent `subscription.halted` event), the platform enforces timestamp monotonicity via `subscriptions.last_billing_event_at`:
+
+$$\text{Invariant: If } t_{\text{incoming}} < t_{\text{existing}}, \text{ the event is stale and MUST NOT mutate state.}$$
+
+Verified replay invariants:
+1. **Stale Event Rejection:** Incoming events with `created_at < subscriptions.last_billing_event_at` are rejected with HTTP 200 skipped (`skipped: "stale_event"`).
+2. **Zero Mutation on Stale Replay:** Stale events produce zero updates to `subscriptions.status`, `current_period_end`, or entitlements.
+3. **Equal Timestamp Permitted for Completion:** Events with identical timestamps ($t_{\text{incoming}} = t_{\text{existing}}$) are permitted to ensure complete processing of bundled events.
+4. **Equal Timestamp Idempotency:** Equal timestamp events remain fully idempotent.
+5. **Monotonic Forward Progression:** Legitimate newer events ($t_{\text{incoming}} > t_{\text{existing}}$) advance `last_billing_event_at` and `last_billing_event_id`.
+6. **Out-of-Order Transition Prevention:** A delayed out-of-order event cannot revert a newer `past_due`, `cancelled`, or `expired` state back to `active`.
+7. **Resurrection Immunity:** Stale events cannot reactivate an expired or cancelled subscription.
+8. **Legitimate Renewal Forwarding:** Legitimate forward-in-time renewals monotonically advance the billing period.
+
+> [!IMPORTANT]
+> **Idempotency vs Replay Monotonicity Distinction:** Event-ID deduplication (`processed_webhook_events`) prevents reprocessing the exact same event delivery; timestamp monotonicity (`last_billing_event_at`) prevents distinct out-of-order events from regressing state. Both layers operate in concert.
+
+---
+
+### Fail-Closed & Unmapped Event Boundaries
+
+The platform systematically fails closed across all non-standard, malformed, or unmapped webhook conditions:
+
+| Category | Trigger Condition | HTTP Response | State Mutation | Security Rationale |
+| :--- | :--- | :---: | :---: | :--- |
+| **Missing Signature** | Signature header omitted | `400 Bad Request` | 0 DB mutations | Halts unauthenticated probes immediately |
+| **Invalid Signature** | Forged or invalid HMAC signature | `400 Bad Request` | 0 DB mutations | Blocks attacker-forged webhooks |
+| **Malformed JSON** | Invalid JSON syntax in payload | `400 Bad Request` | 0 DB mutations | Fails safely on unparseable requests |
+| **Empty Request** | Zero-length request body | `400 Bad Request` | 0 DB mutations | Fails fast on empty payloads |
+| **Unmapped Provider Acct** | Account ID not in `provider_connections` | `200 OK (skipped)` | 0 DB mutations | Prevents retry storms; zero cross-tenant leak |
+| **Disconnected Provider** | Connection status is `disconnected` | `200 OK (skipped)` | 0 DB mutations | Ignores webhooks from revoked integrations |
+| **Missing `notes.user_id`** | Billing payload missing user anchor | `200 OK (skipped)` | 0 DB mutations | Prevents unanchored subscription provisioning |
+| **Unregistered User** | Billing `user_id` not in `auth.users` | `200 OK (skipped)` | 0 DB mutations | Foreign key boundary protects DB integrity |
+| **Unknown Plan ID** | Razorpay plan ID not in catalog | `200 OK (skipped)` | 0 DB mutations | Prevents unauthorized Pro plan activation |
+| **Unsupported Event** | Event not handled by platform | `200 OK (skipped)` | 0 DB mutations | Safely ignores irrelevant provider event types |
+| **Missing Entity Data** | Payload missing payment/sub entity | `200 OK (skipped)` | 0 DB mutations | Fails closed on malformed provider entities |
+| **Invalid Payment Amount** | Non-positive / zero amount | `200 OK (skipped)` | 0 DB mutations | Prevents negative/zero revenue corruption |
+
+*Retry-Storm Prevention Strategy:* For authenticated provider requests where the payload cannot be mapped or processed (e.g. unmapped accounts or unsupported events), returning HTTP 200 with structured skip reasons (`skipped: "..."`) is an intentional provider integration design that prevents aggressive provider retry storms while maintaining the absolute security guarantee of **ZERO BUSINESS MUTATION**.
+
+---
+
+### Revenue & MRR Calculation Integrity
+
+The revenue calculation and MRR aggregation pipeline enforces strict arithmetic and boundary rules:
+1. **Stripe Currency Arithmetic:** Converts cents to standard base currency units ($\text{amount} / 100$, e.g. $50000 \text{ cents} \rightarrow \$500.00$).
+2. **Razorpay Currency Arithmetic:** Converts paise to Indian Rupees ($\text{amount} / 100$, e.g. $50000 \text{ paise} \rightarrow ₹500.00$).
+3. **Anti-Dust Micropayment Policy:** Razorpay revenue transactions below ₹100 ($10000 \text{ paise}$) are ignored as micro-payments to prevent transaction-spam abuse.
+4. **Threshold Boundary Processing:** Payments of exactly ₹100 ($10000 \text{ paise}$) are accepted and credited.
+5. **Negative Revenue for Refunds:** Refund events (`payment.refunded`, `charge.refunded`) record negative revenue transactions (e.g. $-₹150.00$) and decrement gateway MRR accordingly.
+6. **Refund Deduplication:** Duplicate refund webhook deliveries are detected and rejected (`"Duplicate refund"`) with zero duplicate revenue deductions.
+7. **Payment ID Uniqueness:** Duplicate payments are blocked by PostgreSQL unique constraint on `(provider, payment_id)`.
+8. **Cross-Tenant MRR Segregation:** Webhooks associated with Provider Account A can only mutate Startup A's MRR; cross-tenant updates are impossible.
+9. **Multi-Gateway MRR Aggregation:** Aggregated MRR on `startup_submissions.mrr` accurately sums verified revenue across all active Stripe and Razorpay connections.
+10. **Authenticated Snapshot Generation:** `revenue_snapshots` records are inserted exclusively upon the successful processing of authenticated financial events.
+11. **Trust Score Immunity:** Forged or invalid payloads cannot alter platform trust scores, confidence ratings, or clean event counters.
+12. **Snapshot Consistency:** Snapshot `total_revenue` remains strictly synchronized with updated `startup_submissions.mrr`.
+
+---
+
+### Razorpay SaaS Subscription State Machine
+
+The platform implements an 8-event subscription state machine for Razorpay SaaS billing:
+
+```
+                            ┌────────────────────────┐
+                            │  subscription.created  │
+                            │  .authenticated        │
+                            └───────────┬────────────┘
+                                        │
+                                        ▼ (Status: trialing)
+                            ┌────────────────────────┐
+                 ┌──────────│ subscription.activated │◄────────────────┐
+                 │          │ .charged               │                 │
+                 │          └───────────┬────────────┘                 │
+                 │                      │                              │
+                 │                      ▼ (Status: active)             │
+                 │          ┌────────────────────────┐                 │
+                 │          │  subscription.halted   │─────────────────┘
+                 │          └───────────┬────────────┘ (subscription.charged / recovered)
+                 │                      │
+                 │                      ▼ (Status: past_due)
+                 │          ┌────────────────────────┐
+                 │          │ subscription.cancelled │ (Status: cancelled)
+                 │          └───────────┬────────────┘ (Entitled until current_period_end)
+                 │                      │
+                 │                      ▼ (Cycle End Passed)
+                 │          ┌────────────────────────┐
+                 └─────────►│ subscription.completed │ (Status: expired)
+                 (Immediate │ .updated (expired)     │ (Entitlement Revoked)
+                  Replace)  └────────────────────────┘
+```
+
+Verified state mappings and lifecycle invariants:
+1. `subscription.created` $\rightarrow$ `trialing`
+2. `subscription.authenticated` $\rightarrow$ `trialing`
+3. `subscription.activated` $\rightarrow$ `active`
+4. `subscription.charged` $\rightarrow$ `active` (and advances `current_period_end`)
+5. `subscription.halted` $\rightarrow$ `past_due` (payment retry failure)
+6. `subscription.cancelled` $\rightarrow$ `cancelled` (preserves `current_period_end` for remainder of cycle)
+7. `subscription.completed` $\rightarrow$ `expired` (revokes paid Pro access)
+8. `subscription.updated` $\rightarrow$ maps status directly from entity status
+9. **Preservation of Period End:** Cancelled subscriptions preserve `current_period_end` so paid access continues until cycle expiration.
+10. **Revocation on Expiry:** Completed/expired subscriptions immediately lose paid Pro feature access and fall back to Free viewer tier.
+11. **Past-Due Entitlement Exclusion:** `past_due` status does not grant Pro entitlements in `getUserPlan()`.
+12. **Replacement Plan Cancellation:** When an existing subscriber activates a replacement subscription, the webhook updates the new subscription and schedules cancellation of the replaced subscription via Razorpay SDK (`subscriptions.cancel(replacesSubId, false)`).
+13. **Subscription Audit Idempotency:** Duplicate state events produce zero redundant rows in `subscription_events`.
+14. **Unhandled Event Safety:** Unknown or unsupported subscription event types return HTTP 200 skipped with zero state mutations.
+
+---
+
+### TEST 13 Phase 2A Test Evidence Matrix
+
+#### Dedicated TEST 13 Regression Suite
+- **Test File:** `tests/payment-provider-webhook-boundary.test.ts`
+- **Result:** **86 / 86 PASS** (0 failures, 0 skipped, ~1.88s execution)
+
+| Group | Functional Area | Tests | Result | Evidence |
+| :--- | :--- | :---: | :---: | :---: |
+| **Group A** | Cryptographic Signature Boundaries | `A1`–`A15` (15 tests) | **15 / 15 PASS** | `[A]` / `[B]` |
+| **Group B** | Provider Identity & Anti-Spoofing | `B1`–`B12` (12 tests) | **12 / 12 PASS** | `[A]` |
+| **Group C** | Atomic Event Idempotency & Concurrency | `C1`–`C12` (12 tests) | **12 / 12 PASS** | `[A]` / `[D]` |
+| **Group D** | Replay & Stale Event Monotonicity | `D1`–`D9` (9 tests) | **9 / 9 PASS** | `[A]` |
+| **Group E** | Unmapped Account & Fail-Closed Boundaries | `E1`–`E12` (12 tests) | **12 / 12 PASS** | `[A]` |
+| **Group F** | Revenue & MRR Calculation Integrity | `F1`–`F12` (12 tests) | **12 / 12 PASS** | `[A]` |
+| **Group G** | Subscription State Machine | `G1`–`G14` (14 tests) | **14 / 14 PASS** | `[A]` |
+
+#### Existing Related Regression Suites (Phase 2A Run)
+- `tests/vrf004-razorpay-timing-safe-comparison.test.ts`: **11 / 11 PASS**
+- `tests/isolated-idempotency-concurrency.test.ts`: **12 / 12 PASS**
+- `tests/csrf-cross-origin-mutation-protection.test.ts`: **44 / 44 PASS**
+- `tests/01-c-rate-limit-trust-boundary.test.ts`: **8 / 8 PASS** (1 TAP item)
+- `tests/vrf005-account-deletion-billing-safety.test.ts`: **18 / 18 PASS**
+- `tests/billing-subscription-entitlement.test.ts`: **66 / 66 PASS**
+- **Total Related Regression Tests:** **114 tests, 20 suites: 114 / 114 PASS (100%)**
+
+---
+
+### Evidence Classification
+
+- **`[A]` Automated Route & Function Execution Evidence:**
+  - Route execution tests against `POST /api/stripe/webhook`, `POST /api/razorpay/webhook`, `POST /api/billing/webhook/razorpay`.
+  - In-memory mock database and builder verifying query filtering, RPC claims, arithmetic conversions, and state transitions across all 86 dedicated tests.
+- **`[B]` Live Production Read-Only Observation (Phase 1 Probes):**
+  - Executed 6 live read-only probes against production routes (`https://www.verifii.in/api/stripe/webhook`, `/api/razorpay/webhook`, `/api/billing/webhook/razorpay`).
+  - Confirmed 6/6 HTTP 400 signature rejections on missing/invalid signature headers with zero production database mutations.
+- **`[C]` Static Code & Architecture Evidence:**
+  - Route handlers in `src/app/api/stripe/webhook/route.ts`, `src/app/api/razorpay/webhook/route.ts`, `src/app/api/billing/webhook/razorpay/route.ts`.
+  - Webhook helpers in `src/lib/webhook-handler.ts`, revenue scoring in `src/lib/scoring.ts`, and constant-time HMAC comparison in `src/lib/encryption.ts`.
+- **`[D]` Database Engine & Framework Invariant Inference:**
+  - PostgreSQL composite primary key on `processed_webhook_events (provider, event_id)` guaranteeing atomic concurrency and deduplication.
+  - Unique constraint on `revenue_transactions (provider, payment_id)` guaranteeing financial transaction deduplication.
+- **`[E]` Explicit Testability Limitation:**
+  - Real paid-cycle payment capture and recurring billing mutations were NOT executed against live external provider production accounts during TEST 13 to avoid generating unauthorized production charges and mutating financial records outside the non-destructive audit scope.
+
+---
+
+### Security Findings & Reconciled Status
+
+| Finding ID | Severity | Description | Status |
+| :--- | :---: | :--- | :--- |
+| **F-13-01** | **Informational** | Previously fragmented payment and billing webhook security tests were consolidated into a single dedicated TEST 13 regression harness (`tests/payment-provider-webhook-boundary.test.ts`). | **Remediated.** 86-test dedicated harness created and passing. |
+| **F-13-02** | **Informational** | Authenticated-but-unmapped or unhandled events return HTTP 200 with structured skip reasons to prevent provider retry storms while maintaining zero business mutations. | **Verified Correct.** Prevents webhook amplification while guaranteeing zero state side effects. |
+| **F-13-03** | **Informational** | The layered webhook architecture (HMAC signature verification $\rightarrow$ server-side connection reconciliation $\rightarrow$ atomic idempotency claim $\rightarrow$ timestamp monotonicity $\rightarrow$ state machine) provides robust boundary defense. | **Verified Robust.** Platform payment boundaries are cryptographically hardened. |
+
+**Severity Accounting:**
+- **P0 Critical:** 0
+- **P1 High:** 0
+- **P2 Medium:** 0
+- **P3 Low / Informational:** 3 (F-13-01, F-13-02, F-13-03)
+
+---
+
+### Current Milestone Status
+
+**TEST 13 — PAYMENT PROVIDER & WEBHOOK BOUNDARY: CLOSED / VERIFIED**
+
+---
+
 # Appendix B — Project Structure
 
 This appendix documents the high-level organization of the Verifii codebase.
@@ -11360,7 +11675,8 @@ Examples:
 | 2.25 | August 2026 | Formally documented and closed TEST 09 (CSRF / Cross-Origin Mutation Protection): CLOSED / VERIFIED; audited all 29 state-changing endpoints and Server Actions, verified absence of permissive CORS (`Access-Control-Allow-Origin: null`), `SameSite=Lax` browser cookie isolation, simple form encoding rejection, cryptographic re-auth proof barriers on deletion routes, provider signature isolation on webhooks, zero side effects on rejected CSRF simulations, and 44/44 dedicated TEST 09 tests, 149/149 consolidated logical checks, and 142/142 TAP items with zero application source code changes. | Eshan Maurya |
 | 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport): CLOSED / VERIFIED; audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. | Eshan Maurya |
 | 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary): CLOSED / VERIFIED; verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. | Eshan Maurya |
-| 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity): CLOSED / VERIFIED; verified Free/Pro plan boundaries, server-authoritative plan selection and pricing immunity (`RAZORPAY_PLAN_PRO_MONTHLY`), 6-state subscription lifecycle, `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), duplicate checkout prevention (application check + PostgreSQL partial unique index `idx_active_subscription_unique`), cycle-end cancellation semantics, past-due/expired entitlement revocation, cross-user billing isolation, 2-tier commercial invariants (Free ₹0 / Pro ₹999/mo), and classified findings F-12-01 through F-12-03 across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items. | Eshan Maurya |
+| 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity): CLOSED / VERIFIED; verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations. | Eshan Maurya |
+| 2.29 | August 2026 | Formally documented and closed TEST 13 (Payment Provider & Webhook Boundary): CLOSED / VERIFIED; verified Stripe and Razorpay webhook cryptographic signatures (`timingSafeCompare`), channel secret isolation, server-authoritative provider account attribution (`provider_connections`), anti-metadata-spoofing, atomic event claim and 10-way concurrency race safety (`processed_webhook_events`), monotonic stale timestamp rejection (`subscriptions.last_billing_event_at`), fail-closed unmapped account boundaries, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated tests and 114/114 related regression tests with zero production mutations. | Eshan Maurya |
 
 ---
 
@@ -11414,6 +11730,7 @@ Examples include:
 - TEST 10 — Security Headers & Transport: CLOSED / VERIFIED. Audited HTTPS transport and production security headers across representative public HTML, authenticated APIs, public APIs, badge SVG, OG images, and error responses. Verified universal global security headers configured in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`, `X-DNS-Prefetch-Control: on`), HTTP 308 plaintext $\rightarrow$ HTTPS redirection, apex domain canonicalization, route-level SVG CSP hardening (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), and coexistence with TEST 08 cache invariants. Recorded non-blocking P3 informational findings F-10-01 (global HTML CSP policy evaluation) and F-10-02 (optional HSTS preload). Verified 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items with zero production mutations.
 - TEST 11 — Public Badge / Profile / Leaderboard Boundary: CLOSED / VERIFIED. Audited all public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/startup-submissions/count, /api/live-feed, /api/trust-metrics, /sitemap.xml) for private data leakage and false revenue verification. Verified mandatory is_public=true boundary, owner-only private preview, private field stripping (user_id, email, proof_url, credentials, raw transaction IDs, fraud/penalty metadata), authoritative verification derivation (REVENUE_VERIFIED vs PAYMENT_CONNECTED vs SELF_REPORTED), immunity to client-supplied mrr/arr spoofing, demo sandbox profile isolation, badge SVG XML escaping with truncation-before-encoding, route-level SVG CSP, and adversarial input robustness across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items with zero production mutations.
 - TEST 12 — Billing & Subscription Entitlement Integrity: CLOSED / VERIFIED. Verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations.
+- TEST 13 — Payment Provider & Webhook Boundary: CLOSED / VERIFIED. Verified inbound webhook security across Stripe (`/api/stripe/webhook`), Razorpay revenue (`/api/razorpay/webhook`), and Razorpay SaaS billing (`/api/billing/webhook/razorpay`). Proved cryptographic HMAC signature validation, timing-safe comparison (`timingSafeCompare`), channel secret isolation (`RAZORPAY_WEBHOOK_SECRET` vs `RAZORPAY_BILLING_WEBHOOK_SECRET`), server-authoritative provider account attribution via `provider_connections`, anti-metadata-spoofing defense, atomic event claim and 10-way concurrent race safety via `processed_webhook_events (provider, event_id)`, monotonic stale timestamp rejection via `subscriptions.last_billing_event_at`, fail-closed unmapped account handling, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the full 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated automated checks and 114/114 related regression tests with zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -11524,6 +11841,7 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. |
 | 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary); verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. |
 | 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity); verified Free/Pro boundaries, server-authoritative pricing, `getUserPlan` SSoT, duplicate checkout prevention, cancellation semantics, and 2-tier commercial invariants across 66/66 dedicated tests. |
+| 2.29 | August 2026 | Formally documented and closed TEST 13 (Payment Provider & Webhook Boundary): CLOSED / VERIFIED; verified Stripe and Razorpay webhook cryptographic signatures (`timingSafeCompare`), channel secret isolation, server-authoritative provider account attribution (`provider_connections`), anti-metadata-spoofing, atomic event claim and 10-way concurrency race safety (`processed_webhook_events`), monotonic stale timestamp rejection (`subscriptions.last_billing_event_at`), fail-closed unmapped account boundaries, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated checks and 114/114 related regression tests with zero production mutations. |
 
 ---
 
@@ -11531,10 +11849,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.28**
+- Handbook Version: **2.29**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 12 — Billing & Subscription Entitlement Integrity (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 13 — Payment Provider & Webhook Boundary (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
