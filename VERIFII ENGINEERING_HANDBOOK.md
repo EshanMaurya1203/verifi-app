@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.29 |
+| **Version** | 2.31 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -10263,9 +10263,164 @@ Verified state mappings and lifecycle invariants:
 
 ---
 
+### Phase 2C Final Closure Evidence
+
+Formal validation, git commit, remote push, and closure of TEST 13 were finalized with the following consolidated evidence:
+
+#### 1. Test Scope Accounting & Distinct Evidence Categories
+To ensure unambiguous categorization for security reviews and future audits, the distinct test verification scopes are preserved:
+- **Dedicated TEST 13 Matrix:** **86 / 86 PASS** (100% pass rate across Groups A through G in `tests/payment-provider-webhook-boundary.test.ts`).
+- **Related Subsystem Regression Coverage:** **114 / 114 PASS** (20 test suites across timing-safe HMAC, idempotency, CSRF, rate limits, deletion safety, and billing entitlements).
+- **Final Consolidated Security Regression Suite:** **325 / 325 TAP Tests PASS** (0 failures, 0 skipped across all 8 security regression harnesses).
+- **Final Logical Security Validation Result:** **332 / 332 Logical Security Checks PASS** (TEST 12: 66, TEST 11: 77, TEST 10: 40, TEST 09: 44, TEST 08: 30, TEST 06: 48, TEST 04: 19, TEST 01-C: 8 logical checks / 1 TAP item).
+
+#### 2. Commit & Repository Integrity
+- **Final Implementation Commit:** `96653b4` (`security: close TEST 13 payment provider webhook boundary`)
+- **Remote Push Confirmation:** Successfully pushed to `origin/main` (`6d25f54..96653b4 main -> main`).
+- **Worktree State:** Clean working tree (`nothing to commit, working tree clean`).
+
+#### 3. Safety & Production Mutation Accounting
+- **P0 Critical Findings:** 0
+- **P1 High Findings:** 0
+- **P2 Medium Findings:** 0
+- **P3 Low / Informational Findings:** 3 (F-13-01, F-13-02, F-13-03; confirmed non-blocking and informational; do not reopen TEST 13)
+- **Production Database Mutations:** 0 (0 INSERTs, 0 UPDATEs, 0 DELETEs, 0 DDL statements)
+- **Production State Mutations:** 0 users, 0 startups, 0 subscriptions, 0 live charges, 0 provider changes, 0 RLS modifications
+- **Safety Conclusion:** **ZERO PRODUCTION MUTATIONS** (all automated test executions occurred strictly within mocked/isolated test harnesses, completely isolated from production databases and live payment gateways).
+
+---
+
 ### Current Milestone Status
 
 **TEST 13 — PAYMENT PROVIDER & WEBHOOK BOUNDARY: CLOSED / VERIFIED**
+
+---
+
+## 25.45 TEST 14 — Encryption & Secret Handling
+
+### Authoritative Objective
+"Verify credentials remain encrypted, authenticated, and safely handled."
+
+### Cryptographic Architecture
+The Verifii platform employs a centralized symmetric encryption subsystem implemented in `src/lib/encryption.ts` to protect payment gateway credentials, API keys, and refresh tokens stored at rest:
+
+1. **Primary Algorithm (AES-256-GCM):**
+   - **Cipher:** `aes-256-gcm` (Galois/Counter Mode with 128-bit authentication tag).
+   - **Key Material:** 256-bit (32 bytes) derived from environment variable `ENCRYPTION_SECRET`.
+   - **Key Normalization:** `secretKey.padEnd(32).substring(0, 32)` ensures 32-byte key material.
+   - **Initialization Vector (IV):** 16 cryptographically random bytes generated per encryption via `crypto.randomBytes(16)`.
+   - **Authentication Tag:** 16-byte GCM authentication tag generated via `cipher.getAuthTag()`.
+   - **Serialization Format:** `ivHex:encryptedHex:authTagHex` (colon-delimited hex string).
+   - **Authenticated Decryption:** Validates ciphertext, tag, and IV integrity via `decipher.setAuthTag(authTag)`. Any byte mutation or tampering triggers immediate authentication failure and throws an exception.
+   - **New Write Invariant:** `encrypt(text)` ALWAYS produces the 3-part AES-256-GCM format.
+
+2. **Constant-Time Cryptographic Comparison:**
+   - **Function:** `timingSafeCompare(a: string, b: string): boolean`
+   - **Implementation:** Converts UTF-8 strings to Byte Buffers and verifies equality via `crypto.timingSafeEqual(bufA, bufB)`.
+   - **Length-Mismatch Handling:** Returns `false` immediately on buffer length mismatch without throwing exceptions, preventing length-based runtime exceptions.
+
+### Credential Boundaries & Persistence
+1. **Stripe Credentials:**
+   - **Manual API Keys:** In `verifyManualStripeApiKey` (`src/lib/stripe-sync.ts`), user-provided `apiKey` is encrypted via `encrypt(params.apiKey)` before calling `saveStripeConnection`.
+   - **Connect OAuth Tokens:** In `verifyStripeConnectAccount` (`src/lib/stripe-sync.ts`), OAuth `refreshToken` is encrypted via `encrypt(params.refreshToken || "stripe_connect")` before persistence.
+2. **Razorpay Credentials:**
+   - **API Secrets:** In `RazorpayProvider.serializeCredentials` (`src/lib/providers/razorpay.ts`), raw `keySecret` is encrypted via `encrypt(keySecret)` returning `SerializedCredentials.encryptedKey`.
+   - **Persistence:** `VerificationPipeline` Stage 8 (`src/lib/providers/pipeline.ts`) persists `encryptedKey` to `provider_connections.api_key_encrypted`.
+3. **Database At-Rest Boundary:**
+   - **Table:** `provider_connections`
+   - **Column:** `api_key_encrypted` (TEXT)
+   - Plaintext credentials are NEVER written to the database.
+4. **Decryption & SDK Client Instantiation:**
+   - Decryption is performed strictly server-side in ephemeral execution contexts:
+     - Stripe Resync: `getStripeForSecretKey(decrypt(conn.api_key_encrypted))` in `src/lib/stripe-sync.ts`.
+     - Razorpay Resync: `createRazorpayClient(conn.account_id, decrypt(conn.api_key_encrypted))` in `src/lib/razorpay-sync.ts`.
+     - Multi-Gateway Revenue Aggregation: `decrypt(conn.api_key_encrypted)` in `src/lib/revenue-aggregation.ts`.
+   - Plaintext keys reside in server memory only for the duration of the outbound gateway API request.
+5. **API Projection Isolation:**
+   - `GET /api/startup/[id]/overview` selects strictly `"provider, status, last_synced_at, latest_revenue"`.
+   - `GET /api/startup/[id]/connections` selects strictly `"provider, status, last_synced_at, latest_revenue"`.
+   - Public surfaces (`/api/badge/[slug]`, `/api/og/startup/[slug]`, `/api/live-feed`, `/api/trust-metrics`, `/leaderboard`) never query `provider_connections`.
+   - `api_key_encrypted` is never queried or returned in client API responses.
+
+### Phase 2A Dedicated Test Matrix Accounting
+
+Dedicated regression test harness: `tests/encryption-secret-handling.test.ts`
+Execution Engine: Native `node:test` + `node:assert/strict`
+
+| Group | Boundary / Focus Area | Tests | Result | Status |
+|:---|:---|:---:|:---:|:---:|
+| **Group A** | AES-256-GCM Core (Round-trip, Stripe/Razorpay synthetic keys, Unicode, Empty string, 100KB payload, Non-determinism) | T14-A1 – T14-A8 | 8 / 8 | **PASS** |
+| **Group B** | GCM Authentication / Tamper Resistance (1-byte CT tamper, 1-byte Tag tamper, 1-byte IV tamper, Tag splicing, Truncation, Non-hex, Delimiters) | T14-B1 – T14-B10 | 10 / 10 | **PASS** |
+| **Group C** | Wrong Key / Key Configuration (Secret A vs B, Unset Key Fail-Closed, Normalization <32, =32, >32 chars) | T14-C1 – T14-C7 | 7 / 7 | **PASS** |
+| **Group D** | Legacy Compatibility (2-Part CTR fallback, 1-Part Fixed-IV fallback, New Write GCM Invariant, Read-Only, Unauthenticated CTR evidence) | T14-D1 – T14-D6 | 6 / 6 | **PASS** |
+| **Group E** | Fail-Closed / Malformed Input (Null, Undefined, Non-string, Empty, Colons, Malformed parts, Odd hex, Invalid lengths, Binary garbage) | T14-E1 – T14-E14 | 14 / 14 | **PASS** |
+| **Group F** | Credential Storage & Projection Boundary (Schema `api_key_encrypted`, Pre-persistence encryption, Overview/Connections exclusion, Public route isolation, Client bundle isolation) | T14-F1 – T14-F10 | 10 / 10 | **PASS** |
+| **Group G** | Secret & Key Leakage Prevention (Static console log scan, Client component secret scan, `NEXT_PUBLIC_*` scan, Literal scan, Exception interpolation scan) | T14-G1 – T14-G5 | 5 / 5 | **PASS** |
+| **Group H** | Constant-Time Comparison Timing Safety (`timingSafeCompare` match, mismatch, different-length safety, adversarial inputs) | T14-H1 – T14-H4 | 4 / 4 | **PASS** |
+| **TOTAL** | **Dedicated TEST 14 Regression Suite** | **T14-A1 – T14-H4** | **64 / 64** | **64 / 64 PASS (100%)** |
+
+- **Failed Tests:** 0
+- **Skipped Tests:** 0
+- **Logical Check Count:** 64
+- **TAP Check Count:** 64
+
+### Security Findings & Reconciled Observations
+- **P0 Critical Findings:** 0
+- **P1 High Findings:** 0
+- **P2 Medium Findings:** 0
+- **P3 Low / Informational Observations:** 2
+
+#### OBS-14-01: Legacy AES-256-CTR Fallback Path Remains Unauthenticated
+- **Description:** `decrypt()` in `src/lib/encryption.ts` supports backward compatibility for historical records:
+  - 2-part format: `ivHex:encryptedHex` (AES-256-CTR with random IV)
+  - 1-part format: `encryptedHex` (AES-256-CTR with fixed zero IV)
+- **Analysis:** AES-CTR is a stream cipher that does not include an authentication tag (AEAD MAC). Corrupting or tampering with legacy CTR ciphertext alters the decrypted output without throwing an authentication error.
+- **Architectural Safeguards:**
+  - Legacy compatibility was verified strictly as a backward-compatibility property. It is **NOT** equivalent to authenticated integrity protection.
+  - All new encryptions generated by `encrypt()` strictly output 3-part AES-256-GCM (`ivHex:encryptedHex:authTagHex`).
+  - Legacy ciphertext remains readable for backward compatibility. The current `encrypt()` implementation always produces authenticated 3-part AES-256-GCM ciphertext. Legacy records are not automatically rewritten merely by decrypting or re-syncing them; they become GCM-formatted only when an explicit persistence path (such as saving new gateway credentials via `saveStripeConnection` or `VerificationPipeline.stage8_updateConnectionStatus`) invokes `encrypt()` and writes to `provider_connections.api_key_encrypted`.
+
+#### OBS-14-02: Key Normalization Mechanism
+- **Description:** `src/lib/encryption.ts` normalizes `process.env.ENCRYPTION_SECRET` via `secretKey.padEnd(32).substring(0, 32)`.
+- **Analysis:**
+  - Secrets shorter than 32 characters are right-padded with space characters (`0x20`).
+  - Secrets longer than 32 characters are truncated to the first 32 characters.
+  - Secrets of exactly 32 characters remain unchanged.
+- **Operational Requirement:** While the implementation functions deterministically across all input lengths, production deployments should supply a high-entropy secret of exactly 32 characters (256 bits).
+
+### Plaintext & Secret Leakage Evidence
+- **Console & Error Logging:** Comprehensive static analysis confirmed zero instances of `apiKey`, `keySecret`, `decryptedKey`, or `process.env.ENCRYPTION_SECRET` passed to `console.log`, `console.warn`, or `console.error`.
+- **Client Bundles & Imports:** Zero client components in `src/components/**` or `src/app/**` import `src/lib/encryption.ts` or read `process.env.ENCRYPTION_SECRET`.
+- **Environment Isolation:** Zero occurrences of `NEXT_PUBLIC_ENCRYPTION_SECRET` or public key exposure.
+- **Fail-Closed Configuration:** If `ENCRYPTION_SECRET` is unset, both `encrypt()` and `decrypt()` immediately throw `Error("ENCRYPTION_SECRET is not defined")`.
+- **Tamper Immunity:** Authenticated GCM decryption rejects corrupted ciphertexts, tags, and IVs with 100% reliability.
+
+### Legacy Compatibility Summary
+- **Legacy Compatibility:** SUPPORTED
+- **2-part AES-256-CTR:** VERIFIED
+- **1-part fixed-IV AES-256-CTR:** VERIFIED
+- **Current Write Format:** AES-256-GCM, 3-part `ivHex:encryptedHex:authTagHex`
+- **Read-Only Decrypt Invariant:** VERIFIED
+- *Important Qualification:* "Legacy compatibility was verified as a backward-compatibility property. It is NOT equivalent to authenticated integrity protection."
+
+### Evidence Classification
+- **`[A]` Automated Regression Evidence:** 64 / 64 dedicated automated tests in `tests/encryption-secret-handling.test.ts`.
+- **`[C]` Static Source Evidence:** Verified cryptographic implementation in `src/lib/encryption.ts`, credential persistence paths in `src/lib/stripe-sync.ts` and `src/lib/providers/razorpay.ts`, projection exclusions in `src/app/api/startup/[id]/overview/route.ts` and `src/app/api/startup/[id]/connections/route.ts`, client import scans, and log scans.
+- **`[D]` Cryptographic Runtime Evidence:** Node.js built-in `crypto` AES-GCM and `crypto.timingSafeEqual` behavior.
+- **`[E]` Explicit Testing Limitation:** No live production credentials, real provider credential mutations, or live production encryption-key rotations were executed. All functional tests utilized synthetic credentials.
+
+### Safety Accounting & Production Isolation
+- **Production Database Mutations:** 0 (0 INSERTs, 0 UPDATEs, 0 DELETEs, 0 DDL statements)
+- **Production State Mutations:** 0 users, 0 startups, 0 subscriptions, 0 live charges, 0 provider changes, 0 RLS modifications
+- **Production Application Source Changes:** 0 files modified
+- **Secrets Exposed:** 0
+- **Safety Conclusion:** **ZERO PRODUCTION MUTATIONS**
+
+---
+
+### Current Milestone Status
+
+**TEST 14 — ENCRYPTION & SECRET HANDLING: CLOSED / VERIFIED**
 
 ---
 
@@ -11676,7 +11831,9 @@ Examples:
 | 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport): CLOSED / VERIFIED; audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. | Eshan Maurya |
 | 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary): CLOSED / VERIFIED; verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. | Eshan Maurya |
 | 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity): CLOSED / VERIFIED; verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations. | Eshan Maurya |
-| 2.29 | August 2026 | Formally documented and closed TEST 13 (Payment Provider & Webhook Boundary): CLOSED / VERIFIED; verified Stripe and Razorpay webhook cryptographic signatures (`timingSafeCompare`), channel secret isolation, server-authoritative provider account attribution (`provider_connections`), anti-metadata-spoofing, atomic event claim and 10-way concurrency race safety (`processed_webhook_events`), monotonic stale timestamp rejection (`subscriptions.last_billing_event_at`), fail-closed unmapped account boundaries, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated tests and 114/114 related regression tests with zero production mutations. | Eshan Maurya |
+| 2.29 | August 2026 | Formally documented TEST 13 — Payment Provider & Webhook Boundary; Phase 2B documentation completion covering Stripe and Razorpay webhook signature validation, provider account reconciliation, anti-spoofing, atomic idempotency, concurrency protection, stale-event monotonicity, fail-closed boundaries, revenue/MRR integrity, and the Razorpay subscription lifecycle across 86/86 dedicated automated checks and 114/114 related regression tests. Status: Phase 2B complete / awaiting formal Phase 2C closure. | Eshan Maurya |
+| 2.30 | August 2026 | Normalized and completed permanent TEST 13 (Payment Provider & Webhook Boundary) Phase 2C closure documentation in Section 25.44 and Appendix F; preserved explicit distinctions for dedicated matrix (86/86 PASS), related regression (114/114 PASS), consolidated regression (325/325 TAP PASS), and logical security checks (332/332 PASS), closure commit SHA `96653b4`, origin/main push verification, clean worktree status, 3 non-blocking P3 informational findings, and zero production mutations safety accounting. | Eshan Maurya |
+| 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED in Section 25.45 and Appendix F; recorded 64/64 dedicated automated tests pass in `tests/encryption-secret-handling.test.ts`, documented AES-256-GCM AEAD architecture, tamper resistance, legacy CTR compatibility (OBS-14-01), key normalization behavior (OBS-14-02), projection exclusion of `api_key_encrypted`, zero client bundle/log leaks, and zero production mutations safety accounting. | Eshan Maurya |
 
 ---
 
@@ -11730,7 +11887,8 @@ Examples include:
 - TEST 10 — Security Headers & Transport: CLOSED / VERIFIED. Audited HTTPS transport and production security headers across representative public HTML, authenticated APIs, public APIs, badge SVG, OG images, and error responses. Verified universal global security headers configured in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`, `X-DNS-Prefetch-Control: on`), HTTP 308 plaintext $\rightarrow$ HTTPS redirection, apex domain canonicalization, route-level SVG CSP hardening (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), and coexistence with TEST 08 cache invariants. Recorded non-blocking P3 informational findings F-10-01 (global HTML CSP policy evaluation) and F-10-02 (optional HSTS preload). Verified 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items with zero production mutations.
 - TEST 11 — Public Badge / Profile / Leaderboard Boundary: CLOSED / VERIFIED. Audited all public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/startup-submissions/count, /api/live-feed, /api/trust-metrics, /sitemap.xml) for private data leakage and false revenue verification. Verified mandatory is_public=true boundary, owner-only private preview, private field stripping (user_id, email, proof_url, credentials, raw transaction IDs, fraud/penalty metadata), authoritative verification derivation (REVENUE_VERIFIED vs PAYMENT_CONNECTED vs SELF_REPORTED), immunity to client-supplied mrr/arr spoofing, demo sandbox profile isolation, badge SVG XML escaping with truncation-before-encoding, route-level SVG CSP, and adversarial input robustness across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items with zero production mutations.
 - TEST 12 — Billing & Subscription Entitlement Integrity: CLOSED / VERIFIED. Verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations.
-- TEST 13 — Payment Provider & Webhook Boundary: CLOSED / VERIFIED. Verified inbound webhook security across Stripe (`/api/stripe/webhook`), Razorpay revenue (`/api/razorpay/webhook`), and Razorpay SaaS billing (`/api/billing/webhook/razorpay`). Proved cryptographic HMAC signature validation, timing-safe comparison (`timingSafeCompare`), channel secret isolation (`RAZORPAY_WEBHOOK_SECRET` vs `RAZORPAY_BILLING_WEBHOOK_SECRET`), server-authoritative provider account attribution via `provider_connections`, anti-metadata-spoofing defense, atomic event claim and 10-way concurrent race safety via `processed_webhook_events (provider, event_id)`, monotonic stale timestamp rejection via `subscriptions.last_billing_event_at`, fail-closed unmapped account handling, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the full 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated automated checks and 114/114 related regression tests with zero production mutations.
+- TEST 13 — Payment Provider & Webhook Boundary: CLOSED / VERIFIED. Verified inbound webhook security across Stripe (`/api/stripe/webhook`), Razorpay revenue (`/api/razorpay/webhook`), and Razorpay SaaS billing (`/api/billing/webhook/razorpay`). Proved cryptographic HMAC signature validation, timing-safe comparison (`timingSafeCompare`), channel secret isolation (`RAZORPAY_WEBHOOK_SECRET` vs `RAZORPAY_BILLING_WEBHOOK_SECRET`), server-authoritative provider account attribution via `provider_connections`, anti-metadata-spoofing defense, atomic event claim and 10-way concurrent race safety via `processed_webhook_events (provider, event_id)`, monotonic stale timestamp rejection via `subscriptions.last_billing_event_at`, fail-closed unmapped account handling, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the full 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated automated checks, 114/114 related regression tests, 325/325 consolidated TAP items (332/332 logical security checks), commit 96653b4, and zero production mutations.
+- TEST 14 — Encryption & Secret Handling: CLOSED / VERIFIED. Verified AES-256-GCM authenticated encryption/decryption, tamper resistance (1-byte CT/tag/IV rejection), wrong-key fail-closed protection, key normalization, 2-part and 1-part legacy CTR compatibility, database projection isolation (`api_key_encrypted` excluded from APIs), zero client bundle or log exposure, and constant-time signature comparison across 64/64 dedicated automated tests and zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -11841,7 +11999,9 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.26 | August 2026 | Formally documented and closed TEST 10 (Security Headers & Transport); audited HTTPS transport and production security headers across representative routes, verified global security headers in `next.config.ts` (`Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-DNS-Prefetch-Control`), HTTP 308 redirects, apex canonicalization, route-level badge SVG CSP (`default-src 'none'; style-src 'unsafe-inline'`), sensitive cookie flags (`vrf_reauth_proof`: `HttpOnly`, `Secure`, `SameSite=lax`, 120s TTL), error response consistency, cache compatibility, and classified non-blocking P3 findings F-10-01 (global HTML CSP) and F-10-02 (optional HSTS preload) across 40/40 dedicated TEST 10 tests, 189/189 consolidated logical checks, and 182/182 TAP items. |
 | 2.27 | August 2026 | Formally documented and closed TEST 11 (Public Badge / Profile / Leaderboard Boundary); verified that public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/live-feed, /api/trust-metrics, /sitemap.xml) enforce is_public=true, isolate private fields (user_id, email, proof_url, credentials, raw transactions), compute verification tiers authoritatively (REVENUE_VERIFIED, PAYMENT_CONNECTED, SELF_REPORTED), resist client-supplied revenue spoofing, isolate demo profiles, enforce SVG XML escaping with truncation-before-encoding, and handle adversarial inputs safely across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items. |
 | 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity); verified Free/Pro boundaries, server-authoritative pricing, `getUserPlan` SSoT, duplicate checkout prevention, cancellation semantics, and 2-tier commercial invariants across 66/66 dedicated tests. |
-| 2.29 | August 2026 | Formally documented and closed TEST 13 (Payment Provider & Webhook Boundary): CLOSED / VERIFIED; verified Stripe and Razorpay webhook cryptographic signatures (`timingSafeCompare`), channel secret isolation, server-authoritative provider account attribution (`provider_connections`), anti-metadata-spoofing, atomic event claim and 10-way concurrency race safety (`processed_webhook_events`), monotonic stale timestamp rejection (`subscriptions.last_billing_event_at`), fail-closed unmapped account boundaries, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated checks and 114/114 related regression tests with zero production mutations. |
+| 2.29 | August 2026 | Formally documented TEST 13 (Payment Provider & Webhook Boundary) in Phase 2B covering cryptographic signatures, provider attribution, anti-spoofing, atomic idempotency, concurrency, monotonicity, fail-closed boundaries, revenue/MRR integrity, and subscription lifecycle across 86/86 dedicated checks; awaiting Phase 2C formal closure. |
+| 2.30 | August 2026 | Completed and normalized TEST 13 permanent Phase 2C closure documentation, preserving distinct accounting for dedicated matrix (86/86), related regression (114/114), consolidated regression (325/325), logical security checks (332/332), commit SHA `96653b4`, P0/P1/P2=0, P3=3 informational findings, and zero production mutations. |
+| 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED; verified AES-256-GCM authenticated encryption/decryption, tamper resistance, legacy CTR fallback compatibility, key normalization, API credential projection boundaries, zero secret leakage, and constant-time comparison across 64/64 dedicated automated tests. |
 
 ---
 
@@ -11849,10 +12009,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.29**
+- Handbook Version: **2.31**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 13 — Payment Provider & Webhook Boundary (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 14 — Encryption & Secret Handling (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
