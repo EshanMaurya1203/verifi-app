@@ -7,10 +7,11 @@
 # Document Information
 
 | Field | Value |
-|--------|-------|
-| **Document** | Verifii Engineering Handbook |
-| **Version** | 2.36 |
-| **Status** | Active |
+|---|---|
+| **Document Title** | Verifii Core Engineering Handbook |
+| **System** | Verifii Revenue & Startup Verification Platform |
+| **Version** | 2.38 |
+| **Status** | Active / Authoritative |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
 | **Started** | July 2026 |
@@ -10907,6 +10908,135 @@ The test harness exercises four progressive multi-concurrency profiling experime
 
 ---
 
+## 25.49 TEST 18 — Error Handling, Observability & Monitoring
+
+**TEST 18 — ERROR HANDLING, OBSERVABILITY & MONITORING: CLOSED / VERIFIED**
+
+### Authoritative Reference
+- **Document:** `Verifii_Final_20_Test_Launch_Readiness_Plan.docx` — TEST 18
+- **Dedicated Test Harness:** [`tests/error-observability-monitoring.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/error-observability-monitoring.test.ts)
+- **Current Status:** **CLOSED / VERIFIED**
+
+---
+
+### Core Objectives & Verification Scope
+
+TEST 18 evaluates Verifii's failure containment, error classification, structured telemetry logging, correlation/event ID propagation, non-blocking auxiliary write isolation (ADR-023), network timeout containment, and sensitive information non-leakage to verify that operational failures are visible to operators without leaking sensitive information to users or external callers.
+
+---
+
+### Dedicated 47-Test Verification Matrix
+
+| Group ID | Verification Domain | Test Items | Pass / Total | Status |
+|---|---|---|---|---|
+| **Group A** | **Controlled 4xx Client Error Handling & Sanitization** | A1–A6 | 6 / 6 | **100% PASS** |
+| **Group B** | **Controlled 5xx Error Containment & Sensitive Data Non-Leakage** | B1–B5 | 5 / 5 | **100% PASS** |
+| **Group C** | **Database Outage & Query Failure Containment** | C1–C4 | 4 / 4 | **100% PASS** |
+| **Group D** | **External Provider Failure & Gateway Rejection Handling** | D1–D5 | 5 / 5 | **100% PASS** |
+| **Group E** | **Network Timeout & AbortSignal Containment** | E1–E4 | 4 / 4 | **100% PASS** |
+| **Group F** | **Notification & Email Delivery Failure Isolation** | F1–F5 | 5 / 5 | **100% PASS** |
+| **Group G** | **Structured Logging Format & Telemetry Integrity** | G1–G4 | 4 / 4 | **100% PASS** |
+| **Group H** | **Correlation & Event ID Propagation** | H1–H4 | 4 / 4 | **100% PASS** |
+| **Group I** | **Non-Blocking Auxiliary Write Isolation (ADR-023)** | I1–I4 | 4 / 4 | **100% PASS** |
+| **Group J** | **Session & Authentication Error Classification** | J1–J3 | 3 / 3 | **100% PASS** |
+| **Group K** | **Regression & Repository Hygiene** | K1–K3 | 3 / 3 | **100% PASS** |
+| **TOTAL** | **Dedicated TEST 18 Automated Suite** | **A1–K3** | **47 / 47** | **100% PASS (100%)** |
+
+---
+
+### Authoritative Findings & Classification
+
+| Finding ID | Severity | Category | Description | Local Test Verification | Current Status |
+|---|---|---|---|---|---|
+| **F-18-01** | **P3 / Informational** | App Router Resilience | **Absence of Root `error.tsx` / `global-error.tsx`:** The Next.js App Router root layout does not define top-level error boundaries, falling back to Next.js default SSR error handling on uncaught render crashes. | Verified by codebase inspection | Open (Accepted P3 observation / post-launch UX enhancement) |
+| **F-18-02** | **P3 / Informational** | Error Sanitization | **Remediated Webhook Error-Message Reflection:** Stripe and Razorpay webhook catch blocks previously returned `err.message` in HTTP 500 JSON responses. Remediated in Phase 2C by returning generic sanitized `{ error: "Webhook handler failed." }` without reflecting `err.message`. Validated via Test B4 regression suite; confirmed 0 sensitive leaks and 0 production secrets exposed. | **Empirically Verified & Remediated by Test B4** | **Remediated & Closed** |
+| **F-18-03** | **P3 / Informational** | Observability Consistency | **Inconsistent Central Logger Usage:** Various API route handlers invoke raw `console.error` rather than `logger.error` with structured metadata. | Verified by codebase inspection | Open (Accepted P3 observation) |
+| **F-18-04** | **P3 / Informational** | Distributed Tracing | **Absence of Global HTTP Request Correlation ID Middleware:** Top-level Next.js middleware does not inject `x-request-id` headers for end-to-end HTTP request tracing. | Verified by codebase inspection | Open (Accepted P3 observation) |
+| **F-18-05** | **P3 / Informational** | Operational Signals | **Absence of Dedicated Platform Health Endpoint:** No dedicated `/api/health` or `/api/status` route exists for synthetic uptime checks. | Verified by codebase inspection | Open (Accepted P3 observation) |
+
+- **P0 Critical:** 0
+- **P1 High:** 0
+- **P2 Medium:** 0
+- **P3 / Informational (Active):** 4 (F-18-01, F-18-03, F-18-04, F-18-05 retained as accepted post-launch observations)
+- **P3 / Remediated:** 1 (F-18-02 remediated and closed)
+
+---
+
+### Sensitive Data Leakage & Reflection Accounting
+
+All test payloads, error outputs, serialized objects, and log structures were evaluated against regex definitions for live secrets, JWT tokens, connection strings, service role credentials, and stack traces:
+
+1. **Standard / User-Facing HTTP 4xx Responses:**
+   - **0** sensitive leaks detected across malformed JSON, validation failure, unauthorized, forbidden, not found, and rate-limit error responses.
+2. **Standard / User-Facing HTTP 500 Responses (Generic Sanitized Handlers):**
+   - **0** sensitive leaks detected (stack traces, environment variables, database connection strings, and filesystem paths are safely concealed behind generic messages).
+3. **Stripe / Razorpay Webhook HTTP 500 Responses:**
+   - **Sanitized Generic Error:** **CONFIRMED** (Stripe and Razorpay webhook catch blocks return `{ error: "Webhook handler failed." }` with status 500).
+   - **Synthetic Connection-String Reflection:** **PREVENTED / REMEDIATED** (Test B4 empirically proved that synthetic connection strings placed in `err.message` are no longer reflected in response bodies).
+   - **Live Production Secrets Exposed:** **0** (no live production database credentials, production connection strings, live API keys, JWTs, service-role keys, or other real secrets were exposed during testing; validation used synthetic test fixture data only).
+4. **Structured Logger Payloads (`src/lib/logger.ts`):**
+   - **0** sensitive leaks detected (passwords, tokens, and service role keys are excluded from metadata).
+5. **Notification Telemetry Payloads (`src/notifications/dispatcher.ts`):**
+   - **0** sensitive leaks detected.
+
+#### Explicit F-18-02 Remediation & Evidence Boundary Summary
+- **Webhook Error Reflection Remediation:** **REMEDIATED & CLOSED** in `src/app/api/stripe/webhook/route.ts` and `src/app/api/razorpay/webhook/route.ts`
+- **Validation Fixture:** Controlled testing with synthetic PostgreSQL connection string (`postgresql://postgres:dbpass@db.supabase.co connection reset`)
+- **Remediation Evidence:** Test B4 verified that response body strictly contains `{ error: "Webhook handler failed." }` with 0 sensitive token leakage
+- **Live Production Secret Exposure:** **0**
+- **Production Mutations:** **0**
+
+---
+
+### Telemetry, Correlation & Isolation Accounting
+
+- **Correlation ID Tracking:** `correlationId` and `eventId` are preserved and propagated end-to-end across notification envelopes (`Test H1`), onboarding lifecycle events (`Test H2`), provider synchronization workflows (`Test H3`), and account deletion audit dispatches (`Test H4`).
+- **Structured Logging Framework:** `src/lib/logger.ts` injects standard metadata fields (`env`, `service: "verifii-api"`, `timestamp`), satisfies severity method contracts (`debug`, `info`, `warn`, `error`, `fatal`), and maps 53 standardized snake_case event constants.
+- **Non-Blocking Auxiliary Writes (ADR-023):** Auxiliary notification, email, and telemetry logging failures are safely caught and never block primary database transactions, feedback creation, or billing updates.
+- **Safe Network & Database Wrappers:** `safeFetch` enforces timeout aborts (default 8000ms), bounded retries for transient 5xx/network errors, and skips retries on non-retryable 4xx client errors. `safeSupabaseQuery` safely encapsulates PostgREST error structures and rejected database promises.
+- **Session Error Classification:** `isUnrecoverableAuthError` accurately classifies unrecoverable auth errors (400, 401, 422, `AuthApiError`, expired JWTs) to trigger stale cookie deletion, while preserving transient network and 5xx errors.
+
+---
+
+### Production Safety & Mutation Accounting
+
+| Safety Domain | Production Count | Verification Evidence |
+|---|---|---|
+| **Production DB INSERTs** | **0** | No database connections opened |
+| **Production DB UPDATEs** | **0** | No database connections opened |
+| **Production DB DELETEs** | **0** | No database connections opened |
+| **Production DDL Executions** | **0** | No database connections opened |
+| **Production Customer Records Mutated** | **0** | Synthetic fixtures only |
+| **Real Customer Emails Dispatched** | **0** | Mocked/synthetic rendering only |
+| **Real Payment Charges** | **0** | Gateway APIs bypassed |
+| **Live Webhooks Ingested** | **0** | Test payloads only |
+| **Provider Connections Mutated** | **0** | Synthetic test fixtures only |
+| **Production Secrets Exposed** | **0** | Zero secrets printed or logged |
+| **Production Source Edits (`src/**`)** | **2 files** | Minimal safe remediation on `src/app/api/stripe/webhook/route.ts` and `src/app/api/razorpay/webhook/route.ts` |
+| **Database / Schema / Migration Edits** | **0** | Zero migration files modified |
+
+---
+
+### Phase 2C Final Closure Evidence
+
+- **Dedicated TEST 18 Result:** 47 / 47 PASS across 12 suites (0 failures, 0 skipped) in [`tests/error-observability-monitoring.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/error-observability-monitoring.test.ts).
+- **Logical Security & Observability Checks:** 47 / 47 PASS (100%).
+- **Consolidated Baseline Result:** 706 / 706 TAP PASS across 128 suites (TEST 01 through TEST 18 security and reliability test suites).
+- **TEST 13 Separate Accounting:** 86 / 86 PASS across 8 suites in [`tests/payment-provider-webhook-boundary.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/payment-provider-webhook-boundary.test.ts) (independently tracked).
+- **Combined Baseline Regression:** 792 / 792 PASS (100%) across 136 suites.
+- **TypeScript Compilation:** `npm run type-check` (`tsc --noEmit`) $\rightarrow$ 0 errors (Exit code 0).
+- **Git Formatting:** `git diff --check` $\rightarrow$ 0 whitespace/formatting errors (Exit code 0).
+- **F-18-01 Final Disposition:** Accepted P3 observation (root `error.tsx` / `global-error.tsx` App Router error boundaries).
+- **F-18-02 Final Disposition:** **Remediated and Closed.** Stripe and Razorpay webhook catch blocks updated in source to return generic sanitized `{ error: "Webhook handler failed." }` rather than reflecting `err.message`. Empirically verified via Test B4 regression suite with synthetic error fixtures; confirmed zero live secrets exposed.
+- **F-18-03 Final Disposition:** Accepted P3 observation (centralized logger adoption across legacy console endpoints).
+- **F-18-04 Final Disposition:** Accepted P3 observation (global HTTP request correlation ID middleware).
+- **F-18-05 Final Disposition:** Accepted P3 observation (dedicated platform health endpoint).
+- **Safety Accounting:** Production database mutations: 0. Real payment charges: 0. Real emails: 0. Live webhook mutations: 0. Provider mutations: 0. Production secrets exposed: 0.
+- **Closure Blockers:** None.
+- **Final Milestone Status:** **TEST 18 — ERROR HANDLING, OBSERVABILITY & MONITORING: CLOSED / VERIFIED**
+
+---
+
 # Appendix B — Project Structure
 
 This appendix documents the high-level organization of the Verifii codebase.
@@ -12321,7 +12451,9 @@ Examples:
 | 2.33 | August 2026 | Documented TEST 16 (Database Transactionality & Concurrency) in Phase 2B covering multi-step transaction atomicity, controlled rollback, savepoints, processed webhook event race safety, active subscription uniqueness (idx_active_subscription_unique), revenue idempotency, provider connection uniqueness, slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, and multi-tenant isolation across 117/117 dedicated automated checks (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM); awaiting Phase 2C formal closure. | Eshan Maurya |
 | 2.34 | August 2026 | Formally documented and closed TEST 16 (Database Transactionality & Concurrency): CLOSED / VERIFIED in Section 25.47 and Appendix F; recorded 117/117 dedicated automated tests pass in `tests/database-transactionality-concurrency.test.ts` (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM), 609/609 consolidated security regression TAP tests (100% pass), 616/616 consolidated logical checks (100% pass), closure commit, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), multi-step transaction atomicity, controlled rollback, savepoint isolation, webhook deduplication race safety on `processed_webhook_events(provider, event_id)`, active subscription partial index `idx_active_subscription_unique`, revenue transaction idempotency, slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, multi-tenant isolation, devDependencies-only PGlite isolation, zero `src/**` modifications, and zero production database mutations safety accounting. | Eshan Maurya |
 | 2.35 | August 2026 | Documented TEST 17 (Load & Performance Testing) in Phase 2B in Section 25.48 and Appendix F; recorded 50/50 dedicated automated tests pass in `tests/load-performance-testing.test.ts` across 12 suites, 50/50 logical checks, 450 classified controlled execution samples (434 HTTP 2xx, 16 HTTP 429, 0 HTTP 5xx, 0 connection drops/timeouts), 4 progressive multi-concurrency load stages (C=1, C=5, C=10, C=25), local application-handler microbenchmark latency metrics (p50/p95/p99), local sequential (1,500–3,200 ops/s) and concurrent (12,000–28,000 ops/s) microbenchmark throughput, rate-limiter threshold behavior reproducing documented 15 req/60s (/api/live-feed) and 5 req/60s (/api/feedback) rules, client bucket isolation, post-load instant recovery (< 1 ms), heap stability (< 2 MB delta over 500 iterations), F-17-01 informational readiness gap for undefined production SLAs, unmeasured production DB saturation, explicit qualification that local microbenchmarks do not establish production/Vercel/Supabase performance, and zero production mutations safety accounting; status: Phase 2B complete / awaiting formal Phase 2C closure. | Eshan Maurya |
-| 2.36 | August 2026 | Formally documented and closed TEST 17 (Load & Performance Testing): CLOSED / VERIFIED in Section 25.48 and Appendix F; recorded 50/50 dedicated automated tests pass in `tests/load-performance-testing.test.ts` across 12 suites, 50/50 logical checks, 450 classified controlled execution samples (434 HTTP 2xx, 16 HTTP 429, 0 HTTP 5xx, 0 connection drops/timeouts), 631/631 consolidated security regression TAP tests (100% pass), 86/86 independent TEST 13 webhook tests (100% pass), 717/717 combined regression tests (100% pass), closure commit, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), local application-handler microbenchmark latency metrics (p50/p95/p99), local sequential (1,500–3,200 ops/s) and concurrent (12,000–28,000 ops/s) microbenchmark throughput, rate-limiter threshold behavior reproducing documented 15 req/60s (/api/live-feed) and 5 req/60s (/api/feedback) rules, client bucket isolation, post-load instant recovery (< 1 ms), heap stability (< 2 MB delta over 500 iterations), F-17-01 informational readiness gap for undefined production SLAs, unmeasured production DB saturation, explicit qualification that local microbenchmarks do not establish production/Vercel/Supabase performance, zero `src/**` modifications, zero schema/migration modifications, and zero production database mutations safety accounting. | Eshan Maurya |
+| 2.36 | August 2026 | Formally documented and closed TEST 17 (Load & Performance Testing): CLOSED / VERIFIED in Section 25.48 and Appendix F; recorded 50/50 dedicated automated tests pass in `tests/load-performance-testing.test.ts` across 12 suites, 50/50 logical checks, 450 classified controlled execution samples (434 HTTP 2xx, 16 HTTP 429, 0 HTTP 5xx, 0 connection drops/timeouts), 631/631 consolidated security regression TAP tests (100% pass), 86/86 independent TEST 13 tests (100% pass), 717/717 combined regression tests (100% pass), closure commit, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), local application-handler microbenchmark latency metrics (p50/p95/p99), local sequential (1,500–3,200 ops/s) and concurrent (12,000–28,000 ops/s) microbenchmark throughput, rate-limiter threshold behavior reproducing documented 15 req/60s (/api/live-feed) and 5 req/60s (/api/feedback) rules, client bucket isolation, post-load instant recovery (< 1 ms), heap stability (< 2 MB delta over 500 iterations), F-17-01 informational readiness gap for undefined production SLAs, unmeasured production DB saturation, explicit qualification that local microbenchmarks do not establish production/Vercel/Supabase performance, zero `src/**` modifications, zero schema/migration modifications, and zero production database mutations safety accounting. | Eshan Maurya |
+| 2.37 | August 2026 | Documented TEST 18 (Error Handling, Observability & Monitoring) in Phase 2B in Section 25.49 and Appendix F; recorded 47/47 dedicated automated tests pass in `tests/error-observability-monitoring.test.ts` across 12 suites, 47/47 logical checks, 11 sub-suites (Groups A–K), verified failure containment (4xx/5xx/DB/provider/timeout), structured telemetry logging (`src/lib/logger.ts`), correlation ID propagation, non-blocking auxiliary write isolation (ADR-023), confirmed F-18-02 webhook synthetic connection-string reflection without live production secret exposure (0 live secrets exposed), classified P3 findings (F-18-01 through F-18-05), zero `src/**` modifications, and zero production mutations safety accounting; status: Phase 2B complete / awaiting formal Phase 2C closure. | Eshan Maurya |
+| 2.38 | August 2026 | Formally documented and closed TEST 18 (Error Handling, Observability & Monitoring): CLOSED / VERIFIED in Section 25.49 and Appendix F; recorded 47/47 dedicated automated tests pass in `tests/error-observability-monitoring.test.ts` across 12 suites, 47/47 logical checks, 706/706 consolidated security/reliability baseline TAP tests (100% pass across 128 suites), 86/86 independent TEST 13 tests (100% pass across 8 suites), 792/792 combined regression tests (100% pass across 136 suites), remediated and closed F-18-02 in `src/app/api/stripe/webhook/route.ts` and `src/app/api/razorpay/webhook/route.ts` by returning generic sanitized `{ error: "Webhook handler failed." }` without reflecting `err.message`, retained F-18-01, F-18-03, F-18-04, F-18-05 as accepted P3 informational observations, repository hygiene validations (`git diff --check`, `npm run type-check`), closure commit, origin/main push verification, clean worktree status, zero live secrets exposed, zero database/schema modifications, and zero production database mutations safety accounting. | Eshan Maurya |
 
 ---
 
@@ -12380,6 +12512,7 @@ Examples include:
 - TEST 15 — Async Jobs, Cron, Notifications & Retry Behavior: CLOSED / VERIFIED. Verified Vercel Cron Bearer authentication barrier (`CRON_SECRET`), cron method boundary (GET only), trial reminder 3-day eligibility window calculation, provider sync failure notifications, 14 implemented React Email templates with HTML/plain-text rendering, fail-safe handling for 7 documented-only notification types without templates (OBS-15-01), non-blocking auxiliary write isolation (ADR-023), deterministic idempotency key derivation, bounded safeFetch network retries, timeout and AbortSignal containment, structured telemetry logging (`src/lib/logger.ts`), recipient trust boundaries, and concurrent in-flight GET coalescing across 103/103 dedicated automated tests, 492/492 consolidated security baseline TAP tests, 499/499 logical security checks, and zero production mutations.
 - TEST 16 — Database Transactionality & Concurrency: CLOSED / VERIFIED. Verified multi-step transaction atomicity, controlled rollback, savepoints, single-winner concurrency semantics, webhook deduplication on processed_webhook_events(provider, event_id), active subscription partial index (idx_active_subscription_unique), revenue transaction upsert idempotency, startup slug uniqueness, foreign key cascade deletions (ON DELETE CASCADE), audit log preservation (ON DELETE SET NULL), and multi-tenant READ COMMITTED isolation across 117/117 dedicated tests (82 application simulation + 35 PostgreSQL runtime-semantics tests via isolated PGlite/WASM), 609/609 consolidated baseline TAP tests (616/616 logical checks), and zero production database mutations.
 - TEST 17 — Load & Performance Testing: CLOSED / VERIFIED. Verified local application-handler microbenchmark scalability, latency distribution (p50/p95/p99), and throughput across 4 progressive concurrency stages (C=1 to C=25), 50/50 dedicated tests pass in `tests/load-performance-testing.test.ts`, 450 classified controlled execution samples (434 HTTP 2xx, 16 HTTP 429, 0 HTTP 5xx), 631/631 consolidated baseline regression TAP tests, 86/86 independent TEST 13 tests, 717/717 combined regression tests (100% pass), rate-limiter threshold dynamics reproducing 15 req/60s and 5 req/60s rules, client bucket isolation, post-burst instant recovery (< 1 ms), heap stability (< 2 MB delta), and F-17-01 informational finding with explicit qualification that local microbenchmarks do not establish production latency, throughput, Vercel edge routing, or remote Supabase saturation, and zero production database mutations.
+- TEST 18 — Error Handling, Observability & Monitoring: CLOSED / VERIFIED. Verified failure containment across 4xx client errors, 5xx server errors, database outages (`safeSupabaseQuery`), provider failures (Stripe/Razorpay), network timeouts (`safeFetch`), notification delivery failure isolation, structured telemetry logging (`src/lib/logger.ts`), correlation ID propagation (UUIDv4), non-blocking auxiliary write isolation (ADR-023), session error classification (`isUnrecoverableAuthError`), remediated F-18-02 webhook error-message reflection in `src/app/api/stripe/webhook/route.ts` and `src/app/api/razorpay/webhook/route.ts` to return generic sanitized `{ error: "Webhook handler failed." }` without `err.message` reflection, verified via Test B4 regression suite without live production secret exposure (0 live secrets exposed), retained F-18-01, F-18-03, F-18-04, F-18-05 as accepted P3 informational observations, 47/47 dedicated automated tests pass in `tests/error-observability-monitoring.test.ts` (12 suites, 100% pass), 706/706 consolidated baseline TAP tests (128 suites), 86/86 independent TEST 13 tests (8 suites), 792/792 combined regression tests (100% pass across 136 suites), and zero production database mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -12498,6 +12631,8 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.34 | August 2026 | Formally documented and closed TEST 16 (Database Transactionality & Concurrency): CLOSED / VERIFIED; verified multi-step transaction atomicity, controlled rollback, savepoints, processed webhook event race safety, active subscription uniqueness (idx_active_subscription_unique), revenue transaction idempotency, provider connection uniqueness, startup slug uniqueness, foreign key cascade deletions, concurrent deletion race containment, and multi-tenant isolation across 117/117 dedicated tests (82 application simulation + 35 PostgreSQL 16 runtime semantics via isolated PGlite/WASM), 609/609 consolidated baseline TAP tests, and 616/616 logical security checks. |
 | 2.35 | August 2026 | Documented TEST 17 (Load & Performance Testing) in Phase 2B; verified local application-handler microbenchmark scalability across 4 progressive concurrency stages (C=1 to C=25), 50/50 dedicated automated tests in `tests/load-performance-testing.test.ts`, 450 classified controlled execution samples (434 HTTP 2xx, 16 HTTP 429, 0 HTTP 5xx), rate-limiter threshold dynamics, bucket isolation, post-burst recovery, heap stability, explicit qualification that local microbenchmarks do not establish production/Vercel/Supabase performance, and zero production mutations; status: Phase 2B complete / awaiting formal Phase 2C closure. |
 | 2.36 | August 2026 | Formally documented and closed TEST 17 (Load & Performance Testing): CLOSED / VERIFIED; verified local application-handler microbenchmark scalability across 4 progressive concurrency stages (C=1 to C=25), 50/50 dedicated automated tests in `tests/load-performance-testing.test.ts`, 450 classified controlled execution samples (434 HTTP 2xx, 16 HTTP 429, 0 HTTP 5xx), 631/631 consolidated baseline regression TAP tests, 86/86 independent TEST 13 tests, 717/717 combined regression tests (100% pass), rate-limiter threshold dynamics, bucket isolation, post-burst recovery, heap stability, explicit qualification that local microbenchmarks do not establish production/Vercel/Supabase performance, zero src/** modifications, zero schema/migration modifications, and zero production database mutations. |
+| 2.37 | August 2026 | Documented TEST 18 (Error Handling, Observability & Monitoring) in Phase 2B in Section 25.49 and Appendix F; verified failure containment across 4xx/5xx/DB/provider/timeout, structured telemetry logging (`src/lib/logger.ts`), correlation ID propagation, non-blocking auxiliary write isolation (ADR-023), confirmed F-18-02 webhook error-message reflection under synthetic testing with 0 live secrets exposed, 47/47 dedicated automated tests in `tests/error-observability-monitoring.test.ts`, and zero production mutations; status: Phase 2B complete / awaiting formal Phase 2C closure. |
+| 2.38 | August 2026 | Formally documented and closed TEST 18 (Error Handling, Observability & Monitoring): CLOSED / VERIFIED in Section 25.49 and Appendix F; recorded 47/47 dedicated automated tests pass in `tests/error-observability-monitoring.test.ts` across 12 suites, 47/47 logical checks, 706/706 consolidated security/reliability baseline TAP tests (100% pass across 128 suites), 86/86 independent TEST 13 tests (100% pass across 8 suites), 792/792 combined regression tests (100% pass across 136 suites), remediated and closed F-18-02 in `src/app/api/stripe/webhook/route.ts` and `src/app/api/razorpay/webhook/route.ts` by returning generic sanitized `{ error: "Webhook handler failed." }` without reflecting `err.message`, retained F-18-01, F-18-03, F-18-04, F-18-05 as accepted P3 informational observations, repository hygiene validations (`git diff --check`, `npm run type-check`), closure commit, origin/main push verification, clean worktree status, zero live secrets exposed, zero database/schema modifications, and zero production database mutations safety accounting. |
 
 ---
 
@@ -12505,10 +12640,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.36**
+- Handbook Version: **2.38**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 17 — Load & Performance Testing (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 18 — Error Handling, Observability & Monitoring (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 

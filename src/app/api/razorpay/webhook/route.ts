@@ -215,8 +215,7 @@ interface RazorpayWebhookPayload {
 
     return NextResponse.json({ received: true });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[Razorpay Webhook] Handler error:", err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: "Webhook handler failed." }, { status: 500 });
   }
 }
