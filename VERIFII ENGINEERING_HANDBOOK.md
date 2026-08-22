@@ -9,7 +9,7 @@
 | Field | Value |
 |--------|-------|
 | **Document** | Verifii Engineering Handbook |
-| **Version** | 2.31 |
+| **Version** | 2.32 |
 | **Status** | Active |
 | **Product** | Verifii |
 | **Owner** | Eshan Maurya |
@@ -10409,18 +10409,175 @@ Execution Engine: Native `node:test` + `node:assert/strict`
 - **`[D]` Cryptographic Runtime Evidence:** Node.js built-in `crypto` AES-GCM and `crypto.timingSafeEqual` behavior.
 - **`[E]` Explicit Testing Limitation:** No live production credentials, real provider credential mutations, or live production encryption-key rotations were executed. All functional tests utilized synthetic credentials.
 
-### Safety Accounting & Production Isolation
+### Phase 2C Final Closure Evidence
+
+Formal validation, git commit, remote push, and permanent closure of TEST 14 were finalized with the following consolidated evidence:
+
+#### 1. Test Scope Accounting & Distinct Verification Categories
+To ensure unambiguous categorization for security reviews and future audits, the distinct test verification scopes are preserved:
+- **Dedicated TEST 14 Encryption Matrix:** **64 / 64 PASS** (100% pass rate across Groups A through H in `tests/encryption-secret-handling.test.ts`).
+- **Final Consolidated Security Regression Suite:** **389 / 389 TAP Tests PASS** (100% pass rate with zero failures and zero skipped tests across all 9 security regression harnesses: TEST 14 [64], TEST 12 [66], TEST 11 [77], TEST 10 [40], TEST 09 [44], TEST 08 [30], TEST 06 [48], TEST 04 [19], and TEST 01-C [1 TAP item]).
+- **Final Logical Security Validation Result:** **396 / 396 Logical Security Checks PASS** (100% pass rate: $64 + 66 + 77 + 40 + 44 + 30 + 48 + 19 + 8 = 396$ logical checks, including the 8 logical checks encapsulated within TEST 01-C).
+
+#### 2. Commit & Repository Integrity
+- **Final Implementation Commit:** `efde71f` (`security: close TEST 14 encryption secret handling`)
+- **Remote Push Confirmation:** Successfully pushed to `origin/main` (`96653b4..efde71f main -> main`).
+- **Worktree State:** Clean working tree (`nothing to commit, working tree clean`).
+- **Repository Hygiene & Static Type Validation:**
+  - `git diff --check`: PASSED (0 whitespace / formatting errors).
+  - `npm run type-check` (`tsc --noEmit`): PASSED (0 errors, exit code 0).
+
+#### 3. Security Findings & Reconciled Observations Accounting
+- **OBS-14-01 (Legacy AES-256-CTR Fallback Path Remains Unauthenticated):** Documented non-blocking informational observation. Legacy CTR ciphertext remains readable for backward compatibility; `encrypt()` always produces authenticated 3-part AES-256-GCM (`ivHex:encryptedHex:authTagHex`). Legacy records are not automatically rewritten merely by decrypting or re-syncing them; they become GCM-formatted only when an explicit persistence path (such as saving new gateway credentials via `saveStripeConnection` or `VerificationPipeline.stage8_updateConnectionStatus`) invokes `encrypt()` and writes to `provider_connections.api_key_encrypted`.
+- **OBS-14-02 (Key Normalization Mechanism):** Documented non-blocking informational observation. `src/lib/encryption.ts` normalizes `process.env.ENCRYPTION_SECRET` via `secretKey.padEnd(32).substring(0, 32)` (padded with space characters if <32 chars, truncated if >32 chars). Operational requirement: production environments must supply a high-entropy 32-byte (256-bit) secret.
+- **Severity Accounting:**
+  - **P0 Critical:** 0
+  - **P1 High:** 0
+  - **P2 Medium:** 0
+  - **P3 Low / Informational Observations:** 2 (OBS-14-01, OBS-14-02; confirmed non-blocking and informational; do not reopen TEST 14).
+
+#### 4. Safety & Production Mutation Accounting
 - **Production Database Mutations:** 0 (0 INSERTs, 0 UPDATEs, 0 DELETEs, 0 DDL statements)
 - **Production State Mutations:** 0 users, 0 startups, 0 subscriptions, 0 live charges, 0 provider changes, 0 RLS modifications
-- **Production Application Source Changes:** 0 files modified
+- **Production Application Source Changes:** 0 files modified (`src/**` remains 100% untouched)
 - **Secrets Exposed:** 0
-- **Safety Conclusion:** **ZERO PRODUCTION MUTATIONS**
+- **Safety Conclusion:** **ZERO PRODUCTION MUTATIONS** (all automated test executions occurred strictly within synthetic/mocked isolated test harnesses, completely isolated from production databases and live payment gateways).
 
 ---
 
 ### Current Milestone Status
 
 **TEST 14 — ENCRYPTION & SECRET HANDLING: CLOSED / VERIFIED**
+
+---
+
+## 25.46 TEST 15 — Async Jobs, Cron, Notifications & Retry Behavior
+
+### Executive Summary
+
+TEST 15 verifies that all Verifii background work, scheduled cron execution, notification delivery, network retry behavior, timeout containment, recipient trust boundaries, and concurrency protections execute reliably, deterministically, and idempotently without silent failures or duplicate side effects.
+
+Authoritative launch-readiness verification was performed via dedicated regression suite [`tests/async-cron-notifications.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/async-cron-notifications.test.ts) using the native Node.js test runner (`node:test`, `node:assert/strict`).
+
+---
+
+### Authoritative Verification Matrix
+
+| Group ID | Verification Domain | Test Items | Pass / Total | Status |
+|---|---|---|---|---|
+| **Group A** | **Cron Authentication & Method Boundary** | A1–A8 | 8 / 8 | **100% PASS** |
+| **Group B** | **Trial Reminder Eligibility & Logic** | B1–B10 | 10 / 10 | **100% PASS** |
+| **Group C** | **Provider Sync Failure Notifications** | C1–C8 | 8 / 8 | **100% PASS** |
+| **Group D** | **Notification Registry & Template Safety** | D1–D10 | 10 / 10 | **100% PASS** |
+| **Group E** | **Deterministic Idempotency Keys** | E1–E8 | 8 / 8 | **100% PASS** |
+| **Group F** | **Safe Network Retry Semantics** | F1–F12 | 12 / 12 | **100% PASS** |
+| **Group G** | **Timeout & Abort Handling** | G1–G6 | 6 / 6 | **100% PASS** |
+| **Group H** | **Failure Visibility & Telemetry** | H1–H9 | 9 / 9 | **100% PASS** |
+| **Group I** | **Notification Eligibility & Business Triggers** | I1–I9 | 9 / 9 | **100% PASS** |
+| **Group J** | **Recipient Security & Cross-Account Isolation** | J1–J8 | 8 / 8 | **100% PASS** |
+| **Group K** | **Concurrency & Duplicate Execution** | K1–K7 | 7 / 7 | **100% PASS** |
+| **Group L** | **Regression & Repository Hygiene** | L1–L8 | 8 / 8 | **100% PASS** |
+| **TOTAL** | **Dedicated TEST 15 Regression Matrix** | **A1–L8** | **103 / 103** | **100% PASS (100%)** |
+
+---
+
+### Core Architectural Invariants
+
+1. **Vercel Cron Authentication Barrier:** `GET /api/cron/trial-reminders` enforces mandatory Bearer token authorization matching `process.env.CRON_SECRET`. Missing, wrong, malformed, or unauthenticated requests are rejected immediately with HTTP 401 without querying database tables or triggering notifications.
+2. **Cron Method Boundary:** The cron endpoint exclusively exports a `GET` handler. Next.js App Router route dispatch rejects non-GET HTTP methods (`POST`, `PUT`, `DELETE`, `PATCH`) with HTTP 405 Method Not Allowed.
+3. **Trial Reminder Eligibility & Window Calculation:** Eligible subscriptions are filtered by server-side query requiring `status = 'trialing'`, `plan_code = 'pro'`, `trial_end > now()`, and `trial_end <= now() + 3 days`. Trials expiring beyond 3 days, expired trials, non-trial subscriptions, and unsupported/legacy plan codes are skipped without sending notifications.
+4. **Provider Sync Failure Notification Behavior:** When provider credential verification or manual balance sync fails, `handleProviderSyncFailed` dispatches a `PROVIDER_SYNC_FAILED` notification containing user-friendly error messages and dashboard action links.
+5. **Notification Registry & Template Safety:** Exactly 21 notification types are defined in `NOTIFICATION_DEFINITIONS`. These are strictly partitioned into:
+   - **14 Implemented Notification Types with React Email Templates:** `WELCOME`, `PROVIDER_CONNECTED`, `PROVIDER_SYNC_FAILED`, `ACCOUNT_DELETED`, `VERIFICATION_COMPLETED`, `VERIFICATION_FAILED`, `SUBSCRIPTION_ACTIVATED`, `SUBSCRIPTION_RENEWED`, `TRIAL_EXPIRING`, `PAYMENT_FAILED`, `SUBSCRIPTION_CANCELLED`, `PRODUCTION_EMAIL_TEST`, `FEEDBACK_SUBMITTED`, and `FEEDBACK_REPLIED` (all 14 correspond to `.tsx` components in `src/emails/`, handled in `emailAdapter.deliver()`, and resolved in `sendEmail.ts`).
+   - **7 Documented-Only Notification Types (Without Templates):** `REVENUE_SYNC_REMINDER`, `PLAN_EXPIRED`, `TRUST_SCORE_CHANGED`, `LEADERBOARD_CHANGED`, `SECURITY_ALERT`, `PRODUCT_UPDATE`, and `FEATURE_ANNOUNCEMENT` (registered for future roadmap expansion; verified to fail-safe via `emailAdapter` returning `{ success: false, code: "UNKNOWN", retryable: false }` without throwing unhandled exceptions).
+   All 14 implemented templates render valid HTML and plain-text fallback strings without runtime errors.
+6. **Non-Blocking Notification Isolation (ADR-023):** Notification dispatches executed during primary database mutations (account deletion, subscription updates, onboarding creation, provider connection) are non-blocking auxiliary writes wrapped in `try/catch`. Delivery provider outages or rate limits never abort, corrupt, or roll back primary database transactions.
+7. **Deterministic Idempotency Key Derivation:** Deterministic keys are derived from canonical business entities (`generateIdempotencyKey`, `generateCanonicalVerificationIdempotencyKey`) and transmitted via Resend's `Idempotency-Key` HTTP header. Replaying identical business events produces identical idempotency keys to prevent duplicate email delivery.
+8. **Bounded SafeFetch Retry Behavior:** Network operations wrapped in `safeFetch` implement bounded retries (default `retries = 1`, maximum 2 attempts). 4xx client errors (except HTTP 429) are classified as non-retryable and terminate immediately; 5xx server errors, HTTP 429 rate limits, and network connection drops trigger retry with bounded delay.
+9. **Timeout & AbortSignal Handling:** `safeFetch` enforces deterministic timeouts via `AbortController` (default 8000ms). Timed-out requests abort cleanly and return `{ ok: false, error }` without unhandled promise rejections or Node process crashes.
+10. **Failure Visibility & Structured Telemetry:** Structured telemetry logging (`src/lib/logger.ts`) emits typed events (`LogEvent.EMAIL_DELIVERY_FAILED`, `CHANNEL_DELIVERY_FAILED`, `NOTIFICATION_DISPATCH_COMPLETED`) preserving `correlationId`, `eventId`, and `retryable` classification. No failure is silently swallowed without logging or metrics tracking.
+11. **Notification Business-Trigger Eligibility:** Business events enforce strict trigger conditions (e.g. Welcome notification dispatches only when `count === 1` on first startup creation; secondary startups do not trigger welcome emails; billing webhooks map `subscription.activated` vs `subscription.charged` based on `paid_count`).
+12. **Recipient Ownership & Cross-Account Isolation:** Recipient email addresses and startup identities are strictly resolved server-side from authenticated sessions (`getAuthenticatedUser()`) or database queries. Client-supplied parameters in request bodies or query strings cannot redirect notifications to third-party accounts.
+13. **Duplicate Execution & Concurrency Protections:** Webhook ingestion uses atomic primary key claims on `processed_webhook_events(provider, event_id)`; cron jobs derive date-scoped idempotency keys (`ntf_trial_expiring_${sub.id}_${YYYY-MM-DD}`); concurrent identical `GET` requests coalesce into a single in-flight promise.
+14. **Repository Hygiene & Regression Preservation:** Codebase passes `npm run type-check` (0 errors) and `git diff --check` (0 whitespace errors) with zero production mutations.
+
+---
+
+### Authoritative TAP & Logical Accounting
+
+#### 1. Dedicated TEST 15 Suite
+- **103 / 103 TAP Tests PASS** (100% pass rate)
+- **103 / 103 Logical Checks PASS** (100% pass rate across Groups A through L in `tests/async-cron-notifications.test.ts`)
+
+#### 2. Authoritative Consolidated Security Baseline (Excluding TEST 13)
+- **Previous Authoritative Consolidated Baseline (TEST 14 Closure):**
+  - **389 / 389 TAP Tests PASS** (100%)
+  - **396 / 396 Logical Checks PASS** (100%)
+- **TEST 15 Incremental Addition:**
+  - **+103 TAP Tests**
+  - **+103 Logical Checks**
+- **Current Consolidated Baseline (Including TEST 15, Excluding TEST 13):**
+  - **492 / 492 TAP Tests PASS** ($389 + 103 = 492$)
+  - **499 / 499 Logical Security Checks PASS** ($396 + 103 = 499$)
+
+*Exact Consolidated Execution Command:*
+```powershell
+npx tsx --test tests/async-cron-notifications.test.ts tests/encryption-secret-handling.test.ts tests/billing-subscription-entitlement.test.ts tests/public-boundary-verification.test.ts tests/security-headers-transport.test.ts tests/csrf-cross-origin-mutation-protection.test.ts tests/cache-repeated-request-consistency.test.ts tests/trust-boundary-authoritative-fields.test.ts tests/idor-authorization-boundary.test.ts tests/01-c-rate-limit-trust-boundary.test.ts
+```
+*Raw Runner Output:* `492 tests, 84 suites, 492 pass, 0 fail, 0 skipped`.
+
+#### 3. TEST 13 Standalone Accounting Note
+- **TEST 13 (Payment Provider & Webhook Boundary):** Dedicated suite: **86 / 86 PASS** in [`tests/payment-provider-webhook-boundary.test.ts`](file:///c:/Users/eshan/Downloads/verifi-app/tests/payment-provider-webhook-boundary.test.ts).
+- TEST 13 remains an independent dedicated suite and was not executed in the 492-TAP consolidated security baseline.
+- *Hypothetical Combined Platform Total:* If TEST 13 were combined with the 492 baseline, the platform total would be $492 + 86 = 578\text{ TAP}$ ($499 + 86 = 585\text{ logical}$).
+
+---
+
+### Reconciled Security & Operational Observations
+
+- **OBS-15-01 (Documented-Only Notification Types Fail-Safe):**
+  *Observation:* 7 notification types registered in `src/notifications/types.ts` and `src/notifications/registry.ts` (`REVENUE_SYNC_REMINDER`, `PLAN_EXPIRED`, `TRUST_SCORE_CHANGED`, `LEADERBOARD_CHANGED`, `SECURITY_ALERT`, `PRODUCT_UPDATE`, `FEATURE_ANNOUNCEMENT`) represent future product capabilities and do not currently have React Email templates.
+  *Verified Behavior:* Delivery through `emailAdapter` safely routes to the `default` switch branch and returns `{ success: false, code: "UNKNOWN", retryable: false }` without throwing unhandled exceptions.
+  *Classification:* Informational / P3 (Non-blocking).
+
+- **OBS-15-02 (Stateless Notification Telemetry Architecture):**
+  *Observation:* Notifications are not stored in a dedicated PostgreSQL `notifications` table.
+  *Verified Behavior:* Deduplication is handled at the provider level via `Idempotency-Key` HTTP headers; delivery state and failures are tracked via structured telemetry logging (`src/lib/logger.ts`); primary business mutations remain isolated under ADR-023.
+  *Classification:* Informational / P3 (Non-blocking).
+
+- **Severity Accounting:**
+  - **P0 Critical:** 0
+  - **P1 High:** 0
+  - **P2 Medium:** 0
+  - **P3 Low / Informational Observations:** 2 (OBS-15-01, OBS-15-02).
+
+---
+
+### Evidence Classification & Limitations
+
+- **[A] Automated Route & Function Evidence:** 103 dedicated automated tests in `tests/async-cron-notifications.test.ts` exercising cron routes, trial window filters, provider sync handlers, React Email template rendering, idempotency derivation, safeFetch retries, timeouts, and error telemetry.
+- **[C] Static & Source Evidence:** Source inspection of `vercel.json`, `src/app/api/cron/trial-reminders/route.ts`, `src/notifications/**`, `src/lib/safe-network.ts`, and `src/lib/logger.ts`.
+- **[D] Framework & Runtime Inference:** Next.js App Router method rejection (405 for non-exported methods) and Vercel Cron scheduled trigger semantics.
+- **[E] Explicit Limitations:** Live production cron triggers and live Resend email delivery were not invoked during automated regression testing (all tests executed using isolated synthetic fixtures and mock providers).
+
+---
+
+### Safety & Production Mutation Accounting
+
+- **Production Database Mutations:** 0 (0 INSERTs, 0 UPDATEs, 0 DELETEs, 0 DDL statements)
+- **Production State Mutations:** 0 users, 0 startups, 0 subscriptions, 0 live charges, 0 provider changes, 0 RLS modifications
+- **Real Customer Emails Dispatched:** 0 (mocked provider and synthetic rendering only)
+- **Real Payments / Webhooks Triggered:** 0
+- **Provider Connection Mutations:** 0
+- **Production Application Source Changes:** 0 files modified (`src/**` remains 100% untouched)
+- **Secrets Exposed:** 0
+- **Safety Conclusion:** **ZERO PRODUCTION MUTATIONS**.
+
+---
+
+### Current Milestone Status
+
+**TEST 15 — ASYNC JOBS, CRON, NOTIFICATIONS & RETRY BEHAVIOR: CLOSED / VERIFIED**
 
 ---
 
@@ -11833,7 +11990,8 @@ Examples:
 | 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity): CLOSED / VERIFIED; verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations. | Eshan Maurya |
 | 2.29 | August 2026 | Formally documented TEST 13 — Payment Provider & Webhook Boundary; Phase 2B documentation completion covering Stripe and Razorpay webhook signature validation, provider account reconciliation, anti-spoofing, atomic idempotency, concurrency protection, stale-event monotonicity, fail-closed boundaries, revenue/MRR integrity, and the Razorpay subscription lifecycle across 86/86 dedicated automated checks and 114/114 related regression tests. Status: Phase 2B complete / awaiting formal Phase 2C closure. | Eshan Maurya |
 | 2.30 | August 2026 | Normalized and completed permanent TEST 13 (Payment Provider & Webhook Boundary) Phase 2C closure documentation in Section 25.44 and Appendix F; preserved explicit distinctions for dedicated matrix (86/86 PASS), related regression (114/114 PASS), consolidated regression (325/325 TAP PASS), and logical security checks (332/332 PASS), closure commit SHA `96653b4`, origin/main push verification, clean worktree status, 3 non-blocking P3 informational findings, and zero production mutations safety accounting. | Eshan Maurya |
-| 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED in Section 25.45 and Appendix F; recorded 64/64 dedicated automated tests pass in `tests/encryption-secret-handling.test.ts`, documented AES-256-GCM AEAD architecture, tamper resistance, legacy CTR compatibility (OBS-14-01), key normalization behavior (OBS-14-02), projection exclusion of `api_key_encrypted`, zero client bundle/log leaks, and zero production mutations safety accounting. | Eshan Maurya |
+| 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED in Section 25.45 and Appendix F; recorded 64/64 dedicated automated tests pass in `tests/encryption-secret-handling.test.ts`, 389/389 consolidated security regression TAP tests (100% pass), 396/396 consolidated logical checks (100% pass), closure commit SHA `efde71f`, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), AES-256-GCM AEAD architecture, tamper resistance (1-byte CT/tag/IV rejection), legacy CTR compatibility (OBS-14-01), key normalization behavior (OBS-14-02), projection exclusion of `api_key_encrypted`, zero client bundle/log leaks, and zero production mutations safety accounting. | Eshan Maurya |
+| 2.32 | August 2026 | Formally documented and closed TEST 15 (Async Jobs, Cron, Notifications & Retry Behavior): CLOSED / VERIFIED in Section 25.46 and Appendix F; recorded 103/103 dedicated automated tests pass in `tests/async-cron-notifications.test.ts`, 492/492 consolidated security regression TAP tests (100% pass), 499/499 consolidated logical checks (100% pass), Vercel Cron authentication barrier, trial reminder window calculations, non-blocking notification isolation under ADR-023, partition of 21 registered notification types into 14 implemented React Email templates and 7 documented-only types (OBS-15-01), deterministic idempotency key derivation, bounded safeFetch retry behavior, timeout and AbortSignal handling, structured telemetry logging, OBS-15-02, closure commit, origin/main push verification, clean worktree status, repository hygiene validations (`git diff --check`, `npm run type-check`), and zero production mutations safety accounting. | Eshan Maurya |
 
 ---
 
@@ -11888,7 +12046,8 @@ Examples include:
 - TEST 11 — Public Badge / Profile / Leaderboard Boundary: CLOSED / VERIFIED. Audited all public surfaces (/startup/[slug], /api/badge/[slug], /api/og/startup/[slug], /leaderboard, /api/startup-submissions, /api/startup-submissions/count, /api/live-feed, /api/trust-metrics, /sitemap.xml) for private data leakage and false revenue verification. Verified mandatory is_public=true boundary, owner-only private preview, private field stripping (user_id, email, proof_url, credentials, raw transaction IDs, fraud/penalty metadata), authoritative verification derivation (REVENUE_VERIFIED vs PAYMENT_CONNECTED vs SELF_REPORTED), immunity to client-supplied mrr/arr spoofing, demo sandbox profile isolation, badge SVG XML escaping with truncation-before-encoding, route-level SVG CSP, and adversarial input robustness across 77/77 dedicated tests, 266/266 consolidated logical checks, and 259/259 TAP items with zero production mutations.
 - TEST 12 — Billing & Subscription Entitlement Integrity: CLOSED / VERIFIED. Verified Free/Pro plan boundaries, server-authoritative pricing (`RAZORPAY_PLAN_PRO_MONTHLY`), `getUserPlan` SSoT status priority (`active` > `grace_period` > `trialing` > `cancelled`), fallback to Free viewer on expiry/past_due/empty/error, duplicate checkout defense (pre-check + `idx_active_subscription_unique`), cycle-end cancellation verification, cross-user isolation, and 2-tier commercial invariants across 66/66 dedicated tests, 332/332 consolidated logical checks, and 325/325 TAP items with zero production mutations.
 - TEST 13 — Payment Provider & Webhook Boundary: CLOSED / VERIFIED. Verified inbound webhook security across Stripe (`/api/stripe/webhook`), Razorpay revenue (`/api/razorpay/webhook`), and Razorpay SaaS billing (`/api/billing/webhook/razorpay`). Proved cryptographic HMAC signature validation, timing-safe comparison (`timingSafeCompare`), channel secret isolation (`RAZORPAY_WEBHOOK_SECRET` vs `RAZORPAY_BILLING_WEBHOOK_SECRET`), server-authoritative provider account attribution via `provider_connections`, anti-metadata-spoofing defense, atomic event claim and 10-way concurrent race safety via `processed_webhook_events (provider, event_id)`, monotonic stale timestamp rejection via `subscriptions.last_billing_event_at`, fail-closed unmapped account handling, fractional currency conversion, anti-dust micropayment filtering, refund deduplication, multi-gateway MRR aggregation, and the full 8-event Razorpay SaaS subscription lifecycle across 86/86 dedicated automated checks, 114/114 related regression tests, 325/325 consolidated TAP items (332/332 logical security checks), commit 96653b4, and zero production mutations.
-- TEST 14 — Encryption & Secret Handling: CLOSED / VERIFIED. Verified AES-256-GCM authenticated encryption/decryption, tamper resistance (1-byte CT/tag/IV rejection), wrong-key fail-closed protection, key normalization, 2-part and 1-part legacy CTR compatibility, database projection isolation (`api_key_encrypted` excluded from APIs), zero client bundle or log exposure, and constant-time signature comparison across 64/64 dedicated automated tests and zero production mutations.
+- TEST 14 — Encryption & Secret Handling: CLOSED / VERIFIED. Verified AES-256-GCM authenticated encryption/decryption, tamper resistance (1-byte CT/tag/IV rejection), wrong-key fail-closed protection, key normalization, 2-part and 1-part legacy CTR compatibility, database projection isolation (`api_key_encrypted` excluded from APIs), zero client bundle or log exposure, and constant-time signature comparison across 64/64 dedicated automated tests, 389/389 consolidated TAP tests, 396/396 consolidated logical checks, closure commit `efde71f`, and zero production mutations.
+- TEST 15 — Async Jobs, Cron, Notifications & Retry Behavior: CLOSED / VERIFIED. Verified Vercel Cron Bearer authentication barrier (`CRON_SECRET`), cron method boundary (GET only), trial reminder 3-day eligibility window calculation, provider sync failure notifications, 14 implemented React Email templates with HTML/plain-text rendering, fail-safe handling for 7 documented-only notification types without templates (OBS-15-01), non-blocking auxiliary write isolation (ADR-023), deterministic idempotency key derivation, bounded safeFetch network retries, timeout and AbortSignal containment, structured telemetry logging (`src/lib/logger.ts`), recipient trust boundaries, and concurrent in-flight GET coalescing across 103/103 dedicated automated tests, 492/492 consolidated security baseline TAP tests, 499/499 logical security checks, and zero production mutations.
 
 This timeline provides historical context for future contributors.
 
@@ -12001,7 +12160,8 @@ This section provides a concise historical timeline showing how the Engineering 
 | 2.28 | August 2026 | Formally documented and closed TEST 12 (Billing & Subscription Entitlement Integrity); verified Free/Pro boundaries, server-authoritative pricing, `getUserPlan` SSoT, duplicate checkout prevention, cancellation semantics, and 2-tier commercial invariants across 66/66 dedicated tests. |
 | 2.29 | August 2026 | Formally documented TEST 13 (Payment Provider & Webhook Boundary) in Phase 2B covering cryptographic signatures, provider attribution, anti-spoofing, atomic idempotency, concurrency, monotonicity, fail-closed boundaries, revenue/MRR integrity, and subscription lifecycle across 86/86 dedicated checks; awaiting Phase 2C formal closure. |
 | 2.30 | August 2026 | Completed and normalized TEST 13 permanent Phase 2C closure documentation, preserving distinct accounting for dedicated matrix (86/86), related regression (114/114), consolidated regression (325/325), logical security checks (332/332), commit SHA `96653b4`, P0/P1/P2=0, P3=3 informational findings, and zero production mutations. |
-| 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED; verified AES-256-GCM authenticated encryption/decryption, tamper resistance, legacy CTR fallback compatibility, key normalization, API credential projection boundaries, zero secret leakage, and constant-time comparison across 64/64 dedicated automated tests. |
+| 2.31 | August 2026 | Formally documented and closed TEST 14 (Encryption & Secret Handling): CLOSED / VERIFIED; verified AES-256-GCM authenticated encryption/decryption, tamper resistance, legacy CTR fallback compatibility, key normalization, API credential projection boundaries, zero secret leakage, and constant-time comparison across 64/64 dedicated automated tests, 389/389 consolidated TAP tests, 396/396 logical checks, and closure commit `efde71f`. |
+| 2.32 | August 2026 | Formally documented and closed TEST 15 (Async Jobs, Cron, Notifications & Retry Behavior): CLOSED / VERIFIED; verified Vercel Cron authentication, trial reminder logic, notification pipeline safety (14 implemented templates and 7 documented-only types), non-blocking isolation (ADR-023), deterministic idempotency, bounded safeFetch retries, timeout handling, structured telemetry, and recipient isolation across 103/103 dedicated checks, 492/492 consolidated baseline TAP tests, and 499/499 logical security checks. |
 
 ---
 
@@ -12009,10 +12169,10 @@ This section provides a concise historical timeline showing how the Engineering 
 
 At the time of writing:
 
-- Handbook Version: **2.31**
+- Handbook Version: **2.32**
 - Status: **Active**
 - Product Phase: **Phase 2 Complete / Phase 3 Planned**
-- Latest Verification Milestone: **TEST 14 — Encryption & Secret Handling (CLOSED / VERIFIED)**
+- Latest Verification Milestone: **TEST 15 — Async Jobs, Cron, Notifications & Retry Behavior (CLOSED / VERIFIED)**
 - Latest ADR: **ADR-030**
 - Next Scheduled Review: **After Phase 3 Completion**
 
