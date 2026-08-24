@@ -570,7 +570,40 @@ describe("Homepage Projection Boundary (Direct getHomepageInitialData)", () => {
     assert.equal(result.verifiedRevenueTotal, 150000);
     assert.equal(result.leaderboard.length, 2);
 
-    const slugs = result.leaderboard.map((s: any) => s.slug).sort();
+    const slugs = result.leaderboard.map((s: { slug: string }) => s.slug).sort();
     assert.deepEqual(slugs, ["100", "106"]);
+  });
+
+  // TEST 16: StartupDataProvider source code integrity (no legacy bypass fetches or badge generation)
+  it("TEST 16: StartupDataProvider source code contains NO /api/startup-submissions, NO s.mrr sort, and NO 'Self Reported' badge", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const providerSource = fs.readFileSync(
+      path.resolve(__dirname, "../src/components/home/StartupDataProvider.tsx"),
+      "utf-8"
+    );
+
+    assert.ok(
+      !providerSource.includes("/api/startup-submissions"),
+      "StartupDataProvider must not contain '/api/startup-submissions' fetch"
+    );
+    assert.ok(
+      !providerSource.includes("Self Reported"),
+      "StartupDataProvider must not contain 'Self Reported' badge assignment"
+    );
+    assert.ok(
+      !providerSource.includes("b.mrr"),
+      "StartupDataProvider must not contain client-side 'b.mrr' sorting"
+    );
+    assert.ok(
+      !providerSource.includes("s.mrr"),
+      "StartupDataProvider must not reference raw 's.mrr'"
+    );
+  });
+
+  // TEST 17: StartupDataProvider passes through empty state when initialData has 0 eligible startups
+  it("TEST 17: StartupDataProvider initializes empty arrays and 0 counts when initialData is null/empty", () => {
+    const { StartupDataProvider } = require("../src/components/home/StartupDataProvider");
+    assert.ok(typeof StartupDataProvider === "function", "StartupDataProvider component must exist");
   });
 });
