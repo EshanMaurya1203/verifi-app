@@ -17,6 +17,9 @@ import {
   computeVerificationState,
 } from "@/lib/verification-state";
 import { VerificationTimeline } from "@/components/startup/VerificationTimeline";
+import { notFound } from "next/navigation";
+import { canStartupBePublic } from "@/lib/visibility";
+import { isDemoStartupUserId } from "@/lib/verification-data";
 import { getSiteUrl } from "@/lib/site-url";
 import { formatCurrency, formatGrowth } from "@/lib/formatters";
 import { USD_TO_INR } from "@/lib/revenue-aggregation";
@@ -148,7 +151,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const user = await getAuthenticatedUser();
   const profileData = await getStartupProfileData(slug);
 
-  if (!profileData || (!profileData.startup.is_public && profileData.startup.user_id !== user?.id)) {
+  if (
+    !profileData ||
+    (!profileData.startup.is_public && profileData.startup.user_id !== user?.id && !isAdmin(user?.email)) ||
+    (process.env.NODE_ENV === "production" && isDemoStartupUserId(profileData.startup.user_id))
+  ) {
     return { title: "Startup Not Found | Verifii" };
   }
 
@@ -215,17 +222,12 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   const profileData = await getStartupProfileData(slug);
   const user = await getAuthenticatedUser();
 
-  if (!profileData || (!profileData.startup.is_public && profileData.startup.user_id !== user?.id)) {
-    return (
-      <div className="min-h-screen bg-neutral-950 text-white font-sans flex flex-col items-center justify-center">
-        <Navbar />
-        <AlertTriangle className="w-12 h-12 text-neutral-600 mb-4 animate-pulse" />
-        <h1 className="text-2xl font-bold mb-2">Profile Latency</h1>
-        <p className="text-neutral-400 max-w-sm text-center leading-relaxed">
-          The requested startup profile cannot be verified right now. The live database connection may be experiencing high latency. Please try refreshing.
-        </p>
-      </div>
-    );
+  if (
+    !profileData ||
+    (!profileData.startup.is_public && profileData.startup.user_id !== user?.id && !isAdmin(user?.email)) ||
+    (process.env.NODE_ENV === "production" && isDemoStartupUserId(profileData.startup.user_id))
+  ) {
+    notFound();
   }
 
   const { startup, revenueRes, fraudRes, providerRes, logsRes, snapshotRes } = profileData;

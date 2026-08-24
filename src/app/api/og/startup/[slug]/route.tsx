@@ -5,6 +5,7 @@ import {
   computeVerificationState,
 } from "@/lib/verification-state";
 import { isDemoStartupUserId } from "@/lib/verification-data";
+import { canStartupBePublic } from "@/lib/visibility";
 
 export const runtime = "edge";
 
@@ -34,12 +35,16 @@ export async function GET(
       // 1. Fetch startup basic info
       const { data: startup, error: startupError } = await supabaseServer
         .from("startup_submissions")
-        .select("id, startup_name, mrr, penalty_count, user_id, verification_type, proof_url")
+        .select("id, startup_name, mrr, penalty_count, user_id, verification_type, proof_url, payment_connected")
         .eq("slug", slug)
         .eq("is_public", true)
         .maybeSingle();
 
       if (startupError || !startup) {
+        return new Response("Startup not found", { status: 404 });
+      }
+
+      if (process.env.NODE_ENV === "production" && isDemoStartupUserId(startup.user_id)) {
         return new Response("Startup not found", { status: 404 });
       }
 

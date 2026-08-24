@@ -7,7 +7,10 @@ import { getStartupMetrics } from "@/lib/revenue-aggregation";
 import { formatCurrency, formatGrowth, formatRank } from "@/lib/formatters";
 import type { Metadata } from "next";
 import { TrustBadge } from "@/components/startup/TrustBadge";
-import { computeVerificationStatesForStartups } from "@/lib/verification-data";
+import {
+  computeVerificationStatesForStartups,
+  isDemoStartupUserId,
+} from "@/lib/verification-data";
 import {
   parseLeaderboardParams,
   getPaginationOffsets,
@@ -54,7 +57,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
   const supabase = getSupabaseServer();
 
-  // 1. Construct authoritative query with mandatory is_public = true boundary
+  // 1. Construct authoritative query with mandatory is_public = true and payment_connected = true boundary
   let query = supabase
     .from("startup_submissions")
     .select(
@@ -68,11 +71,13 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         biz_type,
         mrr,
         verification_status,
-        payment_connected
-      `,
-      { count: "exact" }
+        payment_connected,
+        user_id
+      `
     )
-    .eq("is_public", true);
+    .eq("is_public", true)
+    .eq("payment_connected", true)
+    .neq("verification_status", "flagged");
 
   // 2. Apply search query (startup_name only)
   if (parsedParams.q) {
@@ -99,18 +104,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     }
   }
 
-  // 6. Apply database-level verification filter if verified requested
-  if (parsedParams.verification === "verified") {
-    query = query.eq("payment_connected", true);
-  }
-
-  // 7. Order and Paginate at database level
-  query = query.order("mrr", { ascending: false });
-
-  const { from, to } = getPaginationOffsets(parsedParams.page, parsedParams.pageSize);
-  query = query.range(from, to);
-
-  const { data, count, error, ok } = await safeSupabaseQuery<any[]>(query);
+  const { data, error, ok } = await safeSupabaseQuery<any[]>(query);
 
   if (error || !ok) {
     if (process.env.NODE_ENV === "development") {
@@ -118,19 +112,34 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     }
   }
 
-  const totalMatchingCount = typeof count === "number" ? count : (data || []).length;
-  const startupIds = (data || []).map((s) => Number(s.id)).filter(Number.isFinite);
+  // 6. Filter out demo user IDs (never eligible for public leaderboard)
+  const candidateRows = (data || []).filter(
+    (s) => !isDemoStartupUserId(s.user_id)
+  );
+
+  const startupIds = candidateRows.map((s) => Number(s.id)).filter(Number.isFinite);
   const demoUserIds = new Map<number, string | null>();
 
-  // 8. Batch evaluate verification states for the paginated slice
+  // 7. Batch evaluate verification states against the authoritative verification engine
   const verificationByStartup = await computeVerificationStatesForStartups(
     startupIds,
     demoUserIds
   );
 
-  // 9. Attach real-time revenue metrics and verification evidence
+  // 8. Filter strictly for startups with authoritative verification evidence (REVENUE_VERIFIED)
+  let verifiedCandidates = candidateRows.filter((sub) => {
+    const vState = verificationByStartup.get(Number(sub.id));
+    return vState?.hasVerificationEvidence === true;
+  });
+
+  // If self-reported was explicitly requested, return empty (unverified/self-reported startups are not permitted on the public leaderboard)
+  if (parsedParams.verification === "self_reported") {
+    verifiedCandidates = [];
+  }
+
+  // 9. Attach real-time revenue metrics and verified revenue
   const dataWithMetrics = await Promise.all(
-    (data || []).map(async (row) => {
+    verifiedCandidates.map(async (row) => {
       let metrics;
       try {
         metrics = await getStartupMetrics(row.id);
@@ -146,30 +155,22 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         ...row,
         growth: metrics?.growthPercentage || 0,
         verifiedRevenue: verifiedRev,
-        hasVerificationEvidence: vState?.hasVerificationEvidence || false,
+        hasVerificationEvidence: true,
       };
     })
   );
 
-  // 10. Filter post-computation against authoritative verification state
-  let displayedStartups = dataWithMetrics;
-  if (parsedParams.verification === "verified") {
-    displayedStartups = displayedStartups.filter((s) => s.hasVerificationEvidence);
-  } else if (parsedParams.verification === "self_reported") {
-    displayedStartups = displayedStartups.filter((s) => !s.hasVerificationEvidence);
-  }
-
-  // Sorting Logic: Verified Revenue first, then Verification Evidence, then Growth
-  const sortedData = displayedStartups.sort((a, b) => {
+  // 10. Sort by verified revenue descending, then growth descending
+  const sortedData = dataWithMetrics.sort((a, b) => {
     const revA = Number(a.verifiedRevenue) || 0;
     const revB = Number(b.verifiedRevenue) || 0;
     if (revA !== revB) return revB - revA;
-
-    if (a.hasVerificationEvidence !== b.hasVerificationEvidence) {
-      return a.hasVerificationEvidence ? -1 : 1;
-    }
     return (b.growth || 0) - (a.growth || 0);
   });
+
+  const totalMatchingCount = sortedData.length;
+  const { from } = getPaginationOffsets(parsedParams.page, parsedParams.pageSize);
+  const paginatedData = sortedData.slice(from, from + parsedParams.pageSize);
 
   const hasActiveFilters =
     Boolean(parsedParams.q) ||
@@ -252,52 +253,36 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
           </div>
 
           <div className="divide-y divide-white/[0.04]">
-            {sortedData.map((row, i) => {
-              const isFlagged = row.verification_status === "flagged";
+            {paginatedData.map((row, i) => {
               const confidenceTier =
                 verificationByStartup.get(Number(row.id))?.confidenceTier ||
-                "SELF_REPORTED";
-              const isVerified =
-                verificationByStartup.get(Number(row.id))?.hasVerificationEvidence ??
-                false;
-              const isSelfReported = confidenceTier === "SELF_REPORTED" || isFlagged;
+                "REVENUE_VERIFIED";
+              const isVerified = true;
 
               return (
                 <Link
                   href={`/startup/${row.slug}`}
                   key={row.id}
-                  className={`grid grid-cols-12 px-6 md:px-10 py-6 md:py-8 items-center transition-all group ${
-                    isSelfReported
-                      ? "opacity-50 bg-transparent hover:opacity-100 hover:bg-white/[0.015]"
-                      : "bg-white/[0.01] hover:bg-white/[0.03]"
-                  }`}
+                  className="grid grid-cols-12 px-6 md:px-10 py-6 md:py-8 items-center transition-all group bg-white/[0.01] hover:bg-white/[0.03]"
                 >
-                  <div
-                    className={`col-span-2 md:col-span-1 text-center font-syne text-sm md:text-lg font-bold transition-colors ${
-                      isVerified ? "text-neutral-500 group-hover:text-neutral-300" : "text-neutral-700"
-                    }`}
-                  >
+                  <div className="col-span-2 md:col-span-1 text-center font-syne text-sm md:text-lg font-bold transition-colors text-neutral-500 group-hover:text-neutral-300">
                     {formatRank(rankOffset + i + 1)}
                   </div>
 
                   <div className="col-span-6 md:col-span-4 space-y-1.5">
-                    <p
-                      className={`font-bold text-sm md:text-lg tracking-tight transition-colors leading-none ${
-                        isVerified ? "text-white group-hover:text-primary" : "text-neutral-400"
-                      }`}
-                    >
+                    <p className="font-bold text-sm md:text-lg tracking-tight transition-colors leading-none text-white group-hover:text-primary">
                       {row.startup_name || row.name}
                     </p>
                     <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
-                      <span className={`text-xs font-semibold ${isVerified ? "text-neutral-400" : "text-neutral-600"}`}>
+                      <span className="text-xs font-semibold text-neutral-400">
                         {row.founder_name || "Anonymous"}
                       </span>
                       <div className="w-1 h-1 bg-neutral-800 rounded-full" />
-                      <span className={`text-[10px] font-bold uppercase tracking-wider ${isVerified ? "text-neutral-500" : "text-neutral-700"}`}>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                         {row.biz_type || "Startup"}
                       </span>
                       <div className="w-1 h-1 bg-neutral-800 rounded-full" />
-                      <span className={`text-[10px] font-bold uppercase tracking-wider ${isVerified ? "text-neutral-500" : "text-neutral-700"}`}>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                         {row.city || "India"}
                       </span>
                     </div>
@@ -308,32 +293,20 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   </div>
 
                   <div className="col-span-4 md:col-span-3 text-right px-2 md:px-4">
-                    <p
-                      className={`font-syne text-base md:text-xl font-extrabold tracking-tight tabular-nums leading-none ${
-                        isVerified ? "text-white" : "text-neutral-500"
-                      }`}
-                    >
-                      {formatCurrency(row.mrr || 0, "INR", { compact: true })}
+                    <p className="font-syne text-base md:text-xl font-extrabold tracking-tight tabular-nums leading-none text-white">
+                      {formatCurrency(row.verifiedRevenue || 0, "INR", { compact: true })}
                     </p>
                     <p className="text-[10px] mt-1.5 space-x-1 md:space-x-2 leading-none flex flex-wrap justify-end gap-1">
-                      <span
-                        className={`font-bold uppercase tracking-wider hidden sm:inline ${
-                          isVerified ? "text-neutral-500" : "text-neutral-700"
-                        }`}
-                      >
+                      <span className="font-bold uppercase tracking-wider hidden sm:inline text-neutral-500">
                         Monthly Audited
                       </span>
                       {row.growth !== undefined && (
                         <span
                           className={
                             row.growth > 0
-                              ? isVerified
-                                ? "text-emerald-400 font-bold"
-                                : "text-emerald-500/50 font-bold"
+                              ? "text-emerald-400 font-bold"
                               : row.growth < 0
-                              ? isVerified
-                                ? "text-red-400 font-bold"
-                                : "text-red-500/50 font-bold"
+                              ? "text-red-400 font-bold"
                               : "text-neutral-500 font-bold"
                           }
                         >
@@ -348,18 +321,8 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   </div>
 
                   <div className="col-span-1 hidden md:flex justify-end">
-                    <div
-                      className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-lg ${
-                        isVerified
-                          ? "bg-neutral-900 border-white/10 group-hover:border-primary/50"
-                          : "bg-neutral-950 border-white/5"
-                      }`}
-                    >
-                      <ChevronRight
-                        className={`w-4 h-4 transition-all transform group-hover:translate-x-0.5 ${
-                          isVerified ? "text-neutral-500 group-hover:text-white" : "text-neutral-700 group-hover:text-neutral-500"
-                        }`}
-                      />
+                    <div className="w-9 h-9 rounded-xl border flex items-center justify-center transition-all shadow-lg bg-neutral-900 border-white/10 group-hover:border-primary/50">
+                      <ChevronRight className="w-4 h-4 transition-all transform group-hover:translate-x-0.5 text-neutral-500 group-hover:text-white" />
                     </div>
                   </div>
                 </Link>
@@ -374,7 +337,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   Verifii protocol is currently experiencing dynamic sync latency. Real-time ranking verification is temporarily paused. Please reload.
                 </p>
               </div>
-            ) : sortedData.length === 0 ? (
+            ) : paginatedData.length === 0 ? (
               <LeaderboardEmptyState hasActiveFilters={hasActiveFilters} />
             ) : null}
           </div>

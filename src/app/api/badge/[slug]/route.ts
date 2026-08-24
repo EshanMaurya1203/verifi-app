@@ -4,6 +4,7 @@ import {
   computeVerificationState,
 } from "@/lib/verification-state";
 import { isDemoStartupUserId } from "@/lib/verification-data";
+import { canStartupBePublic } from "@/lib/visibility";
 
 /** Escape XML-special characters for safe interpolation into SVG/XML text nodes and attributes. */
 export function escapeXml(unsafe: string): string {
@@ -35,6 +36,10 @@ export async function GET(
   const { data: startup } = await query.maybeSingle();
 
   if (!startup) {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  if (process.env.NODE_ENV === "production" && isDemoStartupUserId(startup.user_id)) {
     return new Response("Not Found", { status: 404 });
   }
 
