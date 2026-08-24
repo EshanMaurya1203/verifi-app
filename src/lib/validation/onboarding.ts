@@ -55,10 +55,22 @@ export const ALLOWED_PAYMENT_METHODS = new Set([
   "stripe",
 ]);
 
-export const ALLOWED_VERIFICATION_TYPES = new Set([
+/**
+ * Legacy verification types kept for historical DB compatibility.
+ * New submissions ONLY accept "api" (payment-provider-backed verification).
+ */
+export const LEGACY_VERIFICATION_TYPES = new Set([
   "manual",
   "social",
   "proof",
+  "api",
+]);
+
+/**
+ * Allowed verification types for NEW submissions.
+ * Manual, social, and proof are retired as new production paths.
+ */
+export const ALLOWED_VERIFICATION_TYPES = new Set([
   "api",
 ]);
 
@@ -283,35 +295,13 @@ export function validateOnboarding(rawPayload: unknown): ValidationResult {
     errors.push({ field: "biz_type", message: "Business type must be between 2 and 80 characters." });
   }
 
-  // 5. MRR (Numeric, 0 to 999,999,999)
-  const rawMrr = payload.mrr;
-  let mrrValue = NaN;
-  if (typeof rawMrr === "number") {
-    mrrValue = rawMrr;
-  } else if (typeof rawMrr === "string" && rawMrr.trim() !== "") {
-    mrrValue = Number(rawMrr.trim());
-  }
+  // 5. MRR — No longer client-supplied for new submissions.
+  // Revenue is derived exclusively from connected payment providers.
+  // Default to 0 for DB storage compatibility.
+  const mrrValue = 0;
 
-  if (isNaN(mrrValue) || !isFinite(mrrValue)) {
-    errors.push({ field: "mrr", message: "MRR must be a valid number." });
-  } else if (mrrValue < 0 || mrrValue > MAX_REVENUE_VALUE) {
-    errors.push({ field: "mrr", message: `MRR must be between 0 and $${MAX_REVENUE_VALUE.toLocaleString()}.` });
-  }
-
-  // 6. ARR (Numeric, 0 to 999,999,999)
-  const rawArr = payload.arr;
-  let arrValue = NaN;
-  if (typeof rawArr === "number") {
-    arrValue = rawArr;
-  } else if (typeof rawArr === "string" && rawArr.trim() !== "") {
-    arrValue = Number(rawArr.trim());
-  }
-
-  if (isNaN(arrValue) || !isFinite(arrValue)) {
-    errors.push({ field: "arr", message: "ARR must be a valid number." });
-  } else if (arrValue < 0 || arrValue > MAX_REVENUE_VALUE) {
-    errors.push({ field: "arr", message: `ARR must be between 0 and $${MAX_REVENUE_VALUE.toLocaleString()}.` });
-  }
+  // 6. ARR — Same as MRR: not client-supplied, default to 0.
+  const arrValue = 0;
 
   // 7. City / Country
   const city = typeof payload.city === "string" ? payload.city.trim() : "";
@@ -332,9 +322,11 @@ export function validateOnboarding(rawPayload: unknown): ValidationResult {
     }
   }
 
-  // 9. Website URL (Optional, but strictly validated if provided)
+  // 9. Website URL (REQUIRED for new submissions)
   let normalizedWebsite: string | null = null;
-  if (payload.website && typeof payload.website === "string" && payload.website.trim() !== "") {
+  if (!payload.website || typeof payload.website !== "string" || payload.website.trim() === "") {
+    errors.push({ field: "website", message: "Website URL is required." });
+  } else {
     const res = normalizeWebsiteUrl(payload.website);
     if (res.error) {
       errors.push({ field: "website", message: res.error });
@@ -371,12 +363,13 @@ export function validateOnboarding(rawPayload: unknown): ValidationResult {
     errors.push({ field: "notes", message: "Notes cannot exceed 5000 characters." });
   }
 
-  // 13. Verification Type
+  // 13. Verification Type — only 'api' is accepted for new submissions.
+  // Legacy types (manual, social, proof) are retired as new production paths.
   const verificationType = typeof payload.verification_type === "string" && payload.verification_type.trim()
     ? payload.verification_type.trim()
-    : "manual";
+    : "api";
   if (!ALLOWED_VERIFICATION_TYPES.has(verificationType)) {
-    errors.push({ field: "verification_type", message: "Invalid verification method selected." });
+    errors.push({ field: "verification_type", message: "Only payment-provider verification is accepted. Manual, social, and upload-proof methods are no longer available." });
   }
 
   if (errors.length > 0) {

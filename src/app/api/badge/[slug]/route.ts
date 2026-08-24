@@ -4,7 +4,6 @@ import {
   computeVerificationState,
 } from "@/lib/verification-state";
 import { isDemoStartupUserId } from "@/lib/verification-data";
-import { canStartupBePublic } from "@/lib/visibility";
 
 /** Escape XML-special characters for safe interpolation into SVG/XML text nodes and attributes. */
 export function escapeXml(unsafe: string): string {

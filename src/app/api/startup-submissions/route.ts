@@ -68,7 +68,11 @@ async function generateUniqueSlug(startupName: string): Promise<string> {
   return `${baseSlug}-${counter}`;
 }
 
-const allowedVerificationTypes = new Set(["manual", "social", "proof", "api"]);
+/**
+ * Allowed verification types for NEW submissions.
+ * Legacy types (manual, social, proof) are kept in DB for historical rows.
+ */
+const allowedVerificationTypes = new Set(["api"]);
 
 const allowedPaymentMethods = new Set([
   "razorpay",
@@ -100,8 +104,8 @@ function validatePayload(payload: StartupSubmissionPayload): string | null {
   if (!isValidEmail(payload.email.trim())) return "email is invalid";
   if (!isNonEmptyString(payload.startup_name)) return "startup_name is required";
   if (!isNonEmptyString(payload.biz_type)) return "biz_type is required";
-  if (payload.mrr == null || payload.mrr === "") return "mrr is required";
-  if (payload.arr == null || payload.arr === "") return "arr is required";
+  // MRR and ARR are no longer client-supplied; removed from validation
+  // Revenue is derived exclusively from connected payment providers
   if (!isNonEmptyString(payload.city)) return "city is required";
   if (!isWithinMaxLength(payload.name, 120)) return "name is too long";
   if (!isWithinMaxLength(payload.startup_name, 120))
@@ -363,8 +367,8 @@ export async function POST(req: Request) {
             startup_name: normalizedStartupName,
             website: data.website?.trim() || null,
             biz_type: data.biz_type.trim(),
-            mrr: mrrValue,
-            arr: arrValue,
+            mrr: 0,
+            arr: 0,
             payment_methods: data.payment_methods,
             twitter: data.twitter?.trim() || null,
             linkedin: data.linkedin?.trim() || null,
@@ -511,21 +515,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const { count, error: countError } = await supabaseServer
-      .from("startup_submissions")
-      .select("*", { count: "exact", head: true });
-
-    if (countError) {
-      logger.warn("startup submission count error", {
-        event: LogEvent.SUBMISSION_COUNT_ERROR,
-        error: countError.message,
-      });
-    }
-
-    const slotNumber = typeof count === "number" ? count : null;
     return NextResponse.json({
       success: true,
-      slot_number: slotNumber,
       startup_id: startupId,
       slug: insertedData[0]?.slug ?? null,
       data: insertedData,

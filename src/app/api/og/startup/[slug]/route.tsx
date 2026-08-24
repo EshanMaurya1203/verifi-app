@@ -5,7 +5,6 @@ import {
   computeVerificationState,
 } from "@/lib/verification-state";
 import { isDemoStartupUserId } from "@/lib/verification-data";
-import { canStartupBePublic } from "@/lib/visibility";
 
 export const runtime = "edge";
 

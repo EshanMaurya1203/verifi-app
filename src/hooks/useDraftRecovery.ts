@@ -11,14 +11,14 @@ export interface PersistedFormFields {
   startupName: string;
   website: string;
   businessType: string;
-  mrr: string;
-  arr: string;
+  mrr?: string;
+  arr?: string;
   twitter: string;
   linkedin: string;
   cityCountry: string;
   notes: string;
   paymentMethods: string[];
-  verificationType: string;
+  verificationType?: string;
   apiProvider: string;
 }
 

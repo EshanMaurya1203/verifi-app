@@ -28,14 +28,11 @@ type FormState = {
   startupName: string;
   website: string;
   businessType: string;
-  mrr: string;
-  arr: string;
   twitter: string;
   linkedin: string;
   cityCountry: string;
   notes: string;
   paymentMethods: string[];
-  verificationType: string;
   apiProvider: string;
   apiKey: string;
 };
@@ -58,11 +55,6 @@ interface OneOffVerifyResponse {
   error?: string;
 }
 
-interface StartupCountResponse {
-  count?: number;
-  error?: string;
-}
-
 interface SubmissionDataItem {
   id?: number | string;
   slug?: string;
@@ -78,7 +70,6 @@ interface StartupSubmissionResponse {
   slug?: string;
   claimCount?: number;
   data?: SubmissionDataItem | SubmissionDataItem[];
-  slot_number?: number;
 }
 
 const ONBOARDING_STARTED_KEY = "verifii:onboarding-started";
@@ -112,14 +103,11 @@ const initialForm: FormState = {
   startupName: "",
   website: "",
   businessType: "",
-  mrr: "",
-  arr: "",
   twitter: "",
   linkedin: "",
   cityCountry: "",
   notes: "",
-  paymentMethods: [],
-  verificationType: "",
+  paymentMethods: ["stripe"],
   apiProvider: "stripe",
   apiKey: "",
 };
@@ -138,12 +126,9 @@ export default function SubmitPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
-  const [claimedCount, setClaimedCount] = useState(0);
-  const [slotNumber, setSlotNumber] = useState<number | null>(null);
   const [step, setStep] = useState<Step>(1);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [proofFile, setProofFile] = useState<File | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState<{ mrr: number; currency: string } | null>(null);
@@ -182,14 +167,11 @@ export default function SubmitPage() {
       startupName: draft.data.startupName ?? prev.startupName,
       website: draft.data.website ?? prev.website,
       businessType: draft.data.businessType ?? prev.businessType,
-      mrr: draft.data.mrr ?? prev.mrr,
-      arr: draft.data.arr ?? prev.arr,
       twitter: draft.data.twitter ?? prev.twitter,
       linkedin: draft.data.linkedin ?? prev.linkedin,
       cityCountry: draft.data.cityCountry ?? prev.cityCountry,
       notes: draft.data.notes ?? prev.notes,
       paymentMethods: draft.data.paymentMethods ?? prev.paymentMethods,
-      verificationType: draft.data.verificationType ?? prev.verificationType,
       apiProvider: draft.data.apiProvider ?? prev.apiProvider,
     }));
     if (draft.step >= 1 && draft.step <= 4) {
@@ -223,7 +205,6 @@ export default function SubmitPage() {
     return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
   };
 
-
   const handleVerifyRevenue = async () => {
     setSubmitError("");
     if (form.apiProvider === "stripe" && !form.apiKey) {
@@ -253,15 +234,12 @@ export default function SubmitPage() {
     if (ok && data && data.revenue !== undefined) {
       setVerifyStatus({ mrr: data.revenue, currency: data.currency ?? "USD" });
       setVerifiedRevenue(data.revenue);
-      // Automatically update the MRR field with the verified value
-      onInputChange("mrr", Math.round(data.revenue).toString());
       setSuccessMessage(`Verified MRR: ${data.currency} ${Math.round(data.revenue)}`);
     } else {
       setSubmitError(error?.message || data?.error || "Verification failed");
     }
     setIsVerifying(false);
   };
-
 
   useEffect(() => {
     if (successMessage) {
@@ -286,16 +264,6 @@ export default function SubmitPage() {
   const sectionTitleClass =
     "mb-4 border-b border-border pb-2 text-sm font-extrabold text-white uppercase tracking-wider";
 
-  const twitterShareUrl = useMemo(() => {
-    const text =
-      "Just joined Verifii's founding member cohort. Building in public with verified revenue.";
-    return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-  }, []);
-  const totalSpots = 50;
-  const progressPercentage = Math.max(
-    0,
-    Math.min(100, (claimedCount / totalSpots) * 100)
-  );
   const stepProgressPercentage = (step / 4) * 100;
 
   useEffect(() => {
@@ -325,8 +293,6 @@ export default function SubmitPage() {
           }
           setIsLoading(false);
         } else {
-          // Unauthenticated user — show login prompt instead of auto-redirecting
-          // Auto-redirecting creates an OAuth loop causing "bad_oauth_state" errors
           setIsLoading(false);
         }
       } catch (err) {
@@ -336,11 +302,6 @@ export default function SubmitPage() {
         if (isMounted) {
           setIsLoading(false);
         }
-      }
-
-      const { data: countData, ok } = await safeFetch<StartupCountResponse>("/api/startup-submissions/count");
-      if (ok && countData && isMounted && typeof countData.count === "number") {
-        setClaimedCount(countData.count);
       }
     };
 
@@ -400,9 +361,9 @@ export default function SubmitPage() {
       startup_name: form.startupName,
       website: form.website,
       biz_type: form.businessType,
-      mrr: form.mrr,
-      arr: form.arr,
-      verification_type: form.verificationType,
+      mrr: 0,
+      arr: 0,
+      verification_type: "api",
       payment_methods: form.paymentMethods,
       twitter: form.twitter,
       linkedin: form.linkedin,
@@ -418,9 +379,6 @@ export default function SubmitPage() {
       email: "email",
       startup_name: "startupName",
       biz_type: "businessType",
-      mrr: "mrr",
-      arr: "arr",
-      verification_type: "verificationType",
       city: "cityCountry",
       website: "website",
       twitter: "twitter",
@@ -434,10 +392,6 @@ export default function SubmitPage() {
       } else if (fieldMap[err.field]) {
         nextErrors[fieldMap[err.field]] = err.message;
       }
-    }
-
-    if (form.verificationType === "proof" && !proofFile) {
-      nextErrors.verificationType = "Upload proof of revenue before submitting";
     }
 
     return nextErrors;
@@ -459,13 +413,7 @@ export default function SubmitPage() {
     }
 
     if (stepToValidate === 3) {
-      if (allErrors.mrr) stepErrors.mrr = allErrors.mrr;
-      if (allErrors.arr) stepErrors.arr = allErrors.arr;
-      if (allErrors.verificationType) stepErrors.verificationType = allErrors.verificationType;
       if (allErrors.paymentMethods) stepErrors.paymentMethods = allErrors.paymentMethods;
-      if (form.verificationType === "proof" && !proofFile) {
-        stepErrors.verificationType = "Upload proof of revenue to continue";
-      }
     }
 
     if (stepToValidate === 4) {
@@ -549,7 +497,6 @@ export default function SubmitPage() {
 
     setIsSubmitting(true);
     try {
-      // Re-verify user is still authenticated
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) {
         setSubmitError("You must be logged in. Please refresh and try again.");
@@ -557,55 +504,22 @@ export default function SubmitPage() {
         return;
       }
 
-      let proof_object_id: string | null = null;
-
-      if (proofFile) {
-        const fileId = crypto.randomUUID();
-        const uploadPath = `${authData.user.id}/${fileId}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("proofs")
-          .upload(uploadPath, proofFile);
-
-        if (uploadError) {
-          console.error("UPLOAD ERROR:", uploadError);
-          setSubmitError(uploadError.message);
-          trackOnboardingEvent({
-            event: ONBOARDING_ANALYTICS_EVENTS.submission_failed,
-            step: 4,
-            metadata: { reason: "upload_failed" },
-            isAuthenticated: Boolean(user),
-          });
-          setIsSubmitting(false);
-          return;
-        }
-
-        proof_object_id = fileId;
-      }
-
-      const confidenceMap: Record<string, number> = {
-        manual: 20,
-        social: 40,
-        proof: 70,
-        api: 100,
-      };
-
       const payload = {
         name: form.fullName,
         email: form.email,
         startup_name: form.startupName,
         website: form.website,
         biz_type: form.businessType,
-        mrr: Number(form.mrr),
-        arr: Number(form.arr),
-        verification_type: form.verificationType,
+        mrr: 0,
+        arr: 0,
+        verification_type: "api",
         payment_methods: form.paymentMethods,
         twitter: form.twitter,
         linkedin: form.linkedin,
         city: form.cityCountry,
         notes: form.notes,
-        proof_object_id: proof_object_id,
-        confidence_score: confidenceMap[form.verificationType] ?? 0,
+        proof_object_id: null,
+        confidence_score: 100,
         verified_revenue: verifiedRevenue || null,
         verification_source: verifiedRevenue ? form.apiProvider : null,
       };
@@ -646,7 +560,6 @@ export default function SubmitPage() {
           if (!ok) {
             failureReason = "network_error";
           }
-          // Never expose raw DB errors (e.g. 23505, duplicate key, constraint violation)
           if (msg.includes("23505") || msg.includes("duplicate key") || msg.includes("constraint")) {
             setSubmitError("This startup name already exists. Please choose another name.");
           } else {
@@ -676,7 +589,7 @@ export default function SubmitPage() {
         ? Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
         : undefined;
 
-      const provider = form.verificationType === "api" ? (form.apiProvider as "stripe" | "razorpay") : undefined;
+      const provider = form.apiProvider as "stripe" | "razorpay" | undefined;
       const rawId = result?.startupId || result?.startup_id || created?.id;
       const startupIdNum = typeof rawId === "number" && rawId > 0 ? rawId : undefined;
 
@@ -699,11 +612,8 @@ export default function SubmitPage() {
         return;
       }
 
-      setSuccessMessage("Startup submitted successfully!");
+      setSuccessMessage("Startup profile created successfully!");
       setIsSuccess(true);
-      if (typeof result.slot_number === "number") {
-        setSlotNumber(result.slot_number);
-      }
       setForm(initialForm);
       setStep(1);
     } catch (err) {
@@ -788,30 +698,11 @@ export default function SubmitPage() {
           List your startup on Verifii — <span className="text-primary">free</span>
         </h1>
         <p className="mt-3 text-base font-normal text-muted-foreground">
-          Get verified and join the most transparent startup revenue database.
+          Get verified and join the transparent, payment-provider-backed startup database.
         </p>
       </header>
 
-      <section className="mx-auto mt-8 max-w-[640px] px-6">
-        <div className="rounded-xl border border-[rgba(245,166,35,0.2)] bg-card px-5 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[13px] text-muted-foreground">
-              🔥 Founding member spots
-            </div>
-            <div className="font-syne text-[14px] font-bold text-[#f5a623]">
-              {claimedCount} / {totalSpots} claimed
-            </div>
-          </div>
-          <div className="mt-2.5 h-[3px] rounded-full bg-accent">
-            <div
-              className="h-[3px] rounded-full bg-[#f5a623]"
-              style={{ width: `${progressPercentage}%` }}
-            />
-          </div>
-        </div>
-      </section>
-
-      <main className="mx-auto max-w-[640px] px-6 pb-20">
+      <main className="mx-auto max-w-[640px] px-6 pb-20 pt-8">
         <div className="relative mt-0 overflow-hidden rounded-2xl border border-border bg-card p-6 md:p-10">
           <div className="pointer-events-none absolute left-0 right-0 top-0 h-px bg-linear-to-r from-transparent via-[#b9ff4b] to-transparent" />
 
@@ -824,21 +715,16 @@ export default function SubmitPage() {
               <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[rgba(185,255,75,0.3)] bg-primary/20">
                 <Check className="h-7 w-7 text-primary" />
               </div>
-              <h2 className="mt-6 font-syne text-[32px] font-extrabold">You&apos;re in!</h2>
-              <div className="mt-3 inline-flex rounded-lg border border-[rgba(185,255,75,0.3)] bg-primary/20 px-4 py-2 font-syne text-[16px] font-bold text-primary">
-                Founding Member #{slotNumber ?? claimedCount + 1}
-              </div>
+              <h2 className="mt-6 font-syne text-[32px] font-extrabold">Profile Created!</h2>
               <p className="mt-4 max-w-[520px] text-[14px] text-muted-foreground">
-                Your startup was created. Continue to connect your payment provider and
-                complete verification.
+                Your startup profile was created. Connect your payment provider to complete revenue verification.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link
-                  href={twitterShareUrl}
-                  target="_blank"
-                  className="rounded-xl border border-border bg-[#161616] px-4 py-2 text-sm text-foreground transition-colors hover:border-border"
+                  href="/dashboard"
+                  className="rounded-xl bg-primary px-6 py-2.5 font-syne text-sm font-bold text-primary-foreground transition-colors hover:bg-[#a8e630]"
                 >
-                  Share on Twitter
+                  Go to Dashboard →
                 </Link>
               </div>
             </motion.div>
@@ -988,12 +874,18 @@ export default function SubmitPage() {
                       ) : null}
                     </div>
                     <div>
-                      <label className={labelClass}>Website URL</label>
+                      <label className={labelClass}>
+                        Website URL <span className="text-primary">*</span>
+                      </label>
                       <input
-                        className={inputClass}
+                        className={`${inputClass} ${errors.website ? "border-border" : ""}`}
                         value={form.website}
                         onChange={(e) => onInputChange("website", e.target.value)}
+                        placeholder="https://yourcompany.com"
                       />
+                      {errors.website ? (
+                        <p className="mt-1 text-xs text-[#ff4b4b]">{errors.website}</p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="mt-4">
@@ -1024,222 +916,70 @@ export default function SubmitPage() {
 
               {step === 3 && (
                 <section>
-                  <h3 className={sectionTitleClass}>Revenue info</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className={labelClass}>
-                        MRR — Monthly Recurring Revenue{" "}
-                        <span className="text-primary">*</span>
-                      </label>
-                      <input
-                        className={`${inputClass} ${errors.mrr ? "border-border" : ""}`}
-                        value={form.mrr}
-                        onChange={(e) => onInputChange("mrr", e.target.value)}
-                      />
-                      {errors.mrr ? (
-                        <p className="mt-1 text-xs text-[#ff4b4b]">{errors.mrr}</p>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className={labelClass}>
-                        ARR — Annual Recurring Revenue{" "}
-                        <span className="text-primary">*</span>
-                      </label>
-                      <input
-                        className={`${inputClass} ${errors.arr ? "border-border" : ""}`}
-                        value={form.arr}
-                        onChange={(e) => onInputChange("arr", e.target.value)}
-                      />
-                      {errors.arr ? (
-                        <p className="mt-1 text-xs text-[#ff4b4b]">{errors.arr}</p>
-                      ) : null}
-                    </div>
+                  <h3 className={sectionTitleClass}>Revenue Verification</h3>
+                  <div className="rounded-xl border border-white/10 bg-[#161616]/60 p-5 mb-6">
+                    <p className="text-[13px] text-muted-foreground leading-relaxed">
+                      Verifii calculates revenue exclusively from connected payment-provider data.
+                      Manual revenue claims are not accepted. Connect Stripe or Razorpay to verify
+                      your revenue automatically.
+                    </p>
                   </div>
 
-                  <div className="mt-8">
+                  <div className="mt-4">
                     <label className={labelClass}>
-                      How do you want to verify your revenue? <span className="text-primary">*</span>
+                      Connect Payment Provider (Optional during setup, required for verified badge)
                     </label>
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {[
-                        { id: "manual", label: "Manual", description: "(self-reported)" },
-                        { id: "social", label: "Social proof", description: "(social profile confirmation)" },
-                        { id: "proof", label: "Upload proof", description: "(invoice or dashboard export)" },
-                        { id: "api", label: "Connect API", description: "(direct API integration, recommended)" },
-                      ].map((option) => {
-                        const isSelected = form.verificationType === option.id;
-                        return (
-                          <label
-                            key={option.id}
-                            className={`flex cursor-pointer flex-col rounded-xl border p-4 transition-all duration-150 relative ${
-                              isSelected
-                                ? "border-[rgba(185,255,75,0.4)] bg-[rgba(185,255,75,0.03)]"
-                                : "border-border bg-[#161616] hover:border-border"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                                  isSelected
-                                    ? "border-primary text-primary"
-                                    : "border-muted-foreground"
-                                }`}
-                              >
-                                {isSelected && <div className="h-2 w-2 rounded-full bg-primary" />}
-                              </div>
-                              <span className="text-[14px] font-medium text-foreground">
-                                {option.label}
-                              </span>
-                            </div>
-                            <span className="ml-7 mt-1 text-[12px] text-muted-foreground">
-                              {option.description}
-                            </span>
+                    <div className="rounded-lg border border-border bg-[#161616] p-4">
+                      <p className="mb-4 text-[13px] text-muted-foreground">
+                        Test your provider credentials now or connect after profile creation.
+                      </p>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className={labelClass}>Provider</label>
+                          <div className="relative">
+                            <select
+                              className={`${inputClass} appearance-none pr-10`}
+                              value={form.apiProvider}
+                              onChange={(e) => onInputChange("apiProvider", e.target.value)}
+                            >
+                              <option value="stripe">Stripe</option>
+                              <option value="razorpay">Razorpay</option>
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className={labelClass}>API Key</label>
+                          <div className="flex gap-2">
                             <input
-                              type="radio"
-                              name="verificationType"
-                              value={option.id}
-                              checked={isSelected}
-                              onChange={(e) => onInputChange("verificationType", e.target.value)}
-                              className="sr-only"
+                              type="password"
+                              className={inputClass}
+                              value={form.apiKey}
+                              onChange={(e) => onInputChange("apiKey", e.target.value)}
+                              placeholder={form.apiProvider === "stripe" ? "sk_live_..." : "ID:SECRET"}
                             />
-                          </label>
-                        );
-                      })}
-                    </div>
-                    {errors.verificationType ? (
-                      <p className="mt-2 text-xs text-[#ff4b4b]">{errors.verificationType}</p>
-                    ) : null}
-
-                    {form.verificationType && (
-                      <div className="mt-4">
-                        {form.verificationType === "manual" && (
-                          <div className="rounded-lg border border-border bg-[#161616] p-4 text-[13px] text-muted-foreground">
-                            No extra fields required. We will manually verify your revenue.
+                            <button
+                              type="button"
+                              onClick={handleVerifyRevenue}
+                              disabled={isVerifying}
+                              className="h-11 rounded-lg bg-white/10 px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
+                            >
+                              {isVerifying ? "Verifying..." : "Verify"}
+                            </button>
                           </div>
-                        )}
-
-                        {form.verificationType === "social" && (
-                          <div className="rounded-lg border border-[rgba(185,255,75,0.4)] bg-[rgba(185,255,75,0.03)] p-4">
-                            <p className="mb-4 text-[13px] text-primary">
-                              Please review your social links below. (Also shown in Step 4)
+                          {verifyStatus && (
+                            <p className="mt-2 text-xs text-primary">
+                              ✓ Verified {verifyStatus.currency} {Math.round(verifyStatus.mrr)} MRR
                             </p>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                              <div>
-                                <label className={labelClass}>Twitter / X handle</label>
-                                <input
-                                  className={`${inputClass} border-[rgba(185,255,75,0.4)] focus:border-primary`}
-                                  value={form.twitter}
-                                  onChange={(e) => onInputChange("twitter", e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className={labelClass}>LinkedIn URL</label>
-                                <input
-                                  className={`${inputClass} border-[rgba(185,255,75,0.4)] focus:border-primary`}
-                                  value={form.linkedin}
-                                  onChange={(e) => onInputChange("linkedin", e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {form.verificationType === "proof" && (
-                          <div className="rounded-lg border border-border bg-[#161616] p-4">
-                            <p className="mb-3 text-[13px] text-muted-foreground">
-                              Upload proof of revenue (PNG, JPG, WEBP, or PDF up to 10 MB).
-                            </p>
-                            <input
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp,application/pdf"
-                              className="w-full text-sm text-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-[13px] file:font-semibold file:text-primary-foreground hover:file:bg-[#a8e630] cursor-pointer"
-                              onChange={(e) => {
-                                setSubmitError("");
-                                const file = e.target.files?.[0] || null;
-                                if (!file) {
-                                  setProofFile(null);
-                                  return;
-                                }
-                                if (file.size === 0) {
-                                  setSubmitError("Uploaded file is corrupted.");
-                                  setProofFile(null);
-                                  e.target.value = "";
-                                  return;
-                                }
-                                if (file.size > 10 * 1024 * 1024) {
-                                  setSubmitError("File exceeds 10 MB limit.");
-                                  setProofFile(null);
-                                  e.target.value = "";
-                                  return;
-                                }
-                                const allowedTypes = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
-                                if (!allowedTypes.includes(file.type)) {
-                                  setSubmitError("Only PDF, PNG, JPG, and WEBP files are allowed.");
-                                  setProofFile(null);
-                                  e.target.value = "";
-                                  return;
-                                }
-                                setProofFile(file);
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {form.verificationType === "api" && (
-                          <div className="rounded-lg border border-border bg-[#161616] p-4">
-                            <p className="mb-4 text-[13px] text-muted-foreground">
-                              Connect your payment provider using a read-only API key.
-                            </p>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                              <div>
-                                <label className={labelClass}>Provider</label>
-                                <div className="relative">
-                                  <select
-                                    className={`${inputClass} appearance-none pr-10`}
-                                    value={form.apiProvider}
-                                    onChange={(e) => onInputChange("apiProvider", e.target.value)}
-                                  >
-                                    <option value="stripe">Stripe</option>
-                                    <option value="razorpay">Razorpay</option>
-                                  </select>
-                                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                </div>
-                              </div>
-                              <div>
-                                <label className={labelClass}>API Key</label>
-                                <div className="flex gap-2">
-                                  <input
-                                    type="password"
-                                    className={inputClass}
-                                    value={form.apiKey}
-                                    onChange={(e) => onInputChange("apiKey", e.target.value)}
-                                    placeholder={form.apiProvider === "stripe" ? "sk_live_..." : "ID:SECRET"}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={handleVerifyRevenue}
-                                    disabled={isVerifying}
-                                    className="h-11 rounded-lg bg-white/10 px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-                                  >
-                                    {isVerifying ? "Verifying..." : "Verify"}
-                                  </button>
-                                </div>
-                                {verifyStatus && (
-                                  <p className="mt-2 text-xs text-primary">
-                                    ✓ Verified {verifyStatus.currency} {Math.round(verifyStatus.mrr)} MRR
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   <div className="mt-8">
                     <p className="mb-3 text-[12px] text-muted-foreground">
-                      Select all payment processors you use
+                      Select all payment processors you use <span className="text-primary">*</span>
                     </p>
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                       {paymentMethodOptions.map((item) => {
@@ -1301,7 +1041,7 @@ export default function SubmitPage() {
 
               {step === 4 && (
                 <section>
-                  <h3 className={sectionTitleClass}>Social links</h3>
+                  <h3 className={sectionTitleClass}>Social links & Location</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className={labelClass}>Twitter / X handle</label>
@@ -1309,6 +1049,7 @@ export default function SubmitPage() {
                         className={inputClass}
                         value={form.twitter}
                         onChange={(e) => onInputChange("twitter", e.target.value)}
+                        placeholder="https://x.com/yourhandle"
                       />
                     </div>
                     <div>
@@ -1317,6 +1058,7 @@ export default function SubmitPage() {
                         className={inputClass}
                         value={form.linkedin}
                         onChange={(e) => onInputChange("linkedin", e.target.value)}
+                        placeholder="https://linkedin.com/company/yourstartup"
                       />
                     </div>
                   </div>
@@ -1328,6 +1070,7 @@ export default function SubmitPage() {
                       className={`${inputClass} ${errors.cityCountry ? "border-border" : ""}`}
                       value={form.cityCountry}
                       onChange={(e) => onInputChange("cityCountry", e.target.value)}
+                      placeholder="e.g. San Francisco, CA, USA or Bengaluru, India"
                     />
                     {errors.cityCountry ? (
                       <p className="mt-1 text-xs text-[#ff4b4b]">{errors.cityCountry}</p>
@@ -1347,22 +1090,22 @@ export default function SubmitPage() {
                 </section>
               )}
 
-            {successMessage && (
-              <div className="mt-6 rounded-lg bg-green-900/40 border border-green-500/30 px-4 py-3 text-green-300">
-                {successMessage}
-              </div>
-            )}
+              {successMessage && (
+                <div className="mt-6 rounded-lg bg-green-900/40 border border-green-500/30 px-4 py-3 text-green-300">
+                  {successMessage}
+                </div>
+              )}
 
-            <div className="mt-8 flex items-center gap-3">
-              {step > 1 ? (
-                <button
-                  type="button"
-                  onClick={handlePrevStep}
-                  className="h-[52px] rounded-xl border border-border px-6 text-[14px] text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-                >
-                  Back
-                </button>
-              ) : null}
+              <div className="mt-8 flex items-center gap-3">
+                {step > 1 ? (
+                  <button
+                    type="button"
+                    onClick={handlePrevStep}
+                    className="h-[52px] rounded-xl border border-border px-6 text-[14px] text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+                  >
+                    Back
+                  </button>
+                ) : null}
 
                 {step < 4 ? (
                   <button
@@ -1381,17 +1124,19 @@ export default function SubmitPage() {
                     {isSubmitting ? (
                       <>
                         <span className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-transparent" />
-                        Submitting...
+                        Creating profile...
                       </>
+                    ) : verifiedRevenue ? (
+                      "Create Verified Profile →"
                     ) : (
-                      "Claim my founding member spot →"
+                      "Create Profile & Connect Provider →"
                     )}
                   </button>
                 )}
               </div>
 
               <p className="mt-3 text-center text-[11px] text-muted-foreground">
-                Free forever to list. No spam. We&apos;ll reach out within 24 hours.
+                Free forever to list. No spam. Transparent verification.
               </p>
             </form>
           )}

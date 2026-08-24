@@ -18,7 +18,6 @@ import {
 } from "@/lib/verification-state";
 import { VerificationTimeline } from "@/components/startup/VerificationTimeline";
 import { notFound } from "next/navigation";
-import { canStartupBePublic } from "@/lib/visibility";
 import { isDemoStartupUserId } from "@/lib/verification-data";
 import { getSiteUrl } from "@/lib/site-url";
 import { formatCurrency, formatGrowth } from "@/lib/formatters";
@@ -191,7 +190,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: verifiedTitle,
       description: evidenceBacked
         ? `${startup.startup_name} has provider-backed revenue with a recent ledger sync.`
-        : `${startup.startup_name} profile on Verifii — verification in progress or self-reported.`,
+        : `${startup.startup_name} profile on Verifii — verification pending payment provider sync.`,
       images: [
         {
           url: ogImageUrl,
@@ -206,7 +205,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: verifiedTitle,
       description: evidenceBacked
         ? `${startup.startup_name} has provider-backed revenue with a recent ledger sync.`
-        : `${startup.startup_name} profile on Verifii — verification in progress or self-reported.`,
+        : `${startup.startup_name} profile on Verifii — verification pending payment provider sync.`,
       images: [ogImageUrl],
     },
     alternates: {
@@ -329,6 +328,14 @@ export default async function PublicStartupProfile({ params }: { params: Promise
       revenueGrowth = ((latest.total_revenue - baseline.total_revenue) / baseline.total_revenue) * 100;
     }
   }
+
+  // 6. Compute authoritative verified revenue (only when isVerified === true)
+  const authoritativeVerifiedRevenue = isVerified
+    ? (verificationState.providerBreakdown?.reduce((sum, p) => sum + p.amount, 0) ||
+       (snapshots.length > 0 ? snapshots[snapshots.length - 1].total_revenue : 0) ||
+       (Object.values(mrrBreakdown).reduce((sum, val) => sum + Number(val), 0)) ||
+       0)
+    : 0;
 
   // Fallbacks for Founder Data
   const founderName = startup.name || "Anonymous Founder";
@@ -486,25 +493,33 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                 </div>
                 
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500 mb-3">
-                  {verificationState.confidenceTier === "SELF_REPORTED"
-                    ? "Self-Reported MRR Estimate"
+                  {verificationState.confidenceTier === "REVENUE_VERIFIED"
+                    ? "Verified Revenue Baseline"
                     : verificationState.confidenceTier === "PAYMENT_CONNECTED"
-                    ? "Connected Provider MRR"
-                    : "Verified Revenue Baseline"}
+                    ? "Payment Connected"
+                    : "Verification Pending"}
                 </p>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[clamp(1.75rem,4vw,2.75rem)] leading-none font-black text-white font-syne tracking-tighter tabular-nums truncate max-w-full overflow-hidden" title={formatCurrency(startup.mrr || 0, "INR", { compact: false })}>
-                    {formatCurrency(startup.mrr || 0, "INR", { compact: false })}
-                  </p>
+                  {isVerified ? (
+                    <p className="text-[clamp(1.75rem,4vw,2.75rem)] leading-none font-black text-white font-syne tracking-tighter tabular-nums truncate max-w-full overflow-hidden" title={formatCurrency(authoritativeVerifiedRevenue, "INR", { compact: false })}>
+                      {formatCurrency(authoritativeVerifiedRevenue, "INR", { compact: false })}
+                    </p>
+                  ) : (
+                    <p className="text-[clamp(1.25rem,3vw,1.75rem)] leading-none font-bold text-neutral-400 font-syne tracking-tight">
+                      {verificationState.confidenceTier === "PAYMENT_CONNECTED"
+                        ? "Awaiting Payment Sync"
+                        : "Verification Pending"}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 mt-1">
-                    {snapshots && snapshots.length >= 2 && verificationState.confidenceTier !== "SELF_REPORTED" ? (
+                    {isVerified && snapshots && snapshots.length >= 2 ? (
                       <>
                         <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
                           {formatGrowth(revenueGrowth, 2)} Monthly Growth
                         </span>
                         <span className="w-1 h-1 rounded-full bg-neutral-700" />
                       </>
-                    ) : verificationState.confidenceTier !== "SELF_REPORTED" ? (
+                    ) : isVerified ? (
                       <>
                         <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
                           Awaiting Growth Trend
@@ -513,9 +528,11 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                       </>
                     ) : null}
                     <span className="text-[10px] font-bold text-neutral-600 uppercase tracking-wider">
-                      {verificationState.confidenceTier === "SELF_REPORTED"
-                        ? "Declared Baseline"
-                        : `Updated ${latestSync ? new Date(latestSync).toLocaleDateString() : 'Just now'}`}
+                      {isVerified
+                        ? `Updated ${latestSync ? new Date(latestSync).toLocaleDateString() : 'Just now'}`
+                        : verificationState.confidenceTier === "PAYMENT_CONNECTED"
+                        ? "Provider linked · pending ledger sync"
+                        : "Connect provider to verify revenue"}
                     </span>
                   </div>
                 </div>
