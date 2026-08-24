@@ -131,4 +131,18 @@ describe("VRF-007 — Authoritative Revenue RLS & Privilege Boundary Test Suite"
       assert.ok(sql.includes(tbl), `Migration must cover table ${tbl}`);
     }
   });
+
+  it("T15: Migration 20260823180000 explicitly casts UUID user_id::text for pattern matching", () => {
+    const demoMigrationPath = path.resolve(
+      __dirname,
+      "../supabase/migrations/20260823180000_exclude_demo_from_public_select.sql"
+    );
+    assert.ok(fs.existsSync(demoMigrationPath), "20260823180000 migration must exist");
+    const sql = fs.readFileSync(demoMigrationPath, "utf8");
+    assert.match(
+      sql,
+      /user_id::text\s+NOT\s+LIKE\s+'00000000-0000-0000-0000-%'/i,
+      "Must cast UUID user_id::text to prevent PostgreSQL 42883 operator error"
+    );
+  });
 });

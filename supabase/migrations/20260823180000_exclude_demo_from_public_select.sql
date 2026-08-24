@@ -18,7 +18,7 @@ FOR SELECT
 TO public
 USING (
   is_public = true
-  AND (user_id IS NULL OR user_id NOT LIKE '00000000-0000-0000-0000-%')
+  AND (user_id IS NULL OR user_id::text NOT LIKE '00000000-0000-0000-0000-%')
 );
 
 -- 4. Create authenticated owner SELECT policy
