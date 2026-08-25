@@ -29,10 +29,10 @@ export const metadata: Metadata = {
     template: "Verifii | %s"
   },
   description:
-    "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
+    "Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.",
   openGraph: {
     title: "Verifii — Verified Startup Revenue for Indian Founders",
-    description: "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
+    description: "Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.",
     url: "/",
     siteName: "Verifii",
     images: [
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Verifii — Verified Startup Revenue for Indian Founders",
-    description: "The world's first verified MRR & ARR database. Connect Razorpay, Stripe, or any payment processor. Get a tamper-proof public profile.",
+    description: "Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.",
     images: ["/api/og/startup/default"],
     site: "@verifii",
   },
@@ -92,6 +92,7 @@ const jsonLd = {
       "name": "Verifii",
       "url": "https://www.verifii.in",
       "logo": "https://www.verifii.in/logo.png",
+      "description": "Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.",
       "sameAs": ["https://twitter.com/verifii", "https://linkedin.com/company/verifii"]
     }
   ]

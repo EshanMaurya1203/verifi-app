@@ -57,7 +57,7 @@ export function BillingActions({
       {isFree ? (
         <div>
           <p className="text-sm text-muted-foreground mb-4">
-            You are currently on the Free plan. Revenue verification and public badges are permanently free. Upgrade to Pro for multi-gateway composite analytics and CSV export.
+            You are currently on the Free plan. Core revenue verification and public badges are free for founders. Upgrade to Pro for multi-gateway composite analytics and CSV export.
           </p>
           <button
             onClick={() => setIsModalOpen(true)}

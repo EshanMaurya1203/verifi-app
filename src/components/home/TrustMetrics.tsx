@@ -19,7 +19,7 @@ export function TrustMetrics() {
       title: "Payment-Verified Startups",
       supportingText: "Live verified profiles",
       icon: ShieldCheck,
-      badgeText: "Real-time",
+      badgeText: "Live Sync",
     },
     {
       id: "verified-revenue",

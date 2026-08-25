@@ -5,20 +5,24 @@ import { ChevronDown } from "lucide-react";
 
 const faqData = [
   {
+    question: "What is Verifii?",
+    answer: "Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay."
+  },
+  {
     question: "Is my revenue shown publicly?",
     answer: "Yes, your verified Monthly Recurring Revenue (MRR) and trust metrics are displayed on your public profile and leaderboard once your payment provider is connected and profile is set to public. You can toggle public visibility off anytime from your dashboard settings."
   },
   {
     question: "What data does Verifii access?",
-    answer: "Verifii accesses read-only payment metrics, transaction volume, and subscription statuses from your connected payment account. We never access or store sensitive customer credentials, full credit card numbers, or personal payout banking details."
+    answer: "Verifii accesses read-only payment metrics, transaction volume, and subscription statuses from your connected payment account. We do not access or store customer card numbers, sensitive credentials, or personal payout banking details."
   },
   {
     question: "Is my payment data secure?",
-    answer: "Yes, your payment integration uses restricted, read-only API credentials and official OAuth protocols. All access tokens are encrypted at rest, and Verifii never has permission to move funds or modify your payment provider settings."
+    answer: "Yes, your payment integration uses restricted, read-only API credentials and official OAuth protocols. All access tokens are encrypted at rest, and Verifii cannot move funds or modify your payment provider settings."
   },
   {
     question: "How does Verifii verify revenue from Stripe and Razorpay?",
-    answer: "Verifii connects directly to payment provider APIs to aggregate raw transaction logs and active subscription data. This automated sync calculates your MRR from actual completed payments rather than manual text inputs or screenshots."
+    answer: "Verifii connects directly to payment provider APIs to aggregate transaction logs and active subscription data. This automated sync calculates your MRR from completed payments rather than manual text inputs or screenshots."
   },
   {
     question: "Is Verifii free to use?",
@@ -26,7 +30,7 @@ const faqData = [
   },
   {
     question: "How is Verifii different from self-reported revenue leaderboards?",
-    answer: "Unlike traditional leaderboards where revenue numbers are manually typed or screenshotted, Verifii validates data directly through automated payment provider API integrations. This ensures that every public revenue claim is backed by real, tamper-proof payment activity."
+    answer: "Unlike traditional leaderboards where revenue numbers are manually typed or screenshotted, Verifii validates data directly through automated payment provider API integrations. This ensures that public revenue claims are backed by connected payment-provider data from Stripe and Razorpay."
   },
   {
     question: "What happens if I disconnect my payment provider?",
@@ -38,7 +42,7 @@ const faqData = [
   },
   {
     question: "How long does verification take?",
-    answer: "Initial revenue verification typically takes less than two minutes after connecting your Stripe or Razorpay account. Once authorized, revenue metrics and trust scores update automatically in near real-time."
+    answer: "Initial revenue verification typically takes less than two minutes after connecting your Stripe or Razorpay account. Once authorized, revenue metrics and trust scores update automatically after synchronization."
   },
   {
     question: "Can I choose what appears on my public profile?",

@@ -22,7 +22,7 @@ import { LeaderboardEmptyState } from "@/components/leaderboard/LeaderboardEmpty
 
 export const metadata: Metadata = {
   title: "Leaderboard",
-  description: "Live revenue rankings for verified internet startups. Backed by real-time payment provider streams.",
+  description: "Live revenue rankings for verified internet startups. Backed by connected payment-provider data from Stripe and Razorpay.",
   alternates: {
     canonical: "https://www.verifii.in/leaderboard/",
   },

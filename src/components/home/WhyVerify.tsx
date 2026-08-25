@@ -61,7 +61,7 @@ export function WhyVerify() {
                 </li>
                 <li className="flex items-start gap-2.5">
                   <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                  <span>Continuously trustworthy</span>
+                  <span>Payment-backed proof</span>
                 </li>
                 <li className="flex items-start gap-2.5">
                   <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />

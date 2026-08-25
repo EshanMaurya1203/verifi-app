@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Pricing | Verifii",
-  description: "Revenue verification is permanently free. Upgrade to Pro for multi-gateway analytics and developer tools.",
+  description: "Revenue verification is free for founders. Upgrade to Pro for multi-gateway analytics and developer tools.",
   alternates: {
     canonical: "https://www.verifii.in/pricing/",
   }
@@ -34,7 +34,7 @@ export default async function PricingPage() {
             Simple, transparent <span className="text-primary">pricing</span>
           </h1>
           <p className="text-muted-foreground text-lg sm:text-xl max-w-2xl mx-auto">
-            Revenue verification is permanently free. Upgrade to Pro for advanced multi-gateway analytics, CSV export, and developer tools.
+            Revenue verification is free for founders. Upgrade to Pro for advanced multi-gateway analytics, CSV export, and developer tools.
           </p>
         </div>
 

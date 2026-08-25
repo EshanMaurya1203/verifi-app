@@ -28,7 +28,7 @@ export function Hero() {
         {/* Subheadline */}
         <HeroAnimationItem>
           <p className="mt-6 max-w-[580px] text-sm md:text-base font-normal leading-relaxed text-neutral-400">
-            Connect Stripe or Razorpay to verify your startup&apos;s revenue using real payment data. Earn a public trust badge and build credibility with investors, partners, and future customers—without relying on screenshots or self-reported claims.
+            Verifii is a payment-backed startup revenue verification platform. Connect Stripe or Razorpay to verify MRR and ARR using connected payment-provider data. Earn a public trust badge and build credibility with investors, partners, and customers—without relying on screenshots or self-reported claims.
           </p>
         </HeroAnimationItem>
 

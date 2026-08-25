@@ -100,13 +100,13 @@ export function PricingTable({
     {
       code: "viewer",
       name: "Free",
-      description: "Permanently free revenue verification and public profile.",
+      description: "Free core revenue verification and public profile.",
       price: 0,
       features: [
-        "Permanent Free Revenue Verification",
+        "Free Core Revenue Verification",
         "Connect Stripe & Razorpay",
         "Public Verified Profile",
-        "Tamper-Proof SVG Verified Badge",
+        "Payment-Backed SVG Verified Badge",
         "Live Revenue Sync & Trust Metrics",
         "Search Public Directory",
       ],
@@ -124,7 +124,7 @@ export function PricingTable({
       description: "Advanced analytics, multiple gateways, and developer tools.",
       price: 999,
       features: [
-        "Everything in Free (Permanently Free)",
+        "Everything in Free",
         "Multi-Gateway Composite Analytics",
         "CSV Ledger Export",
         "REST API Access (Coming Soon)",

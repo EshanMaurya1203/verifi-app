@@ -9,7 +9,7 @@ export function CTA() {
           Ready to verify your revenue?
         </h2>
         <p className="mx-auto mt-4 max-w-[500px] text-xs md:text-sm leading-relaxed text-[#8f8f97] font-medium">
-          Join Verifii today and build public trust in minutes with real-time, payment-backed verification streams.
+          Join Verifii today and build public trust in minutes with payment-backed revenue verification from Stripe and Razorpay.
         </p>
         <VerifyButton className="mt-8 inline-flex h-11 items-center justify-center rounded-xl bg-primary px-8 text-xs font-bold uppercase tracking-wider text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(185,255,75,0.2)]">
           Verify your startup
