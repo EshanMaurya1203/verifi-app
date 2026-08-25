@@ -1,4 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Verifii
+
+Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.
+
+## What Verifii does
+
+Verifii helps founders turn payment-provider data into verifiable startup revenue metrics. Instead of relying only on self-reported revenue screenshots or manually entered figures, Verifii uses connected payment-provider data to calculate and verify revenue metrics such as Monthly Recurring Revenue (MRR) and Annual Recurring Revenue (ARR).
+
+Verifii currently supports Stripe and Razorpay for revenue verification.
+
+## Verification
+
+The verification process uses provider data to:
+
+- Connect a startup's supported payment provider
+- Retrieve relevant payment and subscription data
+- Process and normalize revenue information
+- Calculate revenue metrics such as MRR and ARR
+- Present eligible verified metrics through public startup profiles and the Verifii leaderboard
+
+Verifii is designed to provide payment-backed evidence for startup revenue claims while keeping sensitive customer and payment information private.
+
+## Website
+
+https://www.verifii.in
+
+Learn more about Verifii:
+
+https://www.verifii.in/what-is-verifii
+
+## Supported payment providers
+
+- Stripe
+- Razorpay
+
+## Project
+
+Verifii is built with Next.js and TypeScript and uses Supabase for its application data infrastructure.
 
 ## Getting Started
 
