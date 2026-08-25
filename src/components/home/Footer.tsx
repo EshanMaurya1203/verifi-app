@@ -7,7 +7,15 @@ export function Footer() {
         <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
           © 2026 Verifii
         </div>
-        <div className="flex flex-wrap gap-4 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+        <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+          <Link href="/what-is-verifii" className="hover:text-white transition-colors">
+            What is Verifii?
+          </Link>
+          <span className="text-neutral-600">•</span>
+          <Link href="/startup-revenue-verification" className="hover:text-white transition-colors">
+            Startup Revenue Verification
+          </Link>
+          <span className="text-neutral-600">•</span>
           <Link href="/privacy" className="hover:text-white transition-colors">
             Privacy Policy
           </Link>
