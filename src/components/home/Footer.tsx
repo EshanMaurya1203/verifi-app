@@ -16,6 +16,10 @@ export function Footer() {
             Startup Revenue Verification
           </Link>
           <span className="text-neutral-600">•</span>
+          <Link href="/verified-mrr" className="hover:text-white transition-colors">
+            Verified MRR
+          </Link>
+          <span className="text-neutral-600">•</span>
           <Link href="/privacy" className="hover:text-white transition-colors">
             Privacy Policy
           </Link>
