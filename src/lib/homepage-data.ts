@@ -35,7 +35,7 @@ export async function getHomepageInitialData(): Promise<HomepageInitialData | nu
     const { data: candidates, error: candidateError } = await supabaseServer
       .from("startup_submissions")
       .select(
-        "id, slug, startup_name, name, biz_type, growth, payment_connected, trust_score, notes, created_at, user_id, verification_status"
+        "id, slug, startup_name, name, biz_type, payment_connected, trust_score, notes, created_at, user_id, verification_status"
       )
       .eq("is_public", true)
       .eq("payment_connected", true);
@@ -96,28 +96,22 @@ export async function getHomepageInitialData(): Promise<HomepageInitialData | nu
         const vState = verificationByStartup.get(Number(row.id));
 
         // Primary: provider-backed revenue from verification engine
-        let verifiedRevenue = vState?.providerBreakdown.reduce(
-          (sum, p) => sum + p.amount,
-          0
-        ) || 0;
+        let verifiedRevenue =
+          vState?.providerBreakdown.reduce(
+            (sum, p) => sum + p.amount,
+            0
+          ) || 0;
 
-        // Fallback: authoritative snapshot-based metrics (same as leaderboard)
-        if (verifiedRevenue === 0) {
-          try {
-            const metrics = await getStartupMetrics(row.id);
-            verifiedRevenue = Number(metrics?.mrr || 0);
-          } catch (e) {
-            console.error("[HomepageData] Metrics failed for startup:", row.id, e);
-          }
-        }
-
-        // Growth from authoritative metrics
+        // Authoritative metrics snapshot (called at most once per verified startup)
         let authoritativeGrowth = 0;
         try {
           const metrics = await getStartupMetrics(row.id);
+          if (verifiedRevenue === 0) {
+            verifiedRevenue = Number(metrics?.mrr || 0);
+          }
           authoritativeGrowth = metrics?.growthPercentage || 0;
-        } catch {
-          // Growth stays 0 on failure
+        } catch (e) {
+          console.error("[HomepageData] Metrics failed for startup:", row.id, e);
         }
 
         return {
