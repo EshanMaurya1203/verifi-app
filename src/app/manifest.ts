@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Verifii - Verified Startup Revenue for Indian Founders',
     short_name: 'Verifii',
-    description: 'Verifii is a platform for Indian founders to verify their startup revenue via payment provider APIs.',
+    description: 'Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.',
     start_url: '/',
     display: 'standalone',
     background_color: '#000000',
