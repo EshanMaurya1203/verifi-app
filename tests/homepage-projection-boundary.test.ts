@@ -19,7 +19,7 @@ interface MockSubmissionRow {
   startup_name: string;
   name: string;
   biz_type: string;
-  growth: number | null;
+  growth?: number | null;
   payment_connected: boolean;
   trust_score: number;
   notes: string | null;
@@ -31,8 +31,10 @@ interface MockSubmissionRow {
 }
 
 let inMemorySubmissions: MockSubmissionRow[] = [];
+let lastSelectColumns: string | null = null;
 const inMemoryVerificationMap = new Map<number, unknown>();
 const inMemoryMetricsMap = new Map<number, { mrr: number; arr: number; growthPercentage: number }>();
+const metricsCallCounts = new Map<number, number>();
 
 // 1. Mock Supabase Server
 const supabaseServerPath = require.resolve("../src/lib/supabase-server");
@@ -40,7 +42,12 @@ const mockSupabaseServer = {
   from: (table: string) => {
     const filters: Array<{ column: string; value: any; op: string }> = [];
     const chain: any = {
-      select: () => chain,
+      select: (cols?: string) => {
+        if (table === "startup_submissions" && cols) {
+          lastSelectColumns = cols;
+        }
+        return chain;
+      },
       eq: (column: string, value: any) => {
         filters.push({ column, value, op: "eq" });
         return chain;
@@ -108,6 +115,7 @@ require.cache[revenueAggregationPath] = {
   loaded: true,
   exports: {
     getStartupMetrics: async (startupId: number) => {
+      metricsCallCounts.set(startupId, (metricsCallCounts.get(startupId) || 0) + 1);
       if (inMemoryMetricsMap.has(startupId)) {
         return inMemoryMetricsMap.get(startupId)!;
       }
@@ -195,8 +203,10 @@ function makeSubmission(overrides: Partial<MockSubmissionRow> = {}): MockSubmiss
 describe("Homepage Projection Boundary (Direct getHomepageInitialData)", () => {
   beforeEach(() => {
     inMemorySubmissions = [];
+    lastSelectColumns = null;
     inMemoryVerificationMap.clear();
     inMemoryMetricsMap.clear();
+    metricsCallCounts.clear();
   });
 
   // TEST 1: payment_connected = false → excluded
@@ -605,5 +615,46 @@ describe("Homepage Projection Boundary (Direct getHomepageInitialData)", () => {
   it("TEST 17: StartupDataProvider initializes empty arrays and 0 counts when initialData is null/empty", () => {
     const { StartupDataProvider } = require("../src/components/home/StartupDataProvider");
     assert.ok(typeof StartupDataProvider === "function", "StartupDataProvider component must exist");
+  });
+
+  // TEST 18: getStartupMetrics is called at most once per verified startup (no duplicate metric calculation calls)
+  it("TEST 18: getStartupMetrics is called at most once per verified startup", async () => {
+    inMemorySubmissions = [
+      makeSubmission({ id: 201, payment_connected: true, is_public: true, startup_name: "Startup 201" }),
+      makeSubmission({ id: 202, payment_connected: true, is_public: true, startup_name: "Startup 202" }),
+    ];
+    inMemoryVerificationMap.set(201, {
+      ...VERIFIED_STATE,
+      providerBreakdown: [], // triggers fallback to metrics.mrr
+    });
+    inMemoryVerificationMap.set(202, {
+      ...VERIFIED_STATE,
+      providerBreakdown: [{ provider: "stripe", amount: 60000, percentage: 100 }],
+    });
+    inMemoryMetricsMap.set(201, { mrr: 15000, arr: 180000, growthPercentage: 10 });
+    inMemoryMetricsMap.set(202, { mrr: 60000, arr: 720000, growthPercentage: 25 });
+
+    const result = await getHomepageInitialData();
+    assert.ok(result !== null);
+    assert.equal(result.verifiedStartupCount, 2);
+
+    // Each verified candidate must have called getStartupMetrics exactly once
+    assert.equal(metricsCallCounts.get(201), 1, "Startup 201 should call getStartupMetrics exactly once");
+    assert.equal(metricsCallCounts.get(202), 1, "Startup 202 should call getStartupMetrics exactly once");
+  });
+
+  // TEST 19: startup_submissions select query does not select non-existent 'growth' column
+  it("TEST 19: startup_submissions query does NOT select non-existent 'growth' column", async () => {
+    inMemorySubmissions = [
+      makeSubmission({ id: 301, payment_connected: true, is_public: true }),
+    ];
+    inMemoryVerificationMap.set(301, VERIFIED_STATE);
+
+    await getHomepageInitialData();
+    assert.ok(lastSelectColumns !== null, "Select query should have been executed");
+    assert.ok(
+      !lastSelectColumns.split(",").map((c) => c.trim()).includes("growth"),
+      `Select columns should NOT contain 'growth'. Actual: ${lastSelectColumns}`
+    );
   });
 });
