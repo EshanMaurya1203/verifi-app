@@ -8,6 +8,8 @@
  * Add new publication rules here — API routes never need to change.
  */
 
+import { isDemoStartupUserId } from "./verification-data";
+
 export interface PublicationEligibility {
   /** Whether the startup satisfies all publication requirements. */
   eligible: boolean;
@@ -22,16 +24,33 @@ export interface PublicationEligibility {
  * may only *publish* it when every requirement below is satisfied.
  *
  * Current requirements:
- *   1. `payment_connected` must be `true`.
- *
- * Future requirements (e.g., identity verification, minimum trust score)
- * should be added as additional checks in this function.
+ *   1. `verification_status` must not be `flagged`.
+ *   2. `user_id` must not be a demo/sandbox profile in production.
+ *   3. `payment_connected` must be `true`.
  */
 export function canStartupBePublic(startup: {
   payment_connected?: boolean | null;
+  verification_status?: string | null;
+  user_id?: string | null;
   [key: string]: unknown;
 }): PublicationEligibility {
-  // Requirement 1: At least one payment provider must be connected.
+  // Requirement 1: Not flagged
+  if (startup.verification_status === "flagged") {
+    return {
+      eligible: false,
+      reason: "This startup profile is currently restricted from public view.",
+    };
+  }
+
+  // Requirement 2: Not a demo/sandbox profile
+  if (isDemoStartupUserId(startup.user_id)) {
+    return {
+      eligible: false,
+      reason: "Demo and sandbox startup profiles cannot be published.",
+    };
+  }
+
+  // Requirement 3: At least one payment provider must be connected.
   if (!startup.payment_connected) {
     return {
       eligible: false,

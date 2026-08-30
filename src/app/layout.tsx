@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   ...(metadataBase ? { metadataBase } : {}),
   title: {
     default: "Verifii — Verified Startup Revenue for Indian Founders",
-    template: "Verifii | %s"
+    template: "%s | Verifii"
   },
   description:
     "Verifii is a payment-backed startup revenue verification platform that helps founders verify MRR and ARR using connected payment-provider data from Stripe and Razorpay.",
@@ -57,9 +57,6 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
-  alternates: {
-    canonical: "https://www.verifii.in/",
-  },
 };
 
 const jsonLd = {
@@ -71,7 +68,7 @@ const jsonLd = {
       "url": "https://www.verifii.in",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": "https://www.verifii.in/search?q={search_term_string}",
+        "target": "https://www.verifii.in/leaderboard?q={search_term_string}",
         "query-input": "required name=search_term_string"
       }
     },

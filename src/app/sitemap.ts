@@ -5,7 +5,7 @@ import { canStartupBePublic } from '@/lib/visibility'
 import { isDemoStartupUserId } from '@/lib/verification-data'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = getSiteUrl()
+  const baseUrl = getSiteUrl() || "https://www.verifii.in";
 
   // 1. Retrieve startups that are marked public
   const { data: startups } = await supabaseServer
@@ -23,7 +23,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   })
 
   const startupUrls = eligibleStartups.map((s) => ({
-    url: `${baseUrl}/startup/${encodeURIComponent(s.slug)}`,
+    url: `${baseUrl}/startup/${encodeURIComponent(s.slug)}/`,
     lastModified: s.last_verified_at ? new Date(s.last_verified_at) : new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.8,
@@ -41,6 +41,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/pricing`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.8,
     },
     {
       url: `${baseUrl}/what-is-verifii`,
@@ -65,6 +71,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.7,
+    },
+    {
+      url: `${baseUrl}/privacy`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/terms`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.5,
     },
     ...startupUrls,
   ]
