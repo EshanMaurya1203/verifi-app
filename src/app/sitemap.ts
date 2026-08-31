@@ -23,7 +23,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   })
 
   const startupUrls = eligibleStartups.map((s) => ({
-    url: `${baseUrl}/startup/${encodeURIComponent(s.slug)}/`,
+    url: `${baseUrl}/startup/${encodeURIComponent(s.slug)}`,
     lastModified: s.last_verified_at ? new Date(s.last_verified_at) : new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.8,

@@ -19,6 +19,7 @@ import {
 import { VerificationTimeline } from "@/components/startup/VerificationTimeline";
 import { notFound } from "next/navigation";
 import { isDemoStartupUserId } from "@/lib/verification-data";
+import { canStartupBePublic } from "@/lib/visibility";
 import { getSiteUrl } from "@/lib/site-url";
 import { formatCurrency, formatGrowth } from "@/lib/formatters";
 import { USD_TO_INR } from "@/lib/revenue-aggregation";
@@ -74,6 +75,8 @@ const getStartupProfileData = cache(async (slug: string) => {
         notes,
         user_id,
         is_public,
+        payment_connected,
+        verification_status,
         penalty_count,
         verification_type,
         proof_url
@@ -153,9 +156,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (
     !profileData ||
     (!profileData.startup.is_public && profileData.startup.user_id !== user?.id && !isAdmin(user?.email)) ||
+    (!canStartupBePublic(profileData.startup).eligible && profileData.startup.user_id !== user?.id && !isAdmin(user?.email)) ||
     (process.env.NODE_ENV === "production" && isDemoStartupUserId(profileData.startup.user_id))
   ) {
-    return { title: "Startup Not Found | Verifii" };
+    notFound();
   }
 
   const { startup, revenueRes, providerRes } = profileData;
@@ -175,14 +179,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     ? `${startup.startup_name} is Revenue Verified on Verifii`
     : `${startup.startup_name} on Verifii`;
 
-  const baseUrl = getSiteUrl();
+  const baseUrl = getSiteUrl() || "https://www.verifii.in";
   const encodedSlug = encodeURIComponent(slug);
-  const ogImageUrl = baseUrl
-    ? `${baseUrl}/api/og/startup/${encodedSlug}`
-    : `/api/og/startup/${encodedSlug}`;
+  const profileCanonicalUrl = `${baseUrl}/startup/${encodedSlug}`;
+  const ogImageUrl = `${baseUrl}/api/og/startup/${encodedSlug}`;
 
   return {
-    title: `${startup.startup_name} - Financial Profile | Verifii`,
+    title: `${startup.startup_name} - Financial Profile`,
     description: evidenceBacked
       ? `View provider-backed revenue metrics and trust profile for ${startup.startup_name}.`
       : `View the trust profile and revenue disclosure for ${startup.startup_name}.`,
@@ -191,6 +194,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       description: evidenceBacked
         ? `${startup.startup_name} has provider-backed revenue with a recent ledger sync.`
         : `${startup.startup_name} profile on Verifii — verification pending payment provider sync.`,
+      url: profileCanonicalUrl,
+      siteName: "Verifii",
+      type: "website",
       images: [
         {
           url: ogImageUrl,
@@ -209,7 +215,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       images: [ogImageUrl],
     },
     alternates: {
-      canonical: `${baseUrl}/startup/${encodedSlug}/`,
+      canonical: profileCanonicalUrl,
     }
   };
 }
@@ -224,6 +230,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
   if (
     !profileData ||
     (!profileData.startup.is_public && profileData.startup.user_id !== user?.id && !isAdmin(user?.email)) ||
+    (!canStartupBePublic(profileData.startup).eligible && profileData.startup.user_id !== user?.id && !isAdmin(user?.email)) ||
     (process.env.NODE_ENV === "production" && isDemoStartupUserId(profileData.startup.user_id))
   ) {
     notFound();
@@ -354,8 +361,9 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     created_at: l.created_at
   }));
 
-  const baseUrl = getSiteUrl();
+  const baseUrl = getSiteUrl() || "https://www.verifii.in";
   const encodedSlug = encodeURIComponent(slug);
+  const profileCanonicalUrl = `${baseUrl}/startup/${encodedSlug}`;
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -364,13 +372,13 @@ export default async function PublicStartupProfile({ params }: { params: Promise
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": `${baseUrl}/`
+        "item": `${baseUrl}`
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": startup.startup_name,
-        "item": `${baseUrl}/startup/${encodedSlug}`
+        "item": profileCanonicalUrl
       }
     ]
   };
@@ -379,7 +387,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
     "@context": "https://schema.org",
     "@type": "Organization",
     "name": startup.startup_name,
-    "url": `${baseUrl}/startup/${encodedSlug}`,
+    "url": profileCanonicalUrl,
     ...(startup.website || startup.twitter || startup.linkedin ? {
       "sameAs": [startup.website, startup.twitter, startup.linkedin].filter(Boolean)
     } : {}),
