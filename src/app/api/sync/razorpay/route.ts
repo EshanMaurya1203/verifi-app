@@ -71,8 +71,8 @@ export async function POST(req: Request) {
       ? err.statusCode
       : (isClientError ? 400 : 500);
 
-    // Ensure logs contain the full structured object
-    console.error("[SyncRazorpay] Error:", isProviderError ? (err.originalError || err) : err);
+    // Log sanitized error message without credential leakage
+    console.error("[SyncRazorpay] Error:", message);
 
     return NextResponse.json(
       { success: false, error: message },

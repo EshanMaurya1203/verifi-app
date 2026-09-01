@@ -8,7 +8,9 @@ const THIRTY_DAYS_SEC = 30 * 24 * 60 * 60;
 
 export type RazorpayCapturedPayment = {
   id: string;
-  amount: number;
+  amount: number; // Net amount in paise
+  gross_amount?: number;
+  refund_amount?: number;
   currency: string;
   status: string;
   created_at: number;
@@ -46,10 +48,16 @@ export async function fetchRazorpayCapturedPayments(
     if (items.length === 0) break;
 
     for (const p of items) {
-      if (p.status !== "captured") continue;
+      if (p.status !== "captured" && p.status !== "refunded") continue;
+      const grossPaise = Number(p.amount) || 0;
+      const refundPaise = Number(p.amount_refunded) || 0;
+      const netPaise = Math.max(0, grossPaise - refundPaise);
+
       collected.push({
         id: p.id,
-        amount: Number(p.amount) || 0,
+        amount: netPaise,
+        gross_amount: grossPaise,
+        refund_amount: refundPaise,
         currency: p.currency || "INR",
         status: p.status,
         created_at: Number(p.created_at) || 0,
@@ -65,39 +73,25 @@ export async function fetchRazorpayCapturedPayments(
 
 
 
+import { RuntimeCredentials, SerializedCredentials } from "@/lib/providers/provider";
+
 /**
  * Runs the full Razorpay verification through the Provider Engine pipeline.
  *
- * The pipeline handles: fraud detection → transaction upsert → revenue aggregation
- * → snapshot → trust score → connection update → startup status → event log.
+ * The pipeline handles: credential verification → transaction retrieval → fraud detection
+ * → transaction upsert → revenue aggregation → snapshot → connection update
+ * → trust score → startup status (api_verified) → event log.
  */
 export async function completeRazorpayVerification(
   startupId: number,
-  razorpay: Razorpay,
-  credentials?: { keyId: string; keySecret: string }
+  runtimeCredentials: RuntimeCredentials,
+  serializedCredentials?: SerializedCredentials
 ): Promise<RazorpayVerificationResult> {
-  // Build the pipeline context.
-  // For the resync case, we pass serializedCredentials with the decrypted key
-  // so the provider can use it to fetch transactions.
-  // For the fresh verification case, we pass rawCredentials.
   const pipeline = new VerificationPipeline({
     startupId,
     provider: razorpayProvider,
-    ...(credentials
-      ? {
-          rawCredentials: {
-            keyId: credentials.keyId,
-            keySecret: credentials.keySecret,
-          },
-        }
-      : {
-          // Resync path: we already have a validated Razorpay client.
-          // Extract the credentials from the client config for the pipeline.
-          serializedCredentials: {
-            accountId: (razorpay as any)._conf?.key_id ?? "",
-            encryptedKey: (razorpay as any)._conf?.key_secret ?? "",
-          },
-        }),
+    runtimeCredentials,
+    serializedCredentials,
   });
 
   const result = await pipeline.execute();
@@ -119,12 +113,12 @@ export async function verifyRazorpayApiKeys(params: {
   keySecret: string;
   startupId: number;
 }): Promise<RazorpayVerificationResult> {
-  const razorpay = createRazorpayClient(params.keyId, params.keySecret);
+  const runtimeCredentials: RuntimeCredentials = {
+    accountId: params.keyId,
+    secretKey: params.keySecret,
+  };
 
-  return completeRazorpayVerification(params.startupId, razorpay, {
-    keyId: params.keyId,
-    keySecret: params.keySecret,
-  });
+  return completeRazorpayVerification(params.startupId, runtimeCredentials);
 }
 
 export async function resyncExistingRazorpayConnection(
@@ -142,12 +136,25 @@ export async function resyncExistingRazorpayConnection(
     throw new Error("No active Razorpay connection found for this startup");
   }
 
+  // 1. Read encrypted credential from database
+  // 2. Decrypt it in memory only
   const keySecret = decrypt(conn.api_key_encrypted);
-  const razorpay = createRazorpayClient(conn.account_id, keySecret);
-  return completeRazorpayVerification(startupId, razorpay, {
-    keyId: conn.account_id,
-    keySecret,
-  });
+
+  const runtimeCredentials: RuntimeCredentials = {
+    accountId: conn.account_id,
+    secretKey: keySecret,
+  };
+
+  const serializedCredentials: SerializedCredentials = {
+    accountId: conn.account_id,
+    encryptedKey: conn.api_key_encrypted,
+  };
+
+  return completeRazorpayVerification(
+    startupId,
+    runtimeCredentials,
+    serializedCredentials
+  );
 }
 
 export function resolveStartupIdFromRazorpayPaymentNotes(

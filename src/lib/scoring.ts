@@ -366,10 +366,13 @@ export async function computeTrustScore(
   }
 
   if (options.persist !== false) {
-    await supabase
+    const { error: persistError } = await supabase
       .from("startup_submissions")
       .update(updateData)
       .eq("id", startup_id);
+    if (persistError) {
+      throw new Error(`Failed to persist trust score: ${persistError.message}`);
+    }
   }
 
   return { score, status, tier, updateData };

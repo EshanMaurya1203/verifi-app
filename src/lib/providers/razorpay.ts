@@ -2,7 +2,7 @@ import Razorpay from "razorpay";
 import { encrypt } from "@/lib/encryption";
 import {
   Provider,
-  ProviderCredentials,
+  RuntimeCredentials,
   SerializedCredentials,
   ProviderRevenueResult,
   WebhookResult,
@@ -15,7 +15,7 @@ const THIRTY_DAYS_SEC = 30 * 24 * 60 * 60;
  * RazorpayProvider — Reference implementation of the Provider interface.
  *
  * Responsible ONLY for:
- *   - Credential verification against Razorpay API
+ *   - Credential verification against Razorpay API using in-memory RuntimeCredentials
  *   - Fetching raw payment data from Razorpay
  *   - Normalizing Razorpay responses into NormalizedPayment[]
  *   - Serializing credentials for encrypted storage
@@ -28,14 +28,38 @@ export class RazorpayProvider implements Provider {
   readonly name = "Razorpay";
 
   // ---------------------------------------------------------------------------
+  // Defensive Guards (Defense-in-Depth)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Defense-in-depth check: verifies that a secret key is not accidental ciphertext.
+   * NOTE: This format check is strictly defense-in-depth; the primary boundary
+   * is the separation of RuntimeCredentials and SerializedCredentials in the type system.
+   */
+  private isCiphertext(value: string): boolean {
+    if (!value || typeof value !== "string") return false;
+    const parts = value.split(":");
+    return (
+      (parts.length === 3 && parts.every((p) => /^[0-9a-fA-F]+$/.test(p))) ||
+      (parts.length === 2 && parts.every((p) => /^[0-9a-fA-F]+$/.test(p)))
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Provider Interface — Core Methods
   // ---------------------------------------------------------------------------
 
-  async verifyCredentials(credentials: ProviderCredentials): Promise<boolean> {
-    const { keyId, keySecret } = credentials;
-    if (!keyId || !keySecret) return false;
+  async verifyCredentials(credentials: RuntimeCredentials): Promise<boolean> {
+    const { accountId, secretKey } = credentials;
+    if (!accountId || !secretKey) return false;
 
-    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    if (this.isCiphertext(secretKey)) {
+      throw new Error(
+        "Cannot verify credentials using ciphertext. Runtime plaintext secret is required."
+      );
+    }
+
+    const razorpay = new Razorpay({ key_id: accountId, key_secret: secretKey });
     try {
       await razorpay.payments.all({ count: 1 });
       return true;
@@ -45,10 +69,21 @@ export class RazorpayProvider implements Provider {
   }
 
   async fetchTransactions(
-    accountId: string,
-    decryptedKey: string
+    credentials: RuntimeCredentials,
+    options?: any
   ): Promise<NormalizedPayment[]> {
-    const razorpay = new Razorpay({ key_id: accountId, key_secret: decryptedKey });
+    const { accountId, secretKey } = credentials;
+    if (!accountId || !secretKey) {
+      throw new Error("Missing runtime credentials for fetching Razorpay transactions");
+    }
+
+    if (this.isCiphertext(secretKey)) {
+      throw new Error(
+        "Cannot fetch transactions with ciphertext. Runtime plaintext secret is required."
+      );
+    }
+
+    const razorpay = new Razorpay({ key_id: accountId, key_secret: secretKey });
     const from = Math.floor(Date.now() / 1000) - THIRTY_DAYS_SEC;
     const to = Math.floor(Date.now() / 1000);
     const collected: NormalizedPayment[] = [];
@@ -67,10 +102,17 @@ export class RazorpayProvider implements Provider {
       if (items.length === 0) break;
 
       for (const p of items) {
-        if (p.status !== "captured") continue;
+        if (p.status !== "captured" && p.status !== "refunded") continue;
+        const grossAmount = (Number(p.amount) || 0) / 100;
+        const refundAmount = (Number(p.amount_refunded) || 0) / 100;
+        const netAmount = Math.max(0, grossAmount - refundAmount);
+
         collected.push({
           external_payment_id: p.id,
-          amount: (Number(p.amount) || 0) / 100,
+          amount: netAmount,
+          gross_amount: grossAmount,
+          refund_amount: refundAmount,
+          net_amount: netAmount,
           currency: ((p.currency as string) || "INR").toUpperCase(),
           timestamp: (Number(p.created_at) || 0) * 1000,
           status: p.status,
@@ -86,22 +128,24 @@ export class RazorpayProvider implements Provider {
   }
 
   async fetchRevenue(
-    accountId: string,
-    decryptedKey: string
+    credentials: RuntimeCredentials
   ): Promise<ProviderRevenueResult> {
-    const transactions = await this.fetchTransactions(accountId, decryptedKey);
+    const transactions = await this.fetchTransactions(credentials);
     const revenue = transactions.reduce((sum, tx) => sum + tx.amount, 0);
     const currency = transactions[0]?.currency || "INR";
     return { revenue, currency, transactionCount: transactions.length };
   }
 
   async serializeCredentials(
-    credentials: ProviderCredentials
+    credentials: RuntimeCredentials
   ): Promise<SerializedCredentials> {
-    const { keyId, keySecret } = credentials;
+    const { accountId, secretKey } = credentials;
+    if (!accountId || !secretKey) {
+      throw new Error("Cannot serialize incomplete runtime credentials");
+    }
     return {
-      accountId: keyId,
-      encryptedKey: encrypt(keySecret),
+      accountId,
+      encryptedKey: encrypt(secretKey),
     };
   }
 
@@ -109,8 +153,8 @@ export class RazorpayProvider implements Provider {
   // Provider Interface — Lifecycle Methods
   // ---------------------------------------------------------------------------
 
-  async connect(_startupId: string, _credentials: ProviderCredentials): Promise<void> {
-    // Connection persistence is handled by the pipeline's Stage 8
+  async connect(_startupId: string, _credentials: RuntimeCredentials): Promise<void> {
+    // Connection persistence is handled by the pipeline
   }
 
   async disconnect(_startupId: string): Promise<void> {

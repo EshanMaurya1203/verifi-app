@@ -59,12 +59,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Razorpay provider not found" }, { status: 500 });
       }
 
-      const valid = await rzpProvider.verifyCredentials({ keyId, keySecret });
+      const runtimeCredentials = { accountId: keyId, secretKey: keySecret };
+      const valid = await rzpProvider.verifyCredentials(runtimeCredentials);
       if (!valid) {
         return NextResponse.json({ error: "Invalid Razorpay credentials" }, { status: 400 });
       }
 
-      const result = await rzpProvider.fetchRevenue(keyId, keySecret);
+      const result = await rzpProvider.fetchRevenue(runtimeCredentials);
       return NextResponse.json({ success: true, revenue: result.revenue, currency: result.currency });
     }
 
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
     const { getFriendlyErrorMessage } = await import("@/lib/providers/error-mapping");
     const normalized = normalizeProviderError(err);
     const friendlyMessage = getFriendlyErrorMessage("razorpay", normalized);
-    console.error("One-off verification error:", normalized.originalError);
+    console.error("One-off verification error:", normalized.message);
     return NextResponse.json({ error: friendlyMessage }, { status: normalized.statusCode });
   }
 }

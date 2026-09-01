@@ -1,10 +1,20 @@
-export interface ProviderCredentials {
-  [key: string]: any;
+/**
+ * Runtime credentials exist ONLY in server memory during request execution.
+ * Passed exclusively to provider API clients.
+ * Must NEVER be written to the database or logged.
+ */
+export interface RuntimeCredentials {
+  accountId: string;  // e.g. Razorpay key_id or Stripe account ID
+  secretKey: string;  // Plaintext secret key held in memory
 }
 
+/**
+ * Serialized credentials contain encrypted material intended for persistence.
+ * Must NEVER be passed directly to provider API clients.
+ */
 export interface SerializedCredentials {
-  accountId: string;
-  encryptedKey: string;
+  accountId: string;   // e.g. key_id or account_id
+  encryptedKey: string;// Authenticated AES-256-GCM ciphertext ONLY
 }
 
 export interface ProviderRevenueResult {
@@ -25,12 +35,12 @@ export interface Provider {
   readonly id: string;
   readonly name: string;
 
-  connect(startupId: string, credentials: ProviderCredentials): Promise<void>;
+  connect(startupId: string, credentials: RuntimeCredentials): Promise<void>;
   disconnect(startupId: string): Promise<void>;
-  verifyCredentials(credentials: ProviderCredentials): Promise<boolean>;
-  fetchRevenue(accountId: string, decryptedKey: string): Promise<ProviderRevenueResult>;
-  fetchTransactions(accountId: string, decryptedKey: string, options?: any): Promise<any[]>;
-  serializeCredentials(credentials: ProviderCredentials): Promise<SerializedCredentials>;
+  verifyCredentials(credentials: RuntimeCredentials): Promise<boolean>;
+  fetchRevenue(credentials: RuntimeCredentials): Promise<ProviderRevenueResult>;
+  fetchTransactions(credentials: RuntimeCredentials, options?: any): Promise<any[]>;
+  serializeCredentials(credentials: RuntimeCredentials): Promise<SerializedCredentials>;
   parseWebhook(payload: any, signature?: string): Promise<WebhookResult>;
   healthCheck(): Promise<boolean>;
 }

@@ -23,10 +23,19 @@ export type StripeVerificationResult = {
 
 type StripeRequestOptions = { stripeAccount?: string };
 
+interface ProcessedStripeTx {
+  id: string;
+  amount: number; // Net amount in cents
+  gross_amount: number; // Gross in cents
+  refund_amount: number; // Refund in cents
+  currency: string;
+  created: number;
+}
+
 async function listRecentBalanceTransactions(
   stripe: Stripe,
   requestOptions?: StripeRequestOptions
-): Promise<Stripe.BalanceTransaction[]> {
+): Promise<ProcessedStripeTx[]> {
   const from = Math.floor(Date.now() / 1000) - THIRTY_DAYS_SEC;
   const collected: Stripe.BalanceTransaction[] = [];
   let hasMore = true;
@@ -38,6 +47,7 @@ async function listRecentBalanceTransactions(
         created: { gte: from },
         limit: 100,
         starting_after: startingAfter,
+        expand: ["data.source"],
       },
       requestOptions
     );
@@ -51,9 +61,53 @@ async function listRecentBalanceTransactions(
     }
   }
 
-  return collected.filter(
+  const charges = collected.filter(
     (tx) => tx.type === "charge" || tx.type === "payment"
   );
+  const refunds = collected.filter(
+    (tx) => tx.type === "refund" || tx.type === "payment_refund" || tx.type === "adjustment"
+  );
+
+  const refundMap = new Map<string, number>();
+  let unlinkedRefundsCents = 0;
+  for (const ref of refunds) {
+    const targetChargeId =
+      typeof ref.source === "object" && (ref.source as any)?.charge
+        ? typeof (ref.source as any).charge === "string"
+          ? (ref.source as any).charge
+          : (ref.source as any).charge?.id
+        : typeof ref.source === "string"
+          ? ref.source
+          : (ref.source as any)?.id;
+
+    const refAmount = Math.abs(ref.amount || 0);
+    if (targetChargeId) {
+      refundMap.set(targetChargeId, (refundMap.get(targetChargeId) || 0) + refAmount);
+    } else {
+      unlinkedRefundsCents += refAmount;
+    }
+  }
+
+  return charges.map((tx) => {
+    const chargeId =
+      typeof tx.source === "object" && (tx.source as any)?.id
+        ? (tx.source as any).id
+        : typeof tx.source === "string"
+          ? tx.source
+          : tx.id;
+
+    const gross = tx.amount || 0;
+    const ref = refundMap.get(chargeId) || refundMap.get(tx.id) || 0;
+    const net = Math.max(0, gross - ref);
+    return {
+      id: tx.id,
+      amount: net,
+      gross_amount: gross,
+      refund_amount: ref,
+      currency: tx.currency || "usd",
+      created: tx.created,
+    };
+  });
 }
 
 // Removed upsertStripeBalanceTransactions
@@ -82,7 +136,7 @@ export async function saveStripeConnection(params: {
     throw new Error(`Failed to save Stripe connection: ${error.message}`);
   }
 
-  await supabaseServer
+  const { error: updateStartupErr } = await supabaseServer
     .from("startup_submissions")
     .update({
       stripe_account_id: isStripeConnectAccountId(params.accountId)
@@ -91,6 +145,10 @@ export async function saveStripeConnection(params: {
       payment_connected: true,
     })
     .eq("id", params.startupId);
+
+  if (updateStartupErr) {
+    throw new Error(`Failed to update startup payment_connected: ${updateStartupErr.message}`);
+  }
 
   // Trigger Provider Connected notification (best-effort side effect)
   try {
@@ -106,7 +164,7 @@ export async function saveStripeConnection(params: {
 
 async function runFraudChecks(
   startupId: number,
-  transactions: Stripe.BalanceTransaction[]
+  transactions: ProcessedStripeTx[]
 ): Promise<boolean> {
   const amounts = transactions.map((tx) => tx.amount / 100);
   const currentMaxTx = amounts.length > 0 ? Math.max(...amounts) : 0;
@@ -159,12 +217,17 @@ export async function completeStripeVerification(
   }
 
   const spikeDetected = await runFraudChecks(startupId, transactions);
-  await revenueService.upsertTransactions({
+
+  // Mandatory Stage 4: Persist transactions (fail-closed)
+  const upsertResult = await revenueService.upsertTransactions({
     startupId,
     provider: "stripe",
     transactions: transactions.map(tx => ({
       external_payment_id: tx.id,
       amount: tx.amount / 100,
+      gross_amount: tx.gross_amount / 100,
+      refund_amount: tx.refund_amount / 100,
+      net_amount: tx.amount / 100,
       currency: (tx.currency || "usd").toUpperCase(),
       timestamp: tx.created * 1000,
       status: "captured",
@@ -172,18 +235,31 @@ export async function completeStripeVerification(
     }))
   });
 
+  if (upsertResult.failed > 0) {
+    const errMsg = upsertResult.errors[0]?.message || "Database error";
+    throw new Error(
+      `Failed to persist ${upsertResult.failed} Stripe transaction(s) during verification: ${errMsg}`
+    );
+  }
+
+  // Mandatory Stage 5: Aggregate revenue
   const aggregated = await revenueService.aggregateRevenue(startupId);
   const snapshotRevenue = aggregated.totalRevenue ?? revenue30d;
 
-  const { data: lastSnap } = await supabaseServer
+  // Mandatory Stage 6: Persist snapshot (fail-closed)
+  const { data: lastSnap, error: fetchSnapError } = await supabaseServer
     .from("revenue_snapshots")
     .select("total_revenue")
     .eq("startup_id", startupId)
     .order("created_at", { ascending: false })
     .limit(1);
 
+  if (fetchSnapError) {
+    throw new Error(`Failed to query revenue snapshots: ${fetchSnapError.message}`);
+  }
+
   if (!lastSnap?.length || lastSnap[0]?.total_revenue !== snapshotRevenue) {
-    await supabaseServer.from("revenue_snapshots").insert({
+    const { error: insertSnapError } = await supabaseServer.from("revenue_snapshots").insert({
       startup_id: startupId,
       total_revenue: snapshotRevenue,
       provider_breakdown:
@@ -191,9 +267,14 @@ export async function completeStripeVerification(
       provider: "stripe",
       created_at: new Date().toISOString(),
     });
+
+    if (insertSnapError) {
+      throw new Error(`Failed to insert revenue snapshot: ${insertSnapError.message}`);
+    }
   }
 
-  await supabaseServer
+  // Mandatory Stage 7: Update provider connection (fail-closed)
+  const { error: connUpdateError } = await supabaseServer
     .from("provider_connections")
     .update({
       latest_revenue: aggregated.breakdown?.stripe ?? revenue30d,
@@ -203,7 +284,15 @@ export async function completeStripeVerification(
     .eq("startup_id", startupId)
     .eq("provider", "stripe");
 
-  await supabaseServer
+  if (connUpdateError) {
+    throw new Error(`Failed to update Stripe connection status: ${connUpdateError.message}`);
+  }
+
+  // Mandatory Stage 8: Compute and persist trust score (BEFORE api_verified)
+  await computeTrustScore(startupId);
+
+  // Mandatory Stage 9: Mark startup api_verified (fail-closed)
+  const { error: startupUpdateError } = await supabaseServer
     .from("startup_submissions")
     .update({
       payment_connected: true,
@@ -217,29 +306,47 @@ export async function completeStripeVerification(
     })
     .eq("id", startupId);
 
-  await computeTrustScore(startupId);
+  if (startupUpdateError) {
+    throw new Error(`Failed to update startup verification status: ${startupUpdateError.message}`);
+  }
 
-  const { data: logRecord } = await supabaseServer
-    .from("verification_logs")
-    .insert({
-      startup_id: startupId,
-      event: "stripe_sync_success",
-      metadata: {
-        mrr: snapshotRevenue,
-        count: total_transactions,
-        connection_type: options?.connectionType ?? "api_key",
-      },
-    })
-    .select("id")
-    .maybeSingle();
+  // Mandatory Stage 10: Post-certification audit log (best-effort side effect)
+  try {
+    const { data: logRecord, error: logError } = await supabaseServer
+      .from("verification_logs")
+      .insert({
+        startup_id: startupId,
+        event: "stripe_sync_success",
+        metadata: {
+          mrr: snapshotRevenue,
+          count: total_transactions,
+          connection_type: options?.connectionType ?? "api_key",
+        },
+      })
+      .select("id")
+      .maybeSingle();
 
-  if (logRecord?.id) {
-    await handleVerificationCompleted({
-      startupId,
-      verificationLogId: logRecord.id,
-    }).catch((err) => {
-      console.error("[StripeSync] Best-effort verification completed email failed:", err);
-    });
+    if (logError) {
+      console.error(
+        `[StripeSync] Non-fatal: failed to persist audit verification log for startup ${startupId}: ${logError.message}`
+      );
+    } else if (logRecord?.id) {
+      await handleVerificationCompleted({
+        startupId,
+        verificationLogId: logRecord.id,
+      }).catch((err) => {
+        console.error(
+          "[StripeSync] Best-effort verification completed email failed:",
+          err instanceof Error ? err.message : "Unknown error"
+        );
+      });
+    }
+  } catch (err) {
+    console.error(
+      `[StripeSync] Non-fatal error during post-verification event logging for startup ${startupId}: ${
+        err instanceof Error ? err.message : "Unknown error"
+      }`
+    );
   }
 
   return {

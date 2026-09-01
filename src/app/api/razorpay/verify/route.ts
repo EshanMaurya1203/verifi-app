@@ -62,8 +62,8 @@ export async function POST(req: Request) {
       ? err.statusCode
       : (isClientError ? 400 : 500);
 
-    // Ensure logs contain the full structured object
-    console.error("[Razorpay Verify] Error:", isProviderError ? (err.originalError || err) : err);
+    // Log sanitized error message without credential leakage
+    console.error("[Razorpay Verify] Error:", message);
 
     return NextResponse.json(
       { success: false, error: message },

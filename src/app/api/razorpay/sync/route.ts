@@ -51,8 +51,8 @@ export async function POST(req: Request) {
     const isProviderError = err && err.name === "ProviderError";
     const message = getFriendlyErrorMessage("razorpay", err);
     
-    // Ensure logs contain the full structured object
-    console.error("[Razorpay Sync] Error:", isProviderError ? (err.originalError || err) : err);
+    // Log sanitized error message without credential leakage
+    console.error("[Razorpay Sync] Error:", message);
 
     const body = await req.clone().json().catch(() => ({}));
     if (body.startup_id) {
