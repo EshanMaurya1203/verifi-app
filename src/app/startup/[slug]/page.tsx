@@ -456,7 +456,7 @@ export default async function PublicStartupProfile({ params }: { params: Promise
                   <TrustBadge tier={verificationState.confidenceTier} showGlow={isVerified} isDemo={isDemo} />
                 </div>
                 <p className="text-neutral-400 text-sm font-medium mb-6 tracking-tight max-w-xl">
-                  {startup.notes ? (startup.notes.length > 80 ? startup.notes.substring(0, 80) + '...' : startup.notes) : `Innovative ${startup.biz_type || 'venture'} scaling with verified metrics.`}
+                  {startup.notes ? (startup.notes.length > 80 ? startup.notes.substring(0, 80) + '...' : startup.notes) : `Innovative ${startup.biz_type || 'venture'} on Verifii.`}
                 </p>
 
                 <div className="flex flex-wrap items-center gap-y-3 gap-x-6 text-xs font-bold uppercase tracking-[0.15em] text-neutral-400">
@@ -731,7 +731,13 @@ export default async function PublicStartupProfile({ params }: { params: Promise
             </section>
 
             {/* Badge Embedder Card (Badge) */}
-            <BadgeEmbedder startupName={startup.startup_name} slug={slug} />
+            <BadgeEmbedder
+              startupName={startup.startup_name}
+              slug={slug}
+              isVerified={isVerified}
+              confidenceTier={verificationState.confidenceTier}
+              isDemo={isDemo}
+            />
           </aside>
         </div>
 

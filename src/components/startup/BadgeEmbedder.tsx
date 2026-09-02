@@ -12,6 +12,9 @@ const getServerSnapshot = () => false;
 interface BadgeEmbedderProps {
   startupName: string;
   slug: string;
+  isVerified?: boolean;
+  confidenceTier?: string;
+  isDemo?: boolean;
 }
 
 const BadgeSkeleton = () => {
@@ -32,7 +35,13 @@ const BadgeSkeleton = () => {
   );
 };
 
-export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
+export function BadgeEmbedder({
+  startupName,
+  slug,
+  isVerified = false,
+  confidenceTier,
+  isDemo = false,
+}: BadgeEmbedderProps) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [copiedBadge, setCopiedBadge] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -43,9 +52,14 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
   const badgePreviewUrl = `${getRelativeBadgeUrl(slug)}?theme=${theme}`;
   const badgeEmbedUrl = `${getBadgeUrl(slug)}?theme=${theme}`;
   const profileUrl = getStartupUrl(slug);
+
+  const isRevenueVerified = isVerified && !isDemo;
+  const embedAlt = isRevenueVerified
+    ? `${startupName} is Revenue Verified on Verifii`
+    : `${startupName} on Verifii`;
   
   const embedCode = `<a href="${profileUrl}" target="_blank">
-  <img src="${badgeEmbedUrl}" alt="${startupName} is Verified on Verifii" width="300" height="80" />
+  <img src="${badgeEmbedUrl}" alt="${embedAlt}" width="300" height="80" />
 </a>`;
 
   const handleCopyBadge = async () => {
@@ -68,7 +82,9 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
     }
   };
 
-  const shareText = `Check out ${startupName}'s live verified revenue & metrics on Verifii. Verified data directly from billing source!`;
+  const shareText = isRevenueVerified
+    ? `Check out ${startupName}'s live verified revenue on Verifii. Verified data directly from billing source!`
+    : `Check out ${startupName}'s startup profile on Verifii.`;
 
   const handleLinkedInShare = () => {
     const shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`;
@@ -94,7 +110,11 @@ export function BadgeEmbedder({ startupName, slug }: BadgeEmbedderProps) {
           <Share2 className="w-3.5 h-3.5 text-primary" />
           Share & Badge Verification
         </h3>
-        <p className="text-neutral-500 text-[10px]">Verify your metrics publicly and share your verified status.</p>
+        <p className="text-neutral-500 text-[10px]">
+          {isRevenueVerified
+            ? "Share your verified revenue and badge publicly."
+            : "Share your startup profile and badge publicly."}
+        </p>
       </div>
 
       {/* Badge Preview Area */}

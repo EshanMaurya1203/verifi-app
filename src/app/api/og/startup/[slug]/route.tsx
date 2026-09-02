@@ -258,7 +258,7 @@ export async function GET(
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <span style={{ color: "#a1a1aa", fontSize: "13px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "2px" }}>
-                  Verified Monthly Revenue
+                  {isVerified ? "Verified Monthly Revenue" : "Reported Monthly Revenue"}
                 </span>
                 <span style={{ color: "#b9ff4b", fontSize: "56px", fontWeight: "900", letterSpacing: "-1.5px" }}>
                   ₹{mrr.toLocaleString()}

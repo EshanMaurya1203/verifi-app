@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getClientIdentifier, checkRateLimit } from "@/lib/rate-limit";
 import { canStartupBePublic } from "@/lib/visibility";
-import { isDemoStartupUserId } from "@/lib/verification-data";
+import {
+  computeVerificationStatesForStartups,
+  isDemoStartupUserId,
+} from "@/lib/verification-data";
 
 // Public read-only aggregate trust metrics endpoint.
 // Policy: 15 requests per 60 seconds window. Fail-open enabled for Redis resilience.
@@ -56,8 +59,27 @@ export async function GET(request: Request) {
       return true;
     });
 
-    const verifiedStartupCount = eligibleStartups.length;
+    let verifiedStartupCount = 0;
     let verifiedRevenueTotal = 0;
+
+    if (eligibleStartups.length > 0) {
+      const startupIds = eligibleStartups
+        .map((s) => Number(s.id))
+        .filter(Number.isFinite);
+      const demoUserIds = new Map<number, string | null>();
+
+      const verificationByStartup = await computeVerificationStatesForStartups(
+        startupIds,
+        demoUserIds
+      );
+
+      const verifiedStartups = eligibleStartups.filter((sub) => {
+        const state = verificationByStartup.get(Number(sub.id));
+        return state?.hasVerificationEvidence === true;
+      });
+
+      verifiedStartupCount = verifiedStartups.length;
+    }
 
     // 3. For eligible startups, query canonical combined revenue_snapshots (prevents multi-provider double-counting)
     if (eligibleStartups.length > 0) {

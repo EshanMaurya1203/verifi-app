@@ -44,7 +44,7 @@ export function buildStartupStatus(startup: Partial<StartupSubmissionRow> | null
   
   const payment = startup.payment_connected ? "connected" : "disconnected";
 
-  const isVerified = startup.payment_connected || (startup.verification_status && VERIFIED_STATUSES.includes(startup.verification_status));
+  const isVerified = startup.verification_status && VERIFIED_STATUSES.includes(startup.verification_status);
   const isPending = startup.verification_status && PENDING_STATUSES.includes(startup.verification_status);
   
   let verification: "unverified" | "pending" | "verified" = "unverified";

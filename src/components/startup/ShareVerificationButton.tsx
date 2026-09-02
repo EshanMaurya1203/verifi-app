@@ -37,14 +37,12 @@ export function ShareVerificationButton({ startupName, slug, trustScore, confide
   let trustTier = "Self Reported";
   if (isDemo) {
     trustTier = "Sandbox Demo";
-  } else if (confidenceTier) {
-    if (confidenceTier === "REVENUE_VERIFIED") trustTier = "Revenue Verified";
-    else if (confidenceTier === "PAYMENT_CONNECTED") trustTier = "Payment Connected";
-    else trustTier = "Self Reported";
-  } else if (trustScore !== undefined) {
-    if (trustScore > 85) trustTier = "Payment Verified";
-    else if (trustScore > 65) trustTier = "Revenue Verified";
-    else if (trustScore > 30) trustTier = "Payment Connected";
+  } else if (confidenceTier === "REVENUE_VERIFIED") {
+    trustTier = "Revenue Verified";
+  } else if (confidenceTier === "PAYMENT_CONNECTED") {
+    trustTier = "Payment Connected";
+  } else {
+    trustTier = "Self Reported";
   }
 
   // Dynamic public share copy according to verification status

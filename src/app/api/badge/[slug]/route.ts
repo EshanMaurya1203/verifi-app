@@ -90,6 +90,9 @@ export async function GET(
     tierColor = "#f59e0b"; // Amber
   }
 
+  const platformSubtitle =
+    tier === "REVENUE_VERIFIED" ? "Verified on Verifii" : "Listed on Verifii";
+
   // Prevent overlap for long names: truncate rawName if > 15 chars, and dynamically adjust font size
   // VRF-003: truncate raw string FIRST, then XML-escape the truncated result
   const rawName = startup.startup_name;
@@ -109,7 +112,7 @@ export async function GET(
       
       <!-- Content -->
       <text x="72" y="34" font-family="Inter, sans-serif" font-size="${nameFontSize}" font-weight="800" fill="${textColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${startupName}</text>
-      <text x="72" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">Verified on Verifii</text>
+      <text x="72" y="50" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="${subTextColor}" style="text-transform: uppercase; letter-spacing: 0.05em;">${platformSubtitle}</text>
       
       <!-- Tier Badge (perfectly aligned with no text overflow) -->
       <rect x="174" y="30" width="110" height="20" rx="10" fill="${tierColor}15"/>
